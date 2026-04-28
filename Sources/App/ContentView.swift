@@ -18,7 +18,12 @@ struct ContentView: View {
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
 
     var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 96 }
-    var mainPadH: CGFloat { UIScreen.main.bounds.width < 1024 ? 20 : 40 }
+    var mainPadH: CGFloat { 
+        if UIScreen.main.bounds.width < 1024 { return 20 }
+        if UIScreen.main.bounds.width >= 1500 { return 100 } // Extreme wide (Car display)
+        if UIScreen.main.bounds.width >= 1150 { return 60 }
+        return 40 
+    }
 
     @AppStorage("velora_username") var username: String = ""
 

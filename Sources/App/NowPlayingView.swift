@@ -82,7 +82,7 @@ struct NowPlayingView: View {
                         .frame(minHeight: proxy.size.height - (headerHeight + 20)) // Locked height to prevent scroll jumps
                         
                         metadataCards
-                            .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 80 : 40))
+                            .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
                             .padding(.top, 40)
                             .padding(.bottom, 100)
                             .opacity(isIdle ? 0.0 : 1.0)
@@ -203,20 +203,22 @@ struct NowPlayingView: View {
             Spacer()
             
             // Track Info (Artwork + Metadata side-by-side)
-            HStack(alignment: .bottom, spacing: isLargeCanvas ? 32 : 24) { // Constant spacing to prevent "scrambling"
-                artworkSection(size: isLargeCanvas ? 320 : 240)
+            HStack(alignment: .bottom, spacing: isLargeCanvas ? 48 : 24) { 
+                artworkSection(size: isLargeCanvas ? 420 : 240)
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text(playback.currentTrack?.title ?? "Not Playing")
-                        .font(.system(size: isLargeCanvas ? 44 : 32, weight: .bold))
+                        .font(.system(size: isLargeCanvas ? 56 : 32, weight: .black))
                         .foregroundColor(.white)
                         .lineLimit(2)
+                        .minimumScaleFactor(0.6)
                     
                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                        .font(.system(size: isLargeCanvas ? 24 : 20, weight: .medium))
+                        .font(.system(size: isLargeCanvas ? 28 : 20, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
+                        .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, isIdle ? 60 : 0)

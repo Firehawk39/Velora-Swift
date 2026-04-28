@@ -19,6 +19,7 @@ struct ArtistDetailView: View {
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
     
+    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isCompact: Bool { hSizeClass == .compact }
     
     var body: some View {
@@ -98,51 +99,90 @@ struct ArtistDetailView: View {
     }
     
     private var heroSection: some View {
-        VStack(spacing: 32) {
-            // Artist Logo
-            AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
-                if let img = phase.image {
-                    img.resizable().scaledToFill()
-                } else {
-                    Color.gray.opacity(0.1)
+        Group {
+            if isCompact {
+                VStack(spacing: 32) {
+                    artistLogo(size: 180)
+                    
+                    VStack(spacing: 12) {
+                        artistLabel
+                        artistNameText(size: 48)
+                    }
+                    
+                    playAllButton
                 }
-            }
-            .frame(width: isCompact ? 180 : 280, height: isCompact ? 180 : 280)
-            .clipShape(Circle())
-            .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
-            .padding(.top, 100)
-            
-            VStack(spacing: 12) {
-                Text("ARTIST")
-                    .font(.system(size: 12, weight: .black))
-                    .kerning(2)
-                    .foregroundColor(.gray)
-                
-                Text(artistName)
-                    .font(.system(size: isCompact ? 48 : 72, weight: .black))
-                    .foregroundColor(isDarkMode ? .white : .black)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Button(action: {
-                if !topSongs.isEmpty {
-                    onPlay(topSongs[0], topSongs)
+            } else {
+                VStack(alignment: .leading, spacing: 48) {
+                    HStack(alignment: .bottom, spacing: 48) {
+                        artistLogo(size: 240)
+                        
+                        VStack(alignment: .leading, spacing: 16) {
+                            artistLabel
+                            
+                            HStack(alignment: .bottom, spacing: 32) {
+                                artistNameText(size: isLargeCanvas ? 96 : 72)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                
+                                playAllButton
+                                    .padding(.bottom, 12)
+                            }
+                        }
+                        Spacer()
+                    }
                 }
-            }) {
-                HStack(spacing: 12) {
-                    Image(systemName: "play.fill")
-                    Text("Play All")
-                }
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(isDarkMode ? .black : .white)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 14)
-                .background(isDarkMode ? Color.white : Color.black)
-                .clipShape(Capsule())
+                .padding(.horizontal, isLargeCanvas ? 80 : 48)
             }
         }
         .frame(maxWidth: .infinity)
+        .padding(.top, 100)
         .padding(.bottom, 48)
+    }
+    
+    private func artistLogo(size: CGFloat) -> some View {
+        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
+            if let img = phase.image {
+                img.resizable().scaledToFill()
+            } else {
+                Color.gray.opacity(0.1)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
+    }
+    
+    private var artistLabel: some View {
+        Text("ARTIST")
+            .font(.system(size: 12, weight: .black))
+            .kerning(2)
+            .foregroundColor(.gray)
+    }
+    
+    private func artistNameText(size: CGFloat) -> some View {
+        Text(artistName)
+            .font(.system(size: size, weight: .black))
+            .foregroundColor(isDarkMode ? .white : .black)
+            .multilineTextAlignment(.leading)
+            .tracking(-2)
+    }
+    
+    private var playAllButton: some View {
+        Button(action: {
+            if !topSongs.isEmpty {
+                onPlay(topSongs[0], topSongs)
+            }
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "play.fill")
+                Text("Play All")
+            }
+            .font(.system(size: 16, weight: .bold))
+            .foregroundColor(isDarkMode ? .black : .white)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 14)
+            .background(isDarkMode ? Color.white : Color.black)
+            .clipShape(Capsule())
+        }
     }
     
     private var mostFavoriteSection: some View {
@@ -212,46 +252,66 @@ struct ArtistDetailView: View {
                 .font(.system(size: 20, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
-            VStack(spacing: 12) {
-                ForEach(topSongs.prefix(5)) { track in
-                    Button(action: { onPlay(track, topSongs) }) {
-                        HStack(spacing: 16) {
-                            AsyncImage(url: track.coverArtUrl) { phase in
-                                if let img = phase.image {
-                                    img.resizable().scaledToFill()
-                                } else {
-                                    Color.gray.opacity(0.1)
-                                }
-                            }
-                            .frame(width: 48, height: 48)
-                            .cornerRadius(8)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(track.title)
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(isDarkMode ? .white : .black)
-                                    .lineLimit(1)
-                                
-                                Text(track.album ?? "Unknown Album")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.gray)
-                                    .lineLimit(1)
-                            }
-                            
-                            Spacer()
-                            
-                            Text(track.durationFormatted)
-                                .font(.system(size: 14))
-                                .foregroundColor(.gray)
-                        }
-                        .padding(8)
-                        .background(Color.gray.opacity(0.05))
-                        .cornerRadius(12)
+            if isCompact {
+                VStack(spacing: 12) {
+                    ForEach(topSongs.prefix(5)) { track in
+                        trackRow(track)
                     }
-                    .buttonStyle(PlainButtonStyle())
                 }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHGrid(rows: [
+                        GridItem(.fixed(72)),
+                        GridItem(.fixed(72)),
+                        GridItem(.fixed(72))
+                    ], spacing: 16) {
+                        ForEach(topSongs) { track in
+                            trackRow(track)
+                                .frame(width: isLargeCanvas ? 400 : 320)
+                        }
+                    }
+                }
+                .frame(height: 250) // Approx 3 rows * 72 + spacing
             }
         }
+    }
+    
+    private func trackRow(_ track: Track) -> some View {
+        Button(action: { onPlay(track, topSongs) }) {
+            HStack(spacing: 16) {
+                AsyncImage(url: track.coverArtUrl) { phase in
+                    if let img = phase.image {
+                        img.resizable().scaledToFill()
+                    } else {
+                        Color.gray.opacity(0.1)
+                    }
+                }
+                .frame(width: 56, height: 56)
+                .cornerRadius(8)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(track.title)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .lineLimit(1)
+                    
+                    Text(track.album ?? "Unknown Album")
+                        .font(.system(size: 14))
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                Text(track.durationFormatted)
+                    .font(.system(size: 14))
+                    .foregroundColor(.gray)
+            }
+            .padding(8)
+            .background(isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
     
     private var discographySection: some View {
