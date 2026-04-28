@@ -241,7 +241,7 @@ struct NowPlayingView: View {
             }
             
             // Track Info (Artwork + Metadata side-by-side)
-            HStack(alignment: .bottom, spacing: isIdle ? (isLargeCanvas ? 32 : 20) : (isLargeCanvas ? 48 : 24)) { 
+            HStack(alignment: .bottom, spacing: isIdle ? 16 : (isLargeCanvas ? 48 : 24)) { 
                 artworkSection(size: tabletArtworkSize)
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
                     .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
@@ -259,7 +259,7 @@ struct NowPlayingView: View {
                         .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, isIdle ? (isLargeCanvas ? 32 : 16) : 0)
+                .padding(.leading, isIdle ? 12 : 0)
                 .offset(y: isIdle ? -20 : 0)
             }
             .padding(.horizontal, isLargeCanvas ? 60 : 40)

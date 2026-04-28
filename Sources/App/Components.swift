@@ -154,15 +154,152 @@ private struct TabButton: View {
         }) {
             Text(label)
                 .font(.system(size: 15, weight: isActive ? .bold : .medium))
-                .foregroundColor(isActive ? (isPlayingTab || isDarkMode ? .white : .black) : (isPlayingTab ? .white.opacity(0.6) : .gray))
+                .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(
-                    isActive ? (isDarkMode ? Color.white.opacity(0.15) : Color.black.opacity(0.05)) : Color.clear
+                    isActive ? (isDarkMode || activeTab == "now-playing" ? Color.white.opacity(0.15) : Color.black.opacity(0.05)) : Color.clear
                 )
                 .clipShape(Capsule())
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Shared Components
+
+struct TrackCard: View {
+    let track: Track
+    let isDark: Bool
+    let size: CGFloat
+    let onPlay: () -> Void
+
+    var body: some View {
+        Button(action: onPlay) {
+            VStack(alignment: .leading, spacing: 12) {
+                AsyncImage(url: track.coverArtUrl) { img in
+                    img.resizable().scaledToFill()
+                } placeholder: {
+                    Rectangle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+                }
+                .frame(width: size, height: size)
+                .cornerRadius(12)
+                .clipped()
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(isDark ? .white : .black)
+                        .lineLimit(1)
+                    Text(track.artist ?? "Unknown")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                }
+                .frame(width: size, alignment: .leading)
+            }
+        }
+        .buttonStyle(PlainButtonStyle())
+        .hoverEffect()
+    }
+}
+
+struct ArtistCircle: View {
+    let artist: Artist
+    let isDark: Bool
+    let size: CGFloat
+
+    var body: some View {
+        VStack(spacing: 12) {
+            AsyncImage(url: artist.coverArtUrl) { img in
+                img.resizable().scaledToFill()
+            } placeholder: {
+                Circle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+            
+            Text(artist.name)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(isDark ? .white : .black)
+                .lineLimit(1)
+                .multilineTextAlignment(.center)
+        }
+        .frame(width: size)
+    }
+}
+
+struct AlbumCard: View {
+    let album: Album
+    let isDark: Bool
+    var cardW: CGFloat? = nil
+    var cardH: CGFloat? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            AsyncImage(url: album.coverArtUrl) { img in
+                img.resizable().scaledToFill()
+            } placeholder: {
+                Rectangle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+            }
+            .frame(width: cardW ?? 160, height: cardH ?? 160)
+            .cornerRadius(16)
+            .clipped()
+            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(album.name)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(isDark ? .white : .black)
+                    .lineLimit(1)
+                Text(album.artist ?? "Unknown")
+                    .font(.system(size: 13))
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+            }
+            .frame(width: cardW ?? 160, alignment: .leading)
+        }
+    }
+}
+
+struct SkeletonRow: View {
+    let count: Int
+    let cardWidth: CGFloat
+    let cardHeight: CGFloat
+    let isDark: Bool
+    var circular: Bool = false
+    var rounded: CGFloat = 12
+    var hPad: CGFloat? = nil
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(0..<count, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 12) {
+                        if circular {
+                            Circle()
+                                .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .frame(width: cardWidth, height: cardHeight)
+                        } else {
+                            RoundedRectangle(cornerRadius: rounded)
+                                .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .frame(width: cardWidth, height: cardHeight)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .frame(width: cardWidth * 0.7, height: 14)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .frame(width: cardWidth * 0.4, height: 10)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, hPad ?? (ScreenTier.isPhone ? 16 : 40))
+        }
     }
 }
 
