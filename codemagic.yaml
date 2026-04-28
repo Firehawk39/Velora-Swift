@@ -8,25 +8,29 @@ workflows:
         XCODE_SCHEME: "Velora"
       xcode: latest
     scripts:
+      - name: Debug Schemes
+        script: xcodebuild -list
+
       - name: Build Unsigned App
         script: |
-          # Build for actual iOS hardware (iphoneos) but skip signing
           xcodebuild build \
-            -scheme "$XCODE_SCHEME" \
+            -scheme Velora \
             -destination "generic/platform=iOS" \
             -configuration Release \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
-      - name: Package IPA (Jailbreak Style)
+
+      - name: Build IPA
         script: |
-          # Find the built .app bundle
-          # The path is usually in the DerivedData folder.
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Velora.app" -type d | head -n 1)
-          
+          mkdir -p Payload
+          # Find the .app in the custom build directory
+          APP_PATH=$(find build -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "Error: Could not find Velora.app"
+            echo "Failed to find .app bundle"
             exit 1
           fi
           

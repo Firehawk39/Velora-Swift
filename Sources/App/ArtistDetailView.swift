@@ -3,6 +3,7 @@ import SwiftUI
 struct ArtistDetailView: View {
     let artistId: String
     let artistName: String
+    let onArtistClick: (String, String) -> Void
     let onPlay: (Track, [Track]) -> Void
     let onBack: () -> Void
     

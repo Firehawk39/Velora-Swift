@@ -163,6 +163,10 @@ struct ContentView: View {
                 ArtistDetailView(
                     artistId: id,
                     artistName: name,
+                    onArtistClick: { nextId, nextName in
+                        selectedArtistId = nextId
+                        selectedArtistName = nextName
+                    },
                     onPlay: { track, ctx in playback.playTrack(track, context: ctx) },
                     onBack: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
