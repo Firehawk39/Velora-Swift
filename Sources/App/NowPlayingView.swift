@@ -19,6 +19,7 @@ struct NowPlayingView: View {
     var isCompact:     Bool { hSizeClass == .compact }
     var isLandscape:   Bool { vSizeClass == .compact }
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
+    var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
     var isSE:          Bool { UIScreen.main.bounds.width <= 320 }
 
@@ -200,23 +201,25 @@ struct NowPlayingView: View {
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private var tabletLayout: some View {
         VStack(spacing: 0) {
-            Spacer()
+            if !isShortCanvas {
+                Spacer()
+            }
             
             // Track Info (Artwork + Metadata side-by-side)
             HStack(alignment: .bottom, spacing: isLargeCanvas ? 48 : 24) { 
-                artworkSection(size: isLargeCanvas ? 420 : 240)
+                artworkSection(size: isLargeCanvas ? (isShortCanvas ? 320 : 420) : 240)
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 12) {
                     Text(playback.currentTrack?.title ?? "Not Playing")
-                        .font(.system(size: isLargeCanvas ? 56 : 32, weight: .black))
+                        .font(.system(size: isLargeCanvas ? (isShortCanvas ? 44 : 56) : 32, weight: .black))
                         .foregroundColor(.white)
-                        .lineLimit(2)
+                        .lineLimit(isShortCanvas ? 1 : 2)
                         .minimumScaleFactor(0.6)
                     
                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                        .font(.system(size: isLargeCanvas ? 28 : 20, weight: .bold))
+                        .font(.system(size: isLargeCanvas ? (isShortCanvas ? 22 : 28) : 20, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
                         .minimumScaleFactor(0.8)
                 }
@@ -230,10 +233,12 @@ struct NowPlayingView: View {
             // ALWAYS show seek bar
             progressBar
                 .padding(.horizontal, isLargeCanvas ? 60 : 40)
-                .padding(.bottom, isIdle ? 20 : 12)
+                .padding(.bottom, isIdle ? (isShortCanvas ? 10 : 20) : (isShortCanvas ? 6 : 12))
             
             // Space for ZStack controls
-            Spacer().frame(height: 20)
+            if !isShortCanvas {
+                Spacer().frame(height: 20)
+            }
             
             ZStack {
                 // Center: Controls (Absolute Center)
