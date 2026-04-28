@@ -1,0 +1,29 @@
+workflows:
+  ios-release:
+    name: Velora iOS Build
+    instance_type: mac_mini_m1
+    max_build_duration: 60
+    environment:
+      groups:
+        # You can add your Apple Developer Portal group here if you use manual signing
+        - apple_auth 
+      vars:
+        XCODE_PROJECT: "." # Since the .swiftpm is the root
+        XCODE_SCHEME: "Velora"
+        BUNDLE_ID: "com.velora.aistudio"
+      xcode: latest
+    scripts:
+      - name: Set up code signing
+        script: |
+          # This command fetches signing files based on your Codemagic settings.
+          # IMPORTANT: You must configure code signing in the Codemagic UI (Team Settings) first!
+          xcode-project use-profiles
+      - name: Build IPA
+        script: |
+          # Build the .ipa from the Swift Playgrounds project
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
