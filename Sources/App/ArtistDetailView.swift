@@ -99,7 +99,8 @@ struct ArtistDetailView: View {
     }
     
     private var heroSection: some View {
-        Group {
+        let nameSize: CGFloat = isLargeCanvas ? 96 : 72
+        return Group {
             if isCompact {
                 VStack(spacing: 32) {
                     artistLogo(size: 180)
@@ -120,7 +121,6 @@ struct ArtistDetailView: View {
                             artistLabel
                             
                             HStack(alignment: .bottom, spacing: 32) {
-                                let nameSize: CGFloat = isLargeCanvas ? 96 : 72
                                 artistNameText(size: nameSize)
                                     .fixedSize(horizontal: false, vertical: true)
                                 
