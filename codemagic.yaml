@@ -43,45 +43,76 @@ workflows:
             exit 1
           fi
           
-          # 2. Find the binary (it's often in usr/local/bin/ for Swiftpm projects)
+          # 2. Find the binary
           BINARY_NAME="Velora"
           BINARY_PATH=$(find Velora.xcarchive/Products -type f -name "$BINARY_NAME" | head -n 1)
           
-          # Fallback: find any Mach-O binary if named differently
           if [ -z "$BINARY_PATH" ]; then
             BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
           fi
           
           if [ -z "$BINARY_PATH" ]; then
-            echo "CRITICAL: Failed to find binary in archive."
-            find Velora.xcarchive/Products
+            echo "CRITICAL: Failed to find binary."
             exit 1
           fi
           
-          echo "Found binary at: $BINARY_PATH"
-          echo "Moving binary to: $APP_PATH/$BINARY_NAME"
-          
-          # 3. Move binary into the app bundle
+          # 3. Assemble the bundle manually to be 100% sure
+          echo "Assembling bundle at $APP_PATH"
           cp "$BINARY_PATH" "$APP_PATH/$BINARY_NAME"
           chmod +x "$APP_PATH/$BINARY_NAME"
           
-          echo "App bundle size after fix:"
-          du -sh "$APP_PATH"
+          # 4. Force-write the Info.plist to ensure TrollStore compatibility
+          cat <<EOF > "$APP_PATH/Info.plist"
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>$BINARY_NAME</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.velora.aistudio</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>Velora</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>MinimumOSVersion</key>
+              <string>15.0</string>
+              <key>UIRequiredDeviceCapabilities</key>
+              <array>
+                  <string>arm64</string>
+              </array>
+              <key>UIBackgroundModes</key>
+              <array>
+                  <string>audio</string>
+              </array>
+              <key>NSAppTransportSecurity</key>
+              <dict>
+                  <key>NSAllowsArbitraryLoads</key>
+                  <true/>
+              </dict>
+          </dict>
+          </plist>
+          EOF
           
-          echo "App bundle contents after fix:"
+          echo "Final bundle contents:"
           ls -R "$APP_PATH"
           
-          # 4. Create the Payload structure for the IPA
+          echo "Verifying Info.plist CFBundleExecutable:"
+          grep -A 1 "CFBundleExecutable" "$APP_PATH/Info.plist"
+          
+          # 5. Create IPA
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          
-          # Zip it up into an .ipa
           zip -r Velora-Jailbreak.ipa Payload
           
-          echo "Generated IPA size:"
-          ls -lh Velora-Jailbreak.ipa
-          
-          # Move to artifacts
           mkdir -p artifacts
           mv Velora-Jailbreak.ipa artifacts/
     artifacts:
