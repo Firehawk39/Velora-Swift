@@ -19,6 +19,7 @@ struct AppHeader: View {
     @Binding var showProfileMenu: Bool
     let isDarkMode: Bool
     let toggleDark: () -> Void
+    var onAction: () -> Void
 
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
@@ -44,11 +45,15 @@ struct AppHeader: View {
     }
     
     private var logoButton: some View {
-        Button(action: { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { activeTab = "home" } }) {
+        Button(action: { 
+            onAction()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { 
+                activeTab = "home" 
+            } 
+        }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: 32))
-                .fontWeight(.bold)
-                .kerning(-2.0)
+                .font(.system(size: 32, weight: .black, design: .rounded))
+                .kerning(-1.5)
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Velora Home")
@@ -112,10 +117,10 @@ struct AppHeader: View {
     
     private var navigationPill: some View {
         HStack(spacing: 0) {
-            TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab)
-            TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab)
-            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab)
-            TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab)
+            TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
+            TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
+            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
+            TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
         .padding(ScreenTier.isSE ? 4 : 6)
         .background(.ultraThinMaterial.opacity(0.5))
@@ -129,13 +134,19 @@ private struct TabButton: View {
     @Binding var activeTab: String
     let isDarkMode: Bool
     let isPlayingTab: Bool
+    let onAction: () -> Void
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
     var isActive: Bool { activeTab == id }
 
     var body: some View {
-        Button(action: { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { activeTab = id } }) {
+        Button(action: { 
+            onAction()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { 
+                activeTab = id 
+            } 
+        }) {
             Text(label)
                 .font(.system(size: 15, weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (isDarkMode ? .white : .black) : .gray)

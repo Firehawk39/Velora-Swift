@@ -43,7 +43,13 @@ struct ContentView: View {
                     activeTab: $activeTab,
                     showProfileMenu: $showProfileMenu,
                     isDarkMode: isDarkMode,
-                    toggleDark: { isDarkMode.toggle() }
+                    toggleDark: { isDarkMode.toggle() },
+                    onAction: {
+                        withAnimation {
+                            selectedArtistId = nil
+                            selectedArtistName = nil
+                        }
+                    }
                 )
                 .padding(.horizontal, mainPadH)
                 .padding(.top, 14)
