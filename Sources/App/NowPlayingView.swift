@@ -103,13 +103,26 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
             .simultaneousGesture(
-                DragGesture(minimumDistance: 30)
+                DragGesture(minimumDistance: 10) // Lowered to 10 so scrolling wakes it up immediately
                     .onChanged { _ in
                         resetIdleTimer()
                     }
             )
+            .overlay {
+                // Tap-to-wake overlay: Only active when idle to catch any touch
+                if isIdle {
+                    Color.black.opacity(0.001)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            resetIdleTimer()
+                        }
+                }
+            }
         }
-        .onAppear { startIdleTimer() }
+        .onAppear { 
+            isIdle = false // Ensure we don't start in idle state
+            startIdleTimer() 
+        }
         .onDisappear { stopIdleTimer() }
         .onChange(of: isQueueOpen) { isOpen in
             if isOpen { stopIdleTimer() } else { resetIdleTimer() }
@@ -157,36 +170,39 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer()
             
-            // Album Art
-            artworkSection(size: UIScreen.main.bounds.width * 0.9)
-                .scaleEffect(isIdle ? 1.12 : 1.0)
+            // Album Art - Fixed size to match webapp density (w-64 = 256px)
+            artworkSection(size: 280)
+                .scaleEffect(isIdle ? 1.1 : 1.0)
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
-                .padding(.bottom, isIdle ? 20 : 12)
+                .padding(.bottom, isIdle ? 32 : 24)
                 .offset(y: isIdle ? -10 : 0)
 
-            VStack(alignment: .leading, spacing: isSE ? 4 : 8) {
+            // Centered Metadata for High-Fidelity mobile parity
+            VStack(alignment: .center, spacing: isSE ? 4 : 8) {
                 Text(playback.currentTrack?.title ?? "Not Playing")
-                    .font(.system(size: isSE ? 24 : 28, weight: .bold))
+                    .font(.system(size: isSE ? 26 : 30, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                
                 Text(playback.currentTrack?.artist ?? "Select a track")
-                    .font(.system(size: isSE ? 16 : 18, weight: .medium))
-                    .foregroundColor(.white.opacity(0.7))
+                    .font(.system(size: isSE ? 18 : 20, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
                     .lineLimit(1)
+                    .multilineTextAlignment(.center)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, isSE ? 24 : 32)
-            .padding(.bottom, isIdle ? 48 : 32)
-            .offset(x: isIdle ? 10 : 0)
+            .padding(.bottom, isIdle ? 60 : 40)
 
-            // ALWAYS show seek bar
+            // Progress Bar - Airy spacing
             progressBar
                 .padding(.horizontal, isSE ? 24 : 32)
-                .padding(.bottom, isIdle ? 40 : 16)
+                .padding(.bottom, isIdle ? 40 : 20)
 
             if !isIdle {
                 auxiliaryButtons
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 32)
             }
 
             // Controls
@@ -194,7 +210,7 @@ struct NowPlayingView: View {
                 if !isIdle {
                     compactControls
                         .padding(.horizontal, isSE ? 24 : 32)
-                        .padding(.bottom, 40)
+                        .padding(.bottom, 48)
                 }
             }
             .opacity(isIdle ? 0.0 : 1.0)
@@ -323,7 +339,8 @@ struct NowPlayingView: View {
         }
         .frame(width: size, height: size)
         .cornerRadius(24)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 25, x: 0, y: 15) // Premium shadow
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1), lineWidth: 1))
     }
 
     private var metadataCards: some View {
