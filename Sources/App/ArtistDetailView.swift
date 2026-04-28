@@ -166,7 +166,7 @@ struct ArtistDetailView: View {
             .font(.system(size: size, weight: .black))
             .foregroundColor(isDarkMode ? .white : .black)
             .multilineTextAlignment(.leading)
-            .tracking(-2)
+            .kerning(-2)
     }
     
     private var playAllButton: some View {
