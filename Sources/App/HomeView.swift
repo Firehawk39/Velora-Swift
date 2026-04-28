@@ -133,7 +133,7 @@ private struct SectionHeader: View {
 
 // MARK: - Track Card  (square art + title + artist)
 
-private struct TrackCard: View {
+struct TrackCard: View {
     let track: Track
     let isDark: Bool
     var size: CGFloat = 140
@@ -182,7 +182,7 @@ private struct TrackCard: View {
 
 // MARK: - Artist Circle
 
-private struct ArtistCircle: View {
+struct ArtistCircle: View {
     let artist: Artist
     let isDark: Bool
     var size: CGFloat = 88
@@ -210,7 +210,7 @@ private struct ArtistCircle: View {
 
 // MARK: - Album Card  (16:9 with overlay)
 
-private struct AlbumCard: View {
+struct AlbumCard: View {
     let album: Album
     let isDark: Bool
     var cardW: CGFloat = 220
@@ -297,7 +297,7 @@ private struct SkeletonRow: View {
 
 // MARK: - Music note placeholder icon
 
-private struct MusicNoteIcon: View {
+struct MusicNoteIcon: View {
     let isDark: Bool
     var body: some View {
         Image(systemName: "music.note")

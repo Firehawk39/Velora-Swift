@@ -15,7 +15,7 @@ struct ArtistDetailView: View {
     @State private var favoriteSongs: [Track] = []
     @State private var albums: [Album] = []
     @State private var biography: String? = nil
-    @State private var relatedArtists: [SubsonicArtist] = []
+    @State private var relatedArtists: [Artist] = []
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
     
@@ -264,7 +264,7 @@ struct ArtistDetailView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 24) {
                     ForEach(albums) { album in
-                        AlbumCard(album: album, isDarkMode: isDarkMode, isCompact: isCompact)
+                        AlbumCard(album: album, isDark: isDarkMode)
                             .frame(width: isCompact ? 160 : 200)
                     }
                 }
@@ -282,24 +282,11 @@ struct ArtistDetailView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 24) {
-                    ForEach(relatedArtists, id: \.id) { artist in
-                        VStack(spacing: 12) {
-                            AsyncImage(url: URL(string: client.getCoverArtUrl(id: artist.id))) { phase in
-                                if let img = phase.image {
-                                    img.resizable().scaledToFill()
-                                } else {
-                                    Color.gray.opacity(0.1)
-                                }
-                            }
-                            .frame(width: isCompact ? 120 : 160, height: isCompact ? 120 : 160)
-                            .clipShape(Circle())
-                            
-                            Text(artist.name)
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(isDarkMode ? .white : .black)
-                                .lineLimit(1)
+                    ForEach(relatedArtists) { artist in
+                        Button(action: { onArtistClick(artist.id, artist.name) }) {
+                            ArtistCircle(artist: artist, isDark: isDarkMode, size: isCompact ? 120 : 160)
                         }
-                        .frame(width: isCompact ? 120 : 160)
+                        .buttonStyle(PlainButtonStyle())
                     }
                 }
                 .padding(.horizontal, isCompact ? 24 : 48)
@@ -351,36 +338,7 @@ struct ArtistDetailView: View {
     }
 }
 
-fileprivate struct AlbumCard: View {
-    let album: Album
-    let isDarkMode: Bool
-    let isCompact: Bool
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            AsyncImage(url: album.coverArtUrl) { phase in
-                if let img = phase.image {
-                    img.resizable().scaledToFill()
-                } else {
-                    Color.gray.opacity(0.1)
-                }
-            }
-            .aspectRatio(1, contentMode: .fill)
-            .cornerRadius(12)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(album.name)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(isDarkMode ? .white : .black)
-                    .lineLimit(1)
-                
-                Text("Album")
-                    .font(.system(size: 12))
-                    .foregroundColor(.gray)
-            }
-        }
-    }
-}
+
 
 // MARK: - Preference Keys
 struct ScrollOffsetKey: PreferenceKey {
