@@ -35,23 +35,43 @@ workflows:
 
       - name: Build IPA
         script: |
-          # The app should be in the archive
+          # 1. Find the app bundle
           APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
-          
           if [ -z "$APP_PATH" ]; then
-            echo "CRITICAL: Failed to find .app bundle in archive."
+            echo "CRITICAL: Failed to find .app bundle."
             find Velora.xcarchive
             exit 1
           fi
           
-          echo "Found app at: $APP_PATH"
-          echo "App bundle size:"
+          # 2. Find the binary (it's often in usr/local/bin/ for Swiftpm projects)
+          BINARY_NAME="Velora"
+          BINARY_PATH=$(find Velora.xcarchive/Products -type f -name "$BINARY_NAME" | head -n 1)
+          
+          # Fallback: find any Mach-O binary if named differently
+          if [ -z "$BINARY_PATH" ]; then
+            BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
+          fi
+          
+          if [ -z "$BINARY_PATH" ]; then
+            echo "CRITICAL: Failed to find binary in archive."
+            find Velora.xcarchive/Products
+            exit 1
+          fi
+          
+          echo "Found binary at: $BINARY_PATH"
+          echo "Moving binary to: $APP_PATH/$BINARY_NAME"
+          
+          # 3. Move binary into the app bundle
+          cp "$BINARY_PATH" "$APP_PATH/$BINARY_NAME"
+          chmod +x "$APP_PATH/$BINARY_NAME"
+          
+          echo "App bundle size after fix:"
           du -sh "$APP_PATH"
           
-          echo "App bundle contents:"
+          echo "App bundle contents after fix:"
           ls -R "$APP_PATH"
           
-          # Create the Payload structure for the IPA
+          # 4. Create the Payload structure for the IPA
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           
