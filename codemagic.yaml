@@ -1,53 +1,46 @@
 workflows:
-  ios-release:
-    name: Velora iOS Build
+  ios-jailbreak:
+    name: Velora Jailbreak IPA (Unsigned)
     instance_type: mac_mini_m1
-    max_build_duration: 60
+    max_build_duration: 30
     environment:
       vars:
-        BUNDLE_ID: "com.velora.aistudio"
         XCODE_SCHEME: "Velora"
       xcode: latest
     scripts:
-      - name: Set up code signing
+      - name: Build Unsigned App
         script: |
-          # Fetch profiles from Codemagic settings
-          xcode-project use-profiles
-      - name: Build and Archive (Manual)
-        script: |
-          # Swift Playgrounds (.swiftpm) projects are built via the root Package.swift
-          # We avoid using the -project flag which caused the previous failure.
-          xcodebuild archive \
+          # Build for actual iOS hardware (iphoneos) but skip signing
+          xcodebuild build \
             -scheme "$XCODE_SCHEME" \
             -destination "generic/platform=iOS" \
-            -archivePath "build/ios/Velora.xcarchive" \
-            -allowProvisioningUpdates \
-            -quiet
-      - name: Export IPA
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+      - name: Package IPA (Jailbreak Style)
         script: |
-          # Create a basic ExportOptions.plist
-          # Note: 'method' can be 'development', 'ad-hoc', or 'app-store'
-          cat <<EOF > ExportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>development</string>
-            <key>signingStyle</key>
-            <string>automatic</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>thinning</key>
-            <string>&lt;none&gt;</string>
-          </dict>
-          </plist>
-          EOF
-
-          xcodebuild -exportArchive \
-            -archivePath "build/ios/Velora.xcarchive" \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath "build/ios/ipa"
+          # Find the built .app bundle
+          # The path is usually in the DerivedData folder.
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Velora.app" -type d | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: Could not find Velora.app"
+            exit 1
+          fi
+          
+          echo "Found app at: $APP_PATH"
+          
+          # Create the Payload structure for the IPA
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          
+          # Zip it up into an .ipa
+          zip -r Velora-Jailbreak.ipa Payload
+          
+          # Move to artifacts
+          mkdir -p build/ios/ipa
+          mv Velora-Jailbreak.ipa build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
