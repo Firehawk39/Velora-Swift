@@ -21,6 +21,9 @@ workflows:
             -destination "generic/platform=iOS" \
             -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
+            INSTALL_PATH=/Applications \
+            PRODUCT_NAME=Velora \
+            WRAPPER_EXTENSION=app \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -30,13 +33,18 @@ workflows:
 
       - name: Build IPA
         script: |
-          # The app should be in the archive
-          APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
+          # Try to find the app bundle (now forced to /Applications in the archive)
+          APP_PATH=$(find Velora.xcarchive/Products/Applications -name "*.app" | head -n 1)
+          
+          # Fallback: search anywhere in archive if the above failed
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
+          fi
           
           if [ -z "$APP_PATH" ]; then
             echo "CRITICAL: Failed to find .app bundle in archive."
-            echo "Archive structure:"
-            find Velora.xcarchive -maxdepth 4
+            echo "Full Archive structure for debugging:"
+            find Velora.xcarchive
             exit 1
           fi
           
