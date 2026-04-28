@@ -156,17 +156,17 @@ struct ArtistDetailView: View {
     
     private var artistLabel: some View {
         Text("ARTIST")
-            .font(.system(size: 12, weight: .black))
             .kerning(2)
+            .font(.system(size: 12, weight: .black))
             .foregroundColor(.gray)
     }
     
     private func artistNameText(size: CGFloat) -> some View {
         Text(artistName)
+            .kerning(-2)
             .font(.system(size: size, weight: .black))
             .foregroundColor(isDarkMode ? .white : .black)
             .multilineTextAlignment(.leading)
-            .kerning(-2)
     }
     
     private var playAllButton: some View {
