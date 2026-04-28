@@ -36,7 +36,6 @@ struct SettingsView: View {
                 // ── Logo ──────────────────────────────────────────
                 Text("Velora.")
                     .font(.custom("Stardom-Regular", size: ScreenTier.isSE ? 56 : 72))
-                    .fontWeight(.bold)
                     .kerning(-2.5)
                     .foregroundColor(isDark ? .white : .black)
                     .padding(.top, ScreenTier.isSE ? 30 : 60)
