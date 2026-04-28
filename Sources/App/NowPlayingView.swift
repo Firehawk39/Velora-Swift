@@ -1,0 +1,636 @@
+import SwiftUI
+
+struct NowPlayingView: View {
+    @EnvironmentObject var playback: PlaybackManager
+    @Environment(\.horizontalSizeClass) var hSizeClass
+    @Environment(\.verticalSizeClass)   var vSizeClass
+    @Binding var isQueueOpen: Bool
+    @Binding var isIdle:      Bool
+
+    @State private var isLyricsMode = false
+    @State private var isDragging   = false
+    @State private var dragProgress: Double = 0
+    @State private var idleTimer: Timer? = nil
+
+    // Header height to avoid overlap
+    var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 96 }
+
+    var isCompact:     Bool { hSizeClass == .compact }
+    var isLandscape:   Bool { vSizeClass == .compact }
+    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
+    var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
+    var isSE:          Bool { UIScreen.main.bounds.width <= 320 }
+
+    var displayProgress: Double {
+        isDragging ? dragProgress : playback.progress
+    }
+    var progressFraction: Double {
+        guard playback.duration > 0 else { return 0 }
+        return displayProgress / playback.duration
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                // Dynamic Ambient Background
+                ZStack {
+                    if let track = playback.currentTrack, let url = track.coverArtUrl {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: proxy.size.width, height: proxy.size.height)
+                                .opacity(isIdle ? 0.45 : 0.35)
+                                .overlay(
+                                    // Combined Vignette: Dark edges + Vertical fade
+                                    ZStack {
+                                        RadialGradient(
+                                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                            center: .center,
+                                            startRadius: 200,
+                                            endRadius: proxy.size.width * 0.8
+                                        )
+                                        LinearGradient(
+                                            gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    }
+                                )
+                                .animation(.easeInOut(duration: 1.2), value: isIdle)
+                        } placeholder: {
+                            Color.black
+                        }
+                    }
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .drawingGroup() // Flattens the gradients into a single GPU texture for smoother performance
+
+
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        VStack(spacing: 0) {
+                            if isCompact && !isLandscape {
+                                portraitLayout
+                            } else {
+                                tabletLayout
+                            }
+                        }
+                        .frame(minHeight: proxy.size.height - (headerHeight + 20)) // Locked height to prevent scroll jumps
+                        
+                        metadataCards
+                            .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 80 : 40))
+                            .padding(.top, 40)
+                            .padding(.bottom, 100)
+                            .opacity(isIdle ? 0.0 : 1.0)
+                            .offset(y: isIdle ? 20 : 0)
+                            .allowsHitTesting(!isIdle)
+                            .animation(.easeInOut(duration: 0.7), value: isIdle)
+                    }
+                    .padding(.top, isIdle ? 40 : headerHeight + 20)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black.ignoresSafeArea())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        resetIdleTimer()
+                    }
+            )
+        }
+        .onAppear { startIdleTimer() }
+        .onDisappear { stopIdleTimer() }
+        .onChange(of: isQueueOpen) { isOpen in
+            if isOpen { stopIdleTimer() } else { resetIdleTimer() }
+        }
+        .onChange(of: isLyricsMode) { isMode in
+            if isMode { stopIdleTimer() } else { resetIdleTimer() }
+        }
+        .overlay {
+            if isLyricsMode {
+                lyricsView
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(500)
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func startIdleTimer() {
+        stopIdleTimer()
+        guard !isQueueOpen && !isLyricsMode else { return }
+        
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
+            withAnimation(.easeInOut(duration: 1.0)) {
+                isIdle = true
+            }
+        }
+    }
+
+    private func resetIdleTimer() {
+        if isIdle {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                isIdle = false
+            }
+        }
+        startIdleTimer()
+    }
+
+    private func stopIdleTimer() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+    }
+
+    // ── PORTRAIT ──────────────────────────────────────────────────────
+    private var portraitLayout: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            // Album Art
+            artworkSection(size: UIScreen.main.bounds.width * 0.9)
+                .scaleEffect(isIdle ? 1.12 : 1.0)
+                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
+                .padding(.bottom, isIdle ? 20 : 12)
+                .offset(y: isIdle ? -10 : 0)
+
+            VStack(alignment: .leading, spacing: isSE ? 4 : 8) {
+                Text(playback.currentTrack?.title ?? "Not Playing")
+                    .font(.system(size: isSE ? 24 : 28, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                Text(playback.currentTrack?.artist ?? "Select a track")
+                    .font(.system(size: isSE ? 16 : 18, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, isSE ? 24 : 32)
+            .padding(.bottom, isIdle ? 48 : 32)
+            .offset(x: isIdle ? 10 : 0)
+
+            // ALWAYS show seek bar
+            progressBar
+                .padding(.horizontal, isSE ? 24 : 32)
+                .padding(.bottom, isIdle ? 40 : 16)
+
+            if !isIdle {
+                auxiliaryButtons
+                    .padding(.bottom, 24)
+            }
+
+            // Controls
+            VStack(spacing: 0) {
+                if !isIdle {
+                    compactControls
+                        .padding(.horizontal, isSE ? 24 : 32)
+                        .padding(.bottom, 40)
+                }
+            }
+            .opacity(isIdle ? 0.0 : 1.0)
+            .frame(maxHeight: isIdle ? 0 : nil)
+            .allowsHitTesting(!isIdle)
+            .animation(.easeInOut(duration: 0.7), value: isIdle)
+        }
+    }
+
+    // ── TABLET / LANDSCAPE ────────────────────────────────────────────
+    private var tabletLayout: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            // Track Info (Artwork + Metadata side-by-side)
+            HStack(alignment: .bottom, spacing: isLargeCanvas ? 32 : 24) { // Constant spacing to prevent "scrambling"
+                artworkSection(size: isLargeCanvas ? 320 : 240)
+                    .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(playback.currentTrack?.title ?? "Not Playing")
+                        .font(.system(size: isLargeCanvas ? 44 : 32, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                    
+                    Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                        .font(.system(size: isLargeCanvas ? 24 : 20, weight: .medium))
+                        .foregroundColor(.white.opacity(0.8))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, isIdle ? 60 : 0)
+                .offset(y: isIdle ? -20 : 0)
+            }
+            .padding(.horizontal, isLargeCanvas ? 60 : 40)
+            .padding(.bottom, isIdle ? 30 : 20)
+            
+            // ALWAYS show seek bar
+            progressBar
+                .padding(.horizontal, isLargeCanvas ? 60 : 40)
+                .padding(.bottom, isIdle ? 20 : 12)
+            
+            // Space for ZStack controls
+            Spacer().frame(height: 20)
+            
+            ZStack {
+                // Center: Controls (Absolute Center)
+                HStack(alignment: .center, spacing: isLargeCanvas ? 32 : 24) {
+                    // Shuffle
+                    Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
+                        Image(systemName: "shuffle").font(.system(size: 20)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
+                    }
+                    .accessibilityLabel("Shuffle")
+                    .hoverEffect()
+
+                    // Previous
+                    Button { playback.skipBackward(); resetIdleTimer() } label: {
+                        Image(systemName: "backward.fill").font(.system(size: 34)).foregroundColor(.white)
+                    }
+                    .accessibilityLabel("Previous Track")
+                    .hoverEffect()
+
+                    // Play/Pause
+                    Button { playback.togglePlayPause(); resetIdleTimer() } label: {
+                        ZStack {
+                            Circle().fill(Color.white).frame(width: 72, height: 72)
+                            Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 28)).foregroundColor(.black)
+                        }
+                    }
+                    .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
+                    .hoverEffect()
+
+                    // Next
+                    Button { playback.skipForward(); resetIdleTimer() } label: {
+                        Image(systemName: "forward.fill").font(.system(size: 34)).foregroundColor(.white)
+                    }
+                    .accessibilityLabel("Next Track")
+                    .hoverEffect()
+
+                    // Repeat
+                    Button { resetIdleTimer() } label: {
+                        Image(systemName: "repeat").font(.system(size: 20)).foregroundColor(.white.opacity(0.5))
+                    }
+                    .accessibilityLabel("Repeat")
+                    .hoverEffect()
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(Color.black.opacity(0.4))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                
+                // Right side: Auxiliary Buttons
+                HStack {
+                    Spacer()
+                    auxiliaryButtons
+                        .padding(.trailing, isLargeCanvas ? 60 : 40)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 40)
+            .opacity(isIdle ? 0.0 : 1.0)
+            .frame(maxHeight: isIdle ? 0 : nil)
+            .allowsHitTesting(!isIdle)
+            .animation(.easeInOut(duration: 0.7), value: isIdle)
+        }
+    }
+
+    private func artworkSection(size: CGFloat) -> some View {
+        ZStack {
+            AsyncImage(url: playback.currentTrack?.coverArtUrl) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fill)
+                default:
+                    Color.white.opacity(0.1)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .cornerRadius(24)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.1), lineWidth: 1))
+    }
+
+    private var metadataCards: some View {
+        VStack(alignment: .leading, spacing: 40) {
+            // About Artist
+            VStack(alignment: .leading, spacing: isSE ? 16 : 24) {
+                Text("About the Artist")
+                    .font(.system(size: isSE ? 28 : 32, weight: .bold))
+                    .foregroundColor(.white)
+                
+                Group {
+                    if isSE {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(spacing: 16) {
+                                artistImage
+                                    .frame(width: 80, height: 80)
+                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            Text("Playing now on Velora. Discover more tracks and albums from this artist.")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white.opacity(0.6))
+                                .lineLimit(3)
+                        }
+                    } else {
+                        HStack(spacing: 24) {
+                            artistImage
+                                .frame(width: 140, height: 140)
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                    .font(.system(size: 32, weight: .bold))
+                                    .foregroundColor(.white)
+                                Text("Playing now on Velora. Discover more tracks and albums from this artist in your library.")
+                                    .font(.system(size: 22))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .lineLimit(3)
+                            }
+                        }
+                    }
+                }
+                .padding(isSE ? 20 : 32)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(isSE ? 20 : 32)
+            }
+            
+            // Album Info
+            VStack(alignment: .leading, spacing: isSE ? 16 : 24) {
+                Text("From the Album")
+                    .font(.system(size: isSE ? 28 : 32, weight: .bold))
+                    .foregroundColor(.white)
+                
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(playback.currentTrack?.album ?? "Unknown Album")
+                            .font(.system(size: isSE ? 24 : 28, weight: .bold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text("Album • \(playback.currentTrack?.artist ?? "Unknown")")
+                            .font(.system(size: isSE ? 14 : 16))
+                            .foregroundColor(.white.opacity(0.5))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.title3).foregroundColor(.white.opacity(0.3))
+                }
+                .padding(isSE ? 20 : 32)
+                .background(Color.white.opacity(0.05))
+                .cornerRadius(isSE ? 20 : 32)
+            }
+        }
+    }
+
+    private var artistImage: some View {
+        AsyncImage(url: playback.currentTrack?.coverArtUrl) { img in
+            img.resizable().scaledToFill()
+        } placeholder: {
+            Circle().fill(Color.white.opacity(0.1))
+        }
+        .clipShape(Circle())
+    }
+
+    private var compactControls: some View {
+        HStack(spacing: 0) {
+            // Shuffle
+            Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
+                Image(systemName: "shuffle")
+                    .font(.system(size: 20))
+                    .foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
+                    .frame(width: 44, height: 44)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("Shuffle")
+            
+            Button { playback.skipBackward(); resetIdleTimer() } label: {
+                Image(systemName: "backward.fill").font(.system(size: 34)).foregroundColor(.white)
+                    .frame(width: 64, height: 64)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("Previous Track")
+            
+            Button(action: { playback.togglePlayPause(); resetIdleTimer() }) {
+                ZStack {
+                    Circle().fill(Color.white).frame(width: 72, height: 72)
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 28)).foregroundColor(.black)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
+            
+            Button { playback.skipForward(); resetIdleTimer() } label: {
+                Image(systemName: "forward.fill").font(.system(size: 34)).foregroundColor(.white)
+                    .frame(width: 64, height: 64)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("Next Track")
+            
+            // Repeat
+            Button { resetIdleTimer() } label: {
+                Image(systemName: "repeat")
+                    .font(.system(size: 20))
+                    .foregroundColor(.white.opacity(0.5))
+                    .frame(width: 44, height: 44)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel("Repeat")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .background(Color.black.opacity(0.4))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+    }
+
+    private var progressBar: some View {
+        VStack(spacing: 12) {
+            GeometryReader { barGeo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 8)
+                    Capsule().fill(Color.white)
+                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 8)
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            isDragging = true
+                            dragProgress = max(0, min(1, v.location.x / barGeo.size.width)) * playback.duration
+                            resetIdleTimer()
+                        }
+                        .onEnded { v in
+                            isDragging = false
+                            let p = Double(v.location.x / barGeo.size.width) * playback.duration
+                            playback.seek(to: max(0, min(playback.duration, p)))
+                            resetIdleTimer()
+                        }
+                )
+            }
+            .frame(height: 20)
+
+            HStack {
+                Text(formatTime(displayProgress))
+                Spacer()
+                Text(formatTime(playback.duration))
+            }
+            .font(.system(size: 14, weight: .bold, design: .monospaced))
+            .foregroundColor(.white.opacity(0.6))
+            .opacity(isIdle ? 0 : 1)
+        }
+    }
+    private var auxiliaryButtons: some View {
+        HStack(spacing: isLargeCanvas ? 24 : 16) {
+            // Lyrics
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isLyricsMode.toggle()
+                    if isLyricsMode { isQueueOpen = false }
+                }
+                resetIdleTimer()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 16, weight: .bold))
+                    if isLargeCanvas {
+                        Text("Lyrics")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                }
+                .padding(.horizontal, isLargeCanvas ? 16 : 12)
+                .padding(.vertical, 10)
+                .background(isLyricsMode ? Color.white : Color.white.opacity(0.1))
+                .foregroundColor(isLyricsMode ? .black : .white)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+            }
+            .accessibilityLabel("Lyrics Toggle")
+            
+            // Queue
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isQueueOpen.toggle()
+                    if isQueueOpen { isLyricsMode = false }
+                }
+                resetIdleTimer()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "list.bullet.indent")
+                        .font(.system(size: 16, weight: .bold))
+                    if isLargeCanvas {
+                        Text("Queue")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                }
+                .padding(.horizontal, isLargeCanvas ? 16 : 12)
+                .padding(.vertical, 10)
+                .background(isQueueOpen ? Color.white : Color.white.opacity(0.1))
+                .foregroundColor(isQueueOpen ? .black : .white)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+            }
+            .accessibilityLabel("Queue Toggle")
+
+            // Download
+            Button {
+                resetIdleTimer()
+            } label: {
+                Image(systemName: "arrow.down.to.line.compact")
+                    .font(.system(size: 18, weight: .bold))
+                    .padding(10)
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.1))
+                    .foregroundColor(.white)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+            }
+            .accessibilityLabel("Download")
+        }
+    }
+
+    private func formatTime(_ t: Double) -> String {
+        guard !t.isNaN, !t.isInfinite else { return "0:00" }
+        return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
+    }
+
+    private var lyricsView: some View {
+        ZStack {
+            // ── Background: Performance-Optimized Vignette (Non-GPU Heavy) ──
+            (isDarkMode ? Color(hex: "#0a0a0a") : Color(hex: "#f5f5f5"))
+                .ignoresSafeArea()
+            
+            // Subtle accent gradient instead of blur
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    (isDarkMode ? Color.blue.opacity(0.15) : Color.blue.opacity(0.05)),
+                    .clear
+                ]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // ── Header ────────────────────────────────────────────────
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(playback.currentTrack?.title ?? "Lyrics")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.white)
+                        Text(playback.currentTrack?.artist ?? "")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    Spacer()
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            isLyricsMode = false
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 60)
+                .padding(.bottom, 32)
+                
+                // ── Lyrics Content ────────────────────────────────────────
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 32) {
+                        if let lyrics = playback.currentLyrics {
+                            let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                            
+                            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                                Text(line)
+                                    .font(.system(size: isLargeCanvas ? 48 : 34, weight: .black))
+                                    .foregroundColor(.white)
+                                    .opacity(0.9)
+                                    .multilineTextAlignment(.leading)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                            }
+                        } else {
+                            VStack(spacing: 24) {
+                                ProgressView()
+                                    .tint(.white)
+                                    .scaleEffect(1.5)
+                                Text("Fetching lyrics...")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 100)
+                        }
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 120)
+                }
+            }
+        }
+    }
+}
