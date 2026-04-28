@@ -10,18 +10,14 @@ workflows:
     scripts:
       - name: Diagnostic Info
         script: |
-          cd Velora.swiftpm
           xcodebuild -version
-          xcodebuild -list -project .
-
+          xcodebuild -list
       - name: Build Unsigned App
         script: |
-          cd Velora.swiftpm
           xcodebuild build \
-            -project . \
             -scheme Velora \
-            -destination "generic/platform=iOS" \
             -configuration Release \
+            -destination "generic/platform=iOS" \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -31,7 +27,6 @@ workflows:
 
       - name: Build IPA
         script: |
-          cd Velora.swiftpm
           mkdir -p Payload
           # Find the .app in the custom build directory
           APP_PATH=$(find build -name "*.app" | head -n 1)
@@ -50,7 +45,7 @@ workflows:
           zip -r Velora-Jailbreak.ipa Payload
           
           # Move to artifacts
-          mkdir -p ../build/ios/ipa
-          mv Velora-Jailbreak.ipa ../build/ios/ipa/
+          mkdir -p build/ios/ipa
+          mv Velora-Jailbreak.ipa build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
