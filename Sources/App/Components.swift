@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 // MARK: - Screen Tier
 public enum ScreenTier {
@@ -11,8 +12,7 @@ public enum ScreenTier {
         return .large
     }
     public static var isSE: Bool {
-        let minDim = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
-        return minDim <= 320
+        UIScreen.main.bounds.width <= 320 || UIScreen.main.bounds.height <= 320
     }
 }
 
@@ -35,7 +35,7 @@ struct AppHeader: View {
             mainHeaderContent
             navigationPill
         }
-        .padding(.vertical, ScreenTier.isSE ? 12 : 20)
+        .padding(.vertical, ScreenTier.isSE ? 12.0 : 20.0)
     }
     
     private var mainHeaderContent: some View {
@@ -44,7 +44,7 @@ struct AppHeader: View {
             Spacer()
             headerActions
         }
-        .padding(.horizontal, ScreenTier.isSE ? 16 : 32)
+        .padding(.horizontal, ScreenTier.isSE ? 16.0 : 32.0)
     }
     
     private var logoButton: some View {
@@ -55,7 +55,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.system(size: ScreenTier.isSE ? 24 : 32, weight: .black, design: .rounded))
+                .font(.system(size: ScreenTier.isSE ? 24.0 : 32.0, weight: .black, design: .rounded))
                 .kerning(-1.5)
                 .foregroundColor(headerFG)
         }
@@ -64,7 +64,7 @@ struct AppHeader: View {
     }
     
     private var headerActions: some View {
-        HStack(spacing: ScreenTier.isSE ? 16 : 24) {
+        HStack(spacing: ScreenTier.isSE ? 16.0 : 24.0) {
             themeToggle
             profileButton
         }

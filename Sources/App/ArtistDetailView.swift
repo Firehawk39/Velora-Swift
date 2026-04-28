@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct ArtistDetailView: View {
     let artistId: String
@@ -98,9 +99,10 @@ struct ArtistDetailView: View {
         .zIndex(100)
     }
     
+    private var heroNameSize: CGFloat { isLargeCanvas ? 96.0 : 72.0 }
+    
     private var heroSection: some View {
-        let nameSize: CGFloat = isLargeCanvas ? 96 : 72
-        return Group {
+        Group {
             if isCompact {
                 VStack(spacing: 32) {
                     artistLogo(size: 180)
@@ -121,7 +123,7 @@ struct ArtistDetailView: View {
                             artistLabel
                             
                             HStack(alignment: .bottom, spacing: 32) {
-                                artistNameText(size: nameSize)
+                                artistNameText(size: heroNameSize)
                                     .fixedSize(horizontal: false, vertical: true)
                                 
                                 playAllButton

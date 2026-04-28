@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct NowPlayingView: View {
     @EnvironmentObject var playback: PlaybackManager
@@ -21,7 +22,12 @@ struct NowPlayingView: View {
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
-    var isSE:          Bool { min(UIScreen.main.bounds.width, UIScreen.main.bounds.height) <= 320 }
+    var isSE:          Bool { UIScreen.main.bounds.width <= 320 || UIScreen.main.bounds.height <= 320 }
+    
+    // Layout Constants
+    private var tabletArtworkSize: CGFloat { isLargeCanvas ? (isShortCanvas ? 320.0 : 420.0) : (isSE ? 180.0 : 240.0) }
+    private var tabletTitleSize:   CGFloat { isLargeCanvas ? (isShortCanvas ? 44.0 : 56.0) : 32.0 }
+    private var tabletArtistSize:  CGFloat { isLargeCanvas ? (isShortCanvas ? 22.0 : 28.0) : 20.0 }
 
     var displayProgress: Double {
         isDragging ? dragProgress : playback.progress
@@ -200,30 +206,26 @@ struct NowPlayingView: View {
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private var tabletLayout: some View {
-        let artworkSize: CGFloat = isLargeCanvas ? (isShortCanvas ? 320 : 420) : (isSE ? 180 : 240)
-        let titleSize: CGFloat   = isLargeCanvas ? (isShortCanvas ? 44 : 56) : 32
-        let artistSize: CGFloat  = isLargeCanvas ? (isShortCanvas ? 22 : 28) : 20
-        
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             if !isShortCanvas {
                 Spacer()
             }
             
             // Track Info (Artwork + Metadata side-by-side)
             HStack(alignment: .bottom, spacing: isLargeCanvas ? 48 : 24) { 
-                artworkSection(size: artworkSize)
+                artworkSection(size: tabletArtworkSize)
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 
                 VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 12) {
                     Text(playback.currentTrack?.title ?? "Not Playing")
-                        .font(.system(size: titleSize, weight: .black))
+                        .font(.system(size: tabletTitleSize, weight: .black))
                         .foregroundColor(.white)
                         .lineLimit(isShortCanvas ? 1 : 2)
                         .minimumScaleFactor(0.6)
                     
                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                        .font(.system(size: artistSize, weight: .bold))
+                        .font(.system(size: tabletArtistSize, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
                         .minimumScaleFactor(0.8)
                 }

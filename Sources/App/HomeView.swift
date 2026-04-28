@@ -8,7 +8,7 @@ struct HomeView: View {
 
     var isDark: Bool { isDarkMode }
     var isCompact: Bool { hSizeClass == .compact }
-    var isSE: Bool { UIScreen.main.bounds.width <= 320 }
+    var isSE: Bool { ScreenTier.isSE }
     var hPad: CGFloat { isSE ? 14 : (isCompact ? 16 : 40) }
     var onArtistClick: ((String, String) -> Void)? = nil
 
@@ -121,13 +121,14 @@ private struct SectionHeader: View {
     let isDark: Bool
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
-    var isSE: Bool { UIScreen.main.bounds.width <= 320 }
+    var isLargeCanvas: Bool { ScreenTier.current == .large }
+    var isSE: Bool { ScreenTier.isSE }
     var body: some View {
         Text(title)
-            .font(.system(size: isSE ? 24 : (isCompact ? 28 : 42), weight: .bold))
+            .font(.system(size: isSE ? 24.0 : (isCompact ? 28.0 : 42.0), weight: .bold))
             .foregroundColor(isDark ? .white : Color(hex: "#111827"))
-            .padding(.horizontal, isSE ? 14 : (isCompact ? 16 : 40))
-            .padding(.bottom, isCompact ? 16 : 24)
+            .padding(.horizontal, isSE ? 14.0 : (isCompact ? 16.0 : 40.0))
+            .padding(.bottom, isCompact ? 16.0 : 24.0)
     }
 }
 
