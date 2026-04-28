@@ -4,7 +4,7 @@ struct ContentView: View {
     @StateObject private var client: NavidromeClient
     @StateObject private var playback: PlaybackManager
 
-    @State private var activeTab: String = "now-playing"
+    @State private var activeTab: String = "home"
     @State private var showSettings: Bool = false
     @State private var showProfileMenu: Bool = false
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true

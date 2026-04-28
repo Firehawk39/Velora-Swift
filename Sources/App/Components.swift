@@ -3,17 +3,18 @@ import Foundation
 
 // MARK: - Screen Tier
 public enum ScreenTier {
-    case compact, regular, large
+    case tiny, compact, regular, large, huge
     public static var current: ScreenTier {
         let w = UIScreen.main.bounds.width
-        if w <= 320 { return .compact } // iPhone SE 1st Gen
-        if w < 768 { return .compact }
-        if w < 1024 { return .regular }
-        return .large
+        if w <= 320 { return .tiny } // iPhone SE 1st Gen
+        if w < 414 { return .compact } // Standard iPhone / mini
+        if w < 768 { return .regular } // Plus/Max iPhones
+        if w < 1024 { return .large } // 10.25" Displays / standard iPads
+        return .huge // iPad Pro 12.9"
     }
-    public static var isSE: Bool {
-        UIScreen.main.bounds.width <= 320 || UIScreen.main.bounds.height <= 320
-    }
+    public static var isSE: Bool { current == .tiny }
+    public static var isPhone: Bool { UIScreen.main.bounds.width < 768 }
+    public static var isHuge: Bool { current == .huge }
 }
 
 // MARK: - App Header
@@ -55,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: ScreenTier.isSE ? 24.0 : 32.0))
+                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 22 : 26) : 32.0))
                 .kerning(-1.5)
                 .foregroundColor(headerFG)
         }
@@ -125,9 +126,10 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(ScreenTier.isSE ? 4 : 6)
+        .padding(ScreenTier.isPhone ? 4 : 6)
         .background(.ultraThinMaterial.opacity(0.5))
         .clipShape(Capsule())
+        .scaleEffect(ScreenTier.isPhone ? 0.9 : 1.0) // Slightly smaller on phones
     }
 }
 
@@ -152,7 +154,7 @@ private struct TabButton: View {
         }) {
             Text(label)
                 .font(.system(size: 15, weight: isActive ? .bold : .medium))
-                .foregroundColor(isActive ? (isDarkMode ? .white : .black) : .gray)
+                .foregroundColor(isActive ? (isPlayingTab || isDarkMode ? .white : .black) : (isPlayingTab ? .white.opacity(0.6) : .gray))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(

@@ -22,10 +22,16 @@ struct NowPlayingView: View {
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
-    var isSE:          Bool { UIScreen.main.bounds.width <= 320 || UIScreen.main.bounds.height <= 320 }
+    var isSE:          Bool { ScreenTier.isSE }
     
     // Layout Constants
-    private var tabletArtworkSize: CGFloat { isLargeCanvas ? (isShortCanvas ? 320.0 : 420.0) : (isSE ? 180.0 : 240.0) }
+    private var tabletArtworkSize: CGFloat { 
+        if isLargeCanvas {
+            if ScreenTier.isHuge { return isShortCanvas ? 420.0 : 540.0 }
+            return isShortCanvas ? 320.0 : 420.0
+        }
+        return isSE ? 180.0 : 240.0
+    }
     private var tabletTitleSize:   CGFloat { isLargeCanvas ? (isShortCanvas ? 44.0 : 56.0) : 32.0 }
     private var tabletArtistSize:  CGFloat { isLargeCanvas ? (isShortCanvas ? 22.0 : 28.0) : 20.0 }
 
@@ -35,6 +41,11 @@ struct NowPlayingView: View {
     var progressFraction: Double {
         guard playback.duration > 0 else { return 0 }
         return displayProgress / playback.duration
+    }
+    
+    // 120Hz Optimized Response: Faster on ProMotion iPads, standard on iPhones
+    var animationResponse: Double {
+        (ScreenTier.current == .large || ScreenTier.current == .huge) ? 0.35 : 0.55
     }
 
     var body: some View {
@@ -153,7 +164,7 @@ struct NowPlayingView: View {
 
     private func resetIdleTimer() {
         if isIdle {
-            withAnimation(.easeInOut(duration: 0.5)) {
+            withAnimation(.spring(response: animationResponse, dampingFraction: 0.8)) {
                 isIdle = false
             }
         }
@@ -171,22 +182,23 @@ struct NowPlayingView: View {
             Spacer()
             
             // Album Art - Fixed size to match webapp density (w-64 = 256px)
-            artworkSection(size: 280)
-                .scaleEffect(isIdle ? 1.1 : 1.0)
-                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
-                .padding(.bottom, isIdle ? 32 : 24)
+            // Album Art - Dynamic sizing based on screen width
+            artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * 0.72, 280) : tabletArtworkSize)
+                .scaleEffect(isIdle ? 1.08 : 1.0)
+                .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
+                .padding(.bottom, isIdle ? (ScreenTier.isSE ? 20 : 32) : 24)
                 .offset(y: isIdle ? -10 : 0)
 
             // Centered Metadata for High-Fidelity mobile parity
-            VStack(alignment: .center, spacing: isSE ? 4 : 8) {
+            VStack(alignment: .center, spacing: ScreenTier.isSE ? 4 : 8) {
                 Text(playback.currentTrack?.title ?? "Not Playing")
-                    .font(.system(size: isSE ? 26 : 30, weight: .bold))
+                    .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSE ? 22 : 26) : (ScreenTier.isHuge ? 48 : 34), weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                 
                 Text(playback.currentTrack?.artist ?? "Select a track")
-                    .font(.system(size: isSE ? 18 : 20, weight: .medium))
+                    .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSE ? 16 : 18) : (ScreenTier.isHuge ? 28 : 22), weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                     .lineLimit(1)
                     .multilineTextAlignment(.center)
@@ -209,8 +221,9 @@ struct NowPlayingView: View {
             VStack(spacing: 0) {
                 if !isIdle {
                     compactControls
-                        .padding(.horizontal, isSE ? 24 : 32)
-                        .padding(.bottom, 48)
+                        .scaleEffect(ScreenTier.isPhone ? (ScreenTier.isSE ? 0.85 : 0.95) : 1.0)
+                        .padding(.horizontal, ScreenTier.isSE ? 16 : 32)
+                        .padding(.bottom, ScreenTier.isPhone ? 32 : 48)
                 }
             }
             .opacity(isIdle ? 0.0 : 1.0)
@@ -228,10 +241,10 @@ struct NowPlayingView: View {
             }
             
             // Track Info (Artwork + Metadata side-by-side)
-            HStack(alignment: .bottom, spacing: isLargeCanvas ? 48 : 24) { 
+            HStack(alignment: .bottom, spacing: isIdle ? (isLargeCanvas ? 32 : 20) : (isLargeCanvas ? 48 : 24)) { 
                 artworkSection(size: tabletArtworkSize)
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
+                    .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
                 
                 VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 12) {
                     Text(playback.currentTrack?.title ?? "Not Playing")
@@ -246,7 +259,7 @@ struct NowPlayingView: View {
                         .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, isIdle ? 60 : 0)
+                .padding(.leading, isIdle ? (isLargeCanvas ? 32 : 16) : 0)
                 .offset(y: isIdle ? -20 : 0)
             }
             .padding(.horizontal, isLargeCanvas ? 60 : 40)
@@ -542,7 +555,7 @@ struct NowPlayingView: View {
             
             // Queue
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: animationResponse, dampingFraction: 0.8)) {
                     isQueueOpen.toggle()
                     if isQueueOpen { isLyricsMode = false }
                 }
@@ -617,7 +630,7 @@ struct NowPlayingView: View {
                     }
                     Spacer()
                     Button {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: animationResponse, dampingFraction: 0.8)) {
                             isLyricsMode = false
                         }
                     } label: {

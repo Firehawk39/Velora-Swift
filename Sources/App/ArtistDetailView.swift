@@ -99,20 +99,25 @@ struct ArtistDetailView: View {
         .zIndex(100)
     }
     
-    private var heroNameSize: CGFloat { isLargeCanvas ? 96.0 : 72.0 }
+    private var heroNameSize: CGFloat { 
+        if isLargeCanvas { return 96.0 }
+        if ScreenTier.isPhone { return ScreenTier.isSE ? 36 : 42 }
+        return 72.0
+    }
     
     private var heroSection: some View {
         Group {
             if isCompact {
-                VStack(spacing: 32) {
-                    artistLogo(size: 180)
+                VStack(spacing: ScreenTier.isSE ? 20 : 32) {
+                    artistLogo(size: ScreenTier.isSE ? 140 : 160)
                     
-                    VStack(spacing: 12) {
+                    VStack(spacing: 8) {
                         artistLabel
-                        artistNameText(size: 48)
+                        artistNameText(size: ScreenTier.isSE ? 32 : 40)
                     }
                     
                     playAllButton
+                        .scaleEffect(ScreenTier.isPhone ? 0.9 : 1.0)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 48) {
@@ -189,9 +194,9 @@ struct ArtistDetailView: View {
     }
     
     private var mostFavoriteSection: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 16 : 24) {
             Text("Most Favourite")
-                .font(.system(size: 20, weight: .black))
+                .font(.system(size: ScreenTier.isPhone ? 18 : 20, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
             if let track = favoriteSongs.first {
@@ -250,9 +255,9 @@ struct ArtistDetailView: View {
     }
     
     private var songsByArtistSection: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 16 : 24) {
             Text("Songs by \(artistName)")
-                .font(.system(size: 20, weight: .black))
+                .font(.system(size: ScreenTier.isPhone ? 18 : 20, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
             if isCompact {
