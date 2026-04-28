@@ -11,7 +11,7 @@ let package = Package(
     products: [
         .iOSApplication(
             name: "Velora",
-            targets: ["AppModule"],
+            targets: ["Velora"],
             bundleIdentifier: "com.velora.aistudio",
             teamIdentifier: "",
             displayVersion: "1.0",
@@ -33,7 +33,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "AppModule",
+            name: "Velora",
             path: "Sources/App",
             resources: [
                 .process("Resources")
