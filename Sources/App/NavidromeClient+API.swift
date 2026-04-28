@@ -8,7 +8,10 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "ping.view") else {
             completion(false, "Invalid URL configuration."); return
         }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10.0
+        
+        URLSession.shared.dataTask(with: request) { data, _, error in
             if let error = error { completion(false, error.localizedDescription); return }
             guard let data = data else { completion(false, "No data received."); return }
             do {
