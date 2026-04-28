@@ -21,6 +21,8 @@ workflows:
             -destination "generic/platform=iOS" \
             -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
+            -sdk iphoneos \
+            ARCHS=arm64 \
             INSTALL_PATH=/Applications \
             PRODUCT_NAME=Velora \
             WRAPPER_EXTENSION=app \
@@ -33,22 +35,21 @@ workflows:
 
       - name: Build IPA
         script: |
-          # Try to find the app bundle (now forced to /Applications in the archive)
-          APP_PATH=$(find Velora.xcarchive/Products/Applications -name "*.app" | head -n 1)
-          
-          # Fallback: search anywhere in archive if the above failed
-          if [ -z "$APP_PATH" ]; then
-            APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
-          fi
+          # The app should be in the archive
+          APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
             echo "CRITICAL: Failed to find .app bundle in archive."
-            echo "Full Archive structure for debugging:"
             find Velora.xcarchive
             exit 1
           fi
           
           echo "Found app at: $APP_PATH"
+          echo "App bundle size:"
+          du -sh "$APP_PATH"
+          
+          echo "App bundle contents:"
+          ls -R "$APP_PATH"
           
           # Create the Payload structure for the IPA
           mkdir -p Payload
@@ -56,6 +57,9 @@ workflows:
           
           # Zip it up into an .ipa
           zip -r Velora-Jailbreak.ipa Payload
+          
+          echo "Generated IPA size:"
+          ls -lh Velora-Jailbreak.ipa
           
           # Move to artifacts
           mkdir -p artifacts
