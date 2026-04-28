@@ -4,26 +4,50 @@ workflows:
     instance_type: mac_mini_m1
     max_build_duration: 60
     environment:
-      groups:
-        # You can add your Apple Developer Portal group here if you use manual signing
-        - apple_auth 
       vars:
-        XCODE_PROJECT: "." # Since the .swiftpm is the root
-        XCODE_SCHEME: "Velora"
         BUNDLE_ID: "com.velora.aistudio"
+        XCODE_SCHEME: "Velora"
       xcode: latest
     scripts:
       - name: Set up code signing
         script: |
-          # This command fetches signing files based on your Codemagic settings.
-          # IMPORTANT: You must configure code signing in the Codemagic UI (Team Settings) first!
+          # Fetch profiles from Codemagic settings
           xcode-project use-profiles
-      - name: Build IPA
+      - name: Build and Archive (Manual)
         script: |
-          # Build the .ipa from the Swift Playgrounds project
-          xcode-project build-ipa \
-            --project "$XCODE_PROJECT" \
-            --scheme "$XCODE_SCHEME"
+          # Swift Playgrounds (.swiftpm) projects are built via the root Package.swift
+          # We avoid using the -project flag which caused the previous failure.
+          xcodebuild archive \
+            -scheme "$XCODE_SCHEME" \
+            -destination "generic/platform=iOS" \
+            -archivePath "build/ios/Velora.xcarchive" \
+            -allowProvisioningUpdates \
+            -quiet
+      - name: Export IPA
+        script: |
+          # Create a basic ExportOptions.plist
+          # Note: 'method' can be 'development', 'ad-hoc', or 'app-store'
+          cat <<EOF > ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>development</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>thinning</key>
+            <string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath "build/ios/Velora.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath "build/ios/ipa"
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
