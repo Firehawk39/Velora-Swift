@@ -10,7 +10,10 @@ public enum ScreenTier {
         if w < 1024 { return .regular }
         return .large
     }
-    public static var isSE: Bool { UIScreen.main.bounds.width <= 320 }
+    public static var isSE: Bool {
+        let minDim = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+        return minDim <= 320
+    }
 }
 
 // MARK: - App Header
@@ -32,7 +35,7 @@ struct AppHeader: View {
             mainHeaderContent
             navigationPill
         }
-        .padding(.vertical, 20)
+        .padding(.vertical, ScreenTier.isSE ? 12 : 20)
     }
     
     private var mainHeaderContent: some View {
@@ -41,7 +44,7 @@ struct AppHeader: View {
             Spacer()
             headerActions
         }
-        .padding(.horizontal, 32)
+        .padding(.horizontal, ScreenTier.isSE ? 16 : 32)
     }
     
     private var logoButton: some View {
@@ -52,7 +55,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.system(size: 32, weight: .black, design: .rounded))
+                .font(.system(size: ScreenTier.isSE ? 24 : 32, weight: .black, design: .rounded))
                 .kerning(-1.5)
                 .foregroundColor(headerFG)
         }
@@ -76,12 +79,12 @@ struct AppHeader: View {
             ZStack {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: 72, height: 36)
+                    .frame(width: ScreenTier.isSE ? 56 : 72, height: ScreenTier.isSE ? 28 : 36)
                 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 28, height: 28)
-                    .offset(x: isDarkMode ? 18 : -18)
+                    .frame(width: ScreenTier.isSE ? 22 : 28, height: ScreenTier.isSE ? 22 : 28)
+                    .offset(x: isDarkMode ? (ScreenTier.isSE ? 14 : 18) : (ScreenTier.isSE ? -14 : -18))
                 
                 HStack {
                     Image(systemName: "sun.max.fill")
@@ -108,7 +111,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: 32))
+                .font(.system(size: ScreenTier.isSE ? 24 : 32))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")

@@ -21,7 +21,7 @@ struct NowPlayingView: View {
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
-    var isSE:          Bool { UIScreen.main.bounds.width <= 320 }
+    var isSE:          Bool { min(UIScreen.main.bounds.width, UIScreen.main.bounds.height) <= 320 }
 
     var displayProgress: Double {
         isDragging ? dragProgress : playback.progress
@@ -207,7 +207,7 @@ struct NowPlayingView: View {
             
             // Track Info (Artwork + Metadata side-by-side)
             HStack(alignment: .bottom, spacing: isLargeCanvas ? 48 : 24) { 
-                artworkSection(size: isLargeCanvas ? (isShortCanvas ? 320 : 420) : 240)
+                artworkSection(size: isLargeCanvas ? (isShortCanvas ? 320 : 420) : (isSE ? 180 : 240))
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 
