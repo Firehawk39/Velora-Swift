@@ -235,13 +235,13 @@ struct NowPlayingView: View {
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
-        HStack(spacing: isLandscape ? 40 : 80) {
+        VStack(spacing: 0) {
             if !isShortCanvas {
                 Spacer()
             }
             
             // Track Info (Artwork + Metadata side-by-side)
-            HStack(alignment: .bottom, spacing: isIdle ? 16 : (isLargeCanvas ? 48 : 24)) { 
+            HStack(alignment: .bottom, spacing: isIdle ? 32 : (isLargeCanvas ? 48 : 24)) { 
                 artworkSection(size: tabletArtworkSize)
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
                     .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
@@ -259,7 +259,7 @@ struct NowPlayingView: View {
                         .minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, isIdle ? 12 : 0)
+                .padding(.leading, isIdle ? (isLargeCanvas ? 48 : 32) : 0)
                 .offset(y: isIdle ? -20 : 0)
             }
             .padding(.horizontal, isLargeCanvas ? 60 : 40)
@@ -339,6 +339,7 @@ struct NowPlayingView: View {
         }
     }
 
+
     private func artworkSection(size: CGFloat) -> some View {
         ZStack {
             AsyncImage(url: playback.currentTrack?.coverArtUrl) { phase in
@@ -357,11 +358,11 @@ struct NowPlayingView: View {
     }
 
     private var metadataCards: some View {
-        VStack(alignment: .leading, spacing: 40) {
-            // About Artist
-            VStack(alignment: .leading, spacing: isSE ? 16 : 24) {
+        VStack(alignment: .leading, spacing: isSE ? 32 : 40) {
+            // Artist Card
+            VStack(alignment: .leading, spacing: isSE ? 12 : 24) {
                 Text("About the Artist")
-                    .font(.system(size: isSE ? 28 : 32, weight: .bold))
+                    .font(.system(size: isSE ? 24 : 32, weight: .bold))
                     .foregroundColor(.white)
                 
                 Group {
