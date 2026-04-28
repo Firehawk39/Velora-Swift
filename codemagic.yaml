@@ -15,11 +15,12 @@ workflows:
           xcodebuild -scheme Velora -showBuildSettings -configuration Release -destination "generic/platform=iOS"
       - name: Build Unsigned App
         script: |
-          xcodebuild build \
+          xcodebuild install \
             -scheme Velora \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -derivedDataPath build \
+            -derivedDataPath derived_data \
+            DSTROOT=$(pwd)/install \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -28,24 +29,13 @@ workflows:
 
       - name: Build IPA
         script: |
-          # Get the build directory from xcodebuild
-          BUILD_DIR=$(xcodebuild -scheme Velora -configuration Release -destination "generic/platform=iOS" -derivedDataPath build -showBuildSettings | grep CONFIGURATION_BUILD_DIR | cut -d'=' -f2 | xargs)
-          
-          echo "Build directory according to xcodebuild: $BUILD_DIR"
-          
-          # Try to find the app in that directory first
-          APP_PATH=$(find "$BUILD_DIR" -name "*.app" -maxdepth 1 | head -n 1)
-          
-          # Fallback: search everywhere in derivedData
-          if [ -z "$APP_PATH" ]; then
-            echo "App not found in $BUILD_DIR, searching entire derivedData..."
-            APP_PATH=$(find build -name "*.app" | head -n 1)
-          fi
+          # The app should be in install/Applications/
+          APP_PATH=$(find install -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
-            echo "CRITICAL: Failed to find .app bundle anywhere in build directory."
-            echo "Directory structure of build folder:"
-            find build -maxdepth 4
+            echo "CRITICAL: Failed to find .app bundle in install directory."
+            echo "Directory structure of install folder:"
+            find install -maxdepth 4
             exit 1
           fi
           
@@ -59,7 +49,7 @@ workflows:
           zip -r Velora-Jailbreak.ipa Payload
           
           # Move to artifacts
-          mkdir -p build/ios/ipa
-          mv Velora-Jailbreak.ipa build/ios/ipa/
+          mkdir -p artifacts
+          mv Velora-Jailbreak.ipa artifacts/
     artifacts:
-      - build/ios/ipa/*.ipa
+      - artifacts/*.ipa
