@@ -24,7 +24,6 @@ struct HomeView: View {
         return "Good morning, \(name)"
     }
 
-
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
@@ -38,7 +37,7 @@ struct HomeView: View {
                     .padding(.bottom, ScreenTier.isPhone ? 24 : 48)
 
                 // ── Recent Tracks ─────────────────────────────────────
-                SectionHeader(title: "Recent tracks", isDark: isDark)
+                SectionHeader(title: "Recent tracks", isDark: isDark, hPad: hPad)
 
                 if client.recentTracks.isEmpty {
                     SkeletonRow(count: 4, cardWidth: ScreenTier.isPhone ? 140 : 180, cardHeight: ScreenTier.isPhone ? 140 : 180, isDark: isDark)
@@ -62,7 +61,7 @@ struct HomeView: View {
                 Spacer().frame(height: 32)
 
                 // ── Artists ───────────────────────────────────────────
-                SectionHeader(title: "Artists", isDark: isDark)
+                SectionHeader(title: "Artists", isDark: isDark, hPad: hPad)
 
                 if client.artists.isEmpty {
                     SkeletonRow(count: 5, cardWidth: isCompact ? 88 : 110, cardHeight: isCompact ? 88 : 110, isDark: isDark, circular: true)
@@ -86,7 +85,7 @@ struct HomeView: View {
                 Spacer().frame(height: 32)
 
                 // ── Recently Added Albums ─────────────────────────────
-                SectionHeader(title: "Recently added albums", isDark: isDark)
+                SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad)
 
                 if client.albums.isEmpty {
                     SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 200 : 280, cardHeight: ScreenTier.isPhone ? 120 : 160, isDark: isDark, rounded: 24)
@@ -119,198 +118,24 @@ struct HomeView: View {
 private struct SectionHeader: View {
     let title: String
     let isDark: Bool
+    let hPad: CGFloat
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
     var isLargeCanvas: Bool { ScreenTier.current == .large }
-    var isSE: Bool { ScreenTier.isSE }
+
     var body: some View {
-        Text(title)
-            .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSE ? 22.0 : 24.0) : 42.0, weight: .bold))
-            .foregroundColor(isDark ? .white : Color(hex: "#111827"))
-            .padding(.horizontal, hPad)
-            .padding(.bottom, ScreenTier.isPhone ? 12.0 : 24.0)
-    }
-}
-
-// MARK: - Track Card  (square art + title + artist)
-
-struct TrackCard: View {
-    let track: Track
-    let isDark: Bool
-    var size: CGFloat = 140
-    var onPlay: (() -> Void)? = nil
-    @State private var isPressed = false
-    var body: some View {
-        Button(action: { onPlay?() }) {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack(alignment: .center) {
-                    AsyncImage(url: track.coverArtUrl) { img in
-                        img.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(isDark ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb"))
-                            .overlay(MusicNoteIcon(isDark: isDark))
-                    }
-                    .frame(width: size, height: size)
-                    .clipped()
-                    .cornerRadius(size > 160 ? 16 : 12)
-
-                    if isPressed {
-                        Color.black.opacity(0.25).cornerRadius(size > 160 ? 16 : 12)
-                        Circle().fill(Color.white).frame(width: 44, height: 44)
-                            .overlay(Image(systemName: "play.fill").foregroundColor(.black).font(.system(size: 17)))
-                    }
-                }
-                .frame(width: size, height: size)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(track.title)
-                        .font(.system(size: size > 170 ? 22 : 16, weight: .bold))
-                        .foregroundColor(isDark ? .white : Color(hex: "#111827"))
-                        .lineLimit(1)
-                    
-                    Text(track.artist ?? "Unknown Artist")
-                        .font(.system(size: size > 170 ? 18 : 14))
-                        .foregroundColor(isDark ? Color(hex: "#9ca3af") : Color(hex: "#6b7280"))
-                        .lineLimit(1)
-                }
-                .frame(width: size, alignment: .leading)
+        HStack {
+            Text(title)
+                .font(.system(size: isCompact ? 18 : 22, weight: .bold))
+                .foregroundColor(isDark ? .white : Color(hex: "#374151"))
+            Spacer()
+            if !isCompact {
+                Text("See all")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(isDark ? .white.opacity(0.6) : .blue)
             }
         }
-        .buttonStyle(PlainButtonStyle())
-        .frame(width: size)
-    }
-}
-
-// MARK: - Artist Circle
-
-struct ArtistCircle: View {
-    let artist: Artist
-    let isDark: Bool
-    var size: CGFloat = 88
-
-    var body: some View {
-        VStack(spacing: 8) {
-            AsyncImage(url: artist.coverArtUrl) { img in
-                img.resizable().scaledToFill()
-            } placeholder: {
-                Circle().fill(isDark ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb"))
-                    .overlay(MusicNoteIcon(isDark: isDark))
-            }
-            .frame(width: size, height: size)
-            .clipShape(Circle())
-
-            Text(artist.name)
-                .font(.system(size: size > 120 ? 18 : 14, weight: .bold))
-                .foregroundColor(isDark ? .white : Color(hex: "#111827"))
-                .lineLimit(1)
-                .frame(width: size, alignment: .center)
-        }
-        .frame(width: size)
-    }
-}
-
-// MARK: - Album Card  (16:9 with overlay)
-
-struct AlbumCard: View {
-    let album: Album
-    let isDark: Bool
-    var cardW: CGFloat = 220
-    var cardH: CGFloat = 124
-
-    var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: album.coverArtUrl) { img in
-                img.resizable().scaledToFill()
-            } placeholder: {
-                Rectangle().fill(isDark ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb"))
-            }
-            .frame(width: cardW, height: cardH)
-            .clipped()
-
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.6)],
-                startPoint: .top, endPoint: .bottom
-            )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(album.name)
-                    .font(.system(size: cardW > 300 ? 24 : 18, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                Text(album.artist ?? "")
-                    .font(.system(size: cardW > 300 ? 16 : 13))
-                    .foregroundColor(.white.opacity(0.7))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 14)
-
-            Color.clear
-                .overlay(
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.2))
-                            .frame(width: 44, height: 44)
-                        Image(systemName: "play.fill")
-                            .foregroundColor(.white)
-                            .font(.system(size: 18))
-                            .offset(x: 1)
-                    }
-                )
-        }
-        .frame(width: cardW, height: cardH)
-        .cornerRadius(20)
-    }
-}
-
-// MARK: - Skeleton loader
-
-private struct SkeletonRow: View {
-    let count: Int
-    let cardWidth: CGFloat
-    let cardHeight: CGFloat
-    let isDark: Bool
-    var circular: Bool = false
-    var rounded: CGFloat = 12
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
-                ForEach(0..<count, id: \.self) { _ in
-                    VStack(spacing: 8) {
-                        Rectangle()
-                            .fill(isDark ? Color.white.opacity(0.06) : Color(hex: "#e5e7eb"))
-                            .frame(width: cardWidth, height: cardHeight)
-                            .cornerRadius(circular ? cardWidth / 2 : rounded)
-                            .shimmer()
-                        Rectangle()
-                            .fill(isDark ? Color.white.opacity(0.06) : Color(hex: "#e5e7eb"))
-                            .frame(width: cardWidth * 0.75, height: 10)
-                            .cornerRadius(5)
-                            .shimmer()
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-}
-
-// MARK: - Music note placeholder icon
-
-struct MusicNoteIcon: View {
-    let isDark: Bool
-    var body: some View {
-        Image(systemName: "music.note")
-            .font(.system(size: 24))
-            .foregroundColor(isDark ? .white.opacity(0.2) : Color(hex: "#d1d5db"))
-    }
-}
-
-// MARK: - Shimmer modifier
-
-extension View {
-    func shimmer() -> some View {
-        self.opacity(0.7)
+        .padding(.horizontal, hPad)
+        .padding(.bottom, isCompact ? 12 : 16)
     }
 }

@@ -92,9 +92,9 @@ struct NowPlayingView: View {
                     VStack(spacing: 0) {
                         VStack(spacing: 0) {
                             if isCompact && !isLandscape {
-                                portraitLayout
+                                portraitLayout(proxy: proxy)
                             } else {
-                                tabletLayout
+                                tabletLayout(proxy: proxy)
                             }
                         }
                         .frame(minHeight: proxy.size.height - (headerHeight + 20)) // Locked height to prevent scroll jumps
@@ -177,7 +177,7 @@ struct NowPlayingView: View {
     }
 
     // ── PORTRAIT ──────────────────────────────────────────────────────
-    private var portraitLayout: some View {
+    private func portraitLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
             Spacer()
             
@@ -234,8 +234,8 @@ struct NowPlayingView: View {
     }
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
-    private var tabletLayout: some View {
-        VStack(spacing: 0) {
+    private func tabletLayout(proxy: GeometryProxy) -> some View {
+        HStack(spacing: isLandscape ? 40 : 80) {
             if !isShortCanvas {
                 Spacer()
             }
