@@ -66,10 +66,16 @@ extension NavidromeClient {
 
     // MARK: - Fetch Artists
 
-    func fetchArtists() {
-        guard let url = buildUrl(method: "getArtists.view") else { return }
+    func fetchArtists(completion: (([Artist]) -> Void)? = nil) {
+        guard let url = buildUrl(method: "getArtists.view") else { 
+            completion?([])
+            return 
+        }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
+            guard error == nil, let data = data else { 
+                completion?([])
+                return 
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 var parsed: [Artist] = []
@@ -78,8 +84,14 @@ extension NavidromeClient {
                         parsed.append(Artist(id: sub.id, name: sub.name, coverArt: self.getCoverArtUrl(id: sub.id)))
                     }
                 }
-                DispatchQueue.main.async { self.artists = parsed }
-            } catch { print("Error decoding artists: \(error)") }
+                DispatchQueue.main.async { 
+                    self.artists = parsed 
+                    completion?(parsed)
+                }
+            } catch { 
+                print("Error decoding artists: \(error)") 
+                completion?([])
+            }
         }.resume()
     }
 

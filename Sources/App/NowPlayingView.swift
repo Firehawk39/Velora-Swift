@@ -11,6 +11,7 @@ struct NowPlayingView: View {
     @State private var isDragging   = false
     @State private var dragProgress: Double = 0
     @State private var idleTimer: Timer? = nil
+    @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     // Header height to avoid overlap
     var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 96 }
