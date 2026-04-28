@@ -206,20 +206,23 @@ struct NowPlayingView: View {
             }
             
             // Track Info (Artwork + Metadata side-by-side)
+            let artworkSize: CGFloat = isLargeCanvas ? (isShortCanvas ? 320 : 420) : (isSE ? 180 : 240)
             HStack(alignment: .bottom, spacing: isLargeCanvas ? 48 : 24) { 
-                artworkSection(size: isLargeCanvas ? (isShortCanvas ? 320 : 420) : (isSE ? 180 : 240))
+                artworkSection(size: artworkSize)
                     .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 
                 VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 12) {
+                    let titleSize: CGFloat = isLargeCanvas ? (isShortCanvas ? 44 : 56) : 32
                     Text(playback.currentTrack?.title ?? "Not Playing")
-                        .font(.system(size: isLargeCanvas ? (isShortCanvas ? 44 : 56) : 32, weight: .black))
+                        .font(.system(size: titleSize, weight: .black))
                         .foregroundColor(.white)
                         .lineLimit(isShortCanvas ? 1 : 2)
                         .minimumScaleFactor(0.6)
                     
+                    let artistSize: CGFloat = isLargeCanvas ? (isShortCanvas ? 22 : 28) : 20
                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                        .font(.system(size: isLargeCanvas ? (isShortCanvas ? 22 : 28) : 20, weight: .bold))
+                        .font(.system(size: artistSize, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
                         .minimumScaleFactor(0.8)
                 }

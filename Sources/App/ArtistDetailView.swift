@@ -120,7 +120,8 @@ struct ArtistDetailView: View {
                             artistLabel
                             
                             HStack(alignment: .bottom, spacing: 32) {
-                                artistNameText(size: isLargeCanvas ? 96 : 72)
+                                let nameSize: CGFloat = isLargeCanvas ? 96 : 72
+                                artistNameText(size: nameSize)
                                     .fixedSize(horizontal: false, vertical: true)
                                 
                                 playAllButton
