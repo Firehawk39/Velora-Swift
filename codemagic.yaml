@@ -15,27 +15,28 @@ workflows:
           xcodebuild -scheme Velora -showBuildSettings -configuration Release -destination "generic/platform=iOS"
       - name: Build Unsigned App
         script: |
-          xcodebuild install \
+          xcodebuild archive \
             -scheme Velora \
             -configuration Release \
             -destination "generic/platform=iOS" \
+            -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
-            DSTROOT=$(pwd)/install \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            SKIP_INSTALL=NO
 
       - name: Build IPA
         script: |
-          # The app should be in install/Applications/
-          APP_PATH=$(find install -name "*.app" | head -n 1)
+          # The app should be in the archive
+          APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
-            echo "CRITICAL: Failed to find .app bundle in install directory."
-            echo "Directory structure of install folder:"
-            find install -maxdepth 4
+            echo "CRITICAL: Failed to find .app bundle in archive."
+            echo "Archive structure:"
+            find Velora.xcarchive -maxdepth 4
             exit 1
           fi
           
