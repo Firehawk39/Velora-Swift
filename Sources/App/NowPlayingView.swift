@@ -36,7 +36,7 @@ struct NowPlayingView: View {
         return isSE ? 180.0 : 220.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 34.0 : 44.0 }
+        if isLargeCanvas { return isShortCanvas ? 32.0 : 42.0 }
         if !isCompact { return isShortCanvas ? 28.0 : 34.0 }
         return isSE ? 22.0 : 28.0
     }
@@ -250,17 +250,16 @@ struct NowPlayingView: View {
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            // Immersive Infotainment Layout (Matching Image 2)
-            VStack(spacing: isShortCanvas ? 24 : 48) {
-                Spacer(minLength: isShortCanvas ? 10 : 30)
-                
+            Spacer(minLength: 0) // Push everything to the bottom
+            
+            VStack(spacing: isShortCanvas ? 20 : 32) {
                 // Top Section: Artwork & Metadata Side-by-Side
-                HStack(spacing: isLargeCanvas ? 80 : 40) {
+                HStack(spacing: isLargeCanvas ? 60 : 30) {
                     artworkSection(size: tabletArtworkSize)
-                        .scaleEffect(isIdle ? 1.08 : 1.0)
+                        .scaleEffect(isIdle ? 1.05 : 1.0)
                         .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
                     
-                    VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 16) {
+                    VStack(alignment: .leading, spacing: isShortCanvas ? 4 : 8) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
                             .font(.system(size: tabletTitleSize, weight: .black))
                             .foregroundColor(.white)
@@ -276,41 +275,33 @@ struct NowPlayingView: View {
                 }
                 .padding(.horizontal, isLargeCanvas ? 100 : 40)
                 
-                // Middle Section: Immense Progress Bar
+                // Middle Section: Progress Bar
                 progressBar
                     .padding(.horizontal, isLargeCanvas ? 100 : 40)
                 
-                // Bottom Section: Centered Playback Controls
-                VStack(spacing: 0) {
-                    if !isIdle {
-                        ZStack {
-                            HStack(spacing: 32) {
-                                playbackControls
-                            }
-                            .padding(.horizontal, 32)
-                            .padding(.vertical, 16)
-                            .background(Color.black.opacity(0.4))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
-                            
-                            HStack {
-                                Spacer()
-                                auxiliaryButtons
-                                    .padding(.trailing, 20)
-                            }
+                // Bottom Section: Playback Controls (Hidden when idle)
+                if !isIdle {
+                    ZStack {
+                        HStack(spacing: 32) {
+                            playbackControls
                         }
-                        .frame(maxWidth: .infinity)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 12)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                        
+                        HStack {
+                            Spacer()
+                            auxiliaryButtons
+                                .padding(.trailing, 20)
+                        }
                     }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .padding(.horizontal, isLargeCanvas ? 100 : 40)
-                .padding(.bottom, isShortCanvas ? 20 : 40)
-                
-                Spacer(minLength: 80) // Fix for partial cut off at bottom
             }
+            .padding(.bottom, isIdle ? (isShortCanvas ? 40 : 60) : (isShortCanvas ? 20 : 40))
         }
-        .frame(maxWidth: 1100)
-        .frame(maxWidth: .infinity)
         .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
     }
 

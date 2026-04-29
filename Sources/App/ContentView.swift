@@ -17,12 +17,12 @@ struct ContentView: View {
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
 
-    var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 96 }
+    var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 80 }
     var mainPadH: CGFloat { 
         if UIScreen.main.bounds.width < 1024 { return 20 }
-        if UIScreen.main.bounds.width >= 1500 { return 100 } // Extreme wide (Car display)
-        if UIScreen.main.bounds.width >= 1150 { return 60 }
-        return 40 
+        if UIScreen.main.bounds.width >= 1500 { return 140 } // Extreme wide (Car display)
+        if UIScreen.main.bounds.width >= 1150 { return 100 } // iPad Pro 12.9
+        return 60 
     }
 
     @AppStorage("velora_username") var username: String = ""
@@ -195,6 +195,7 @@ struct ContentView: View {
     }
 
     private func autoLogin() {
+        // Check for existing session
         let serverUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
         let user = UserDefaults.standard.string(forKey: "velora_username") ?? ""
         
@@ -203,12 +204,18 @@ struct ContentView: View {
            let pass = String(data: passData, encoding: .utf8) {
             
             client.configure(url: serverUrl, user: user, pass: pass)
-            
-            // Trigger initial data load
             client.fetchEverything()
         } else {
-            // No valid session, show login screen
-            showSettings = true
+            // --- TESTING LOGIN BYPASS ---
+            // Automatically log in with testing credentials to save time
+            let devServer = "http://192.168.1.6:4533" // Update this if your local IP changed
+            let devUser = "admin"
+            let devPass = "password" // USER: Please update this if your password changed
+            
+            client.configure(url: devServer, user: devUser, pass: devPass)
+            client.fetchEverything()
+            
+            showSettings = false // Bypass the login screen
         }
     }
 }

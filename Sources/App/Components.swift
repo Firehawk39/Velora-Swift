@@ -56,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 42.0))
+                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 32.0))
                 .kerning(-1.5)
                 .foregroundColor(headerFG)
         }
@@ -112,7 +112,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: ScreenTier.isSE ? 24 : 32))
+                .font(.system(size: ScreenTier.isPhone ? 24 : 28))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -153,7 +153,7 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: ScreenTier.isPhone ? 15 : 18, weight: isActive ? .bold : .medium))
+                .font(.system(size: ScreenTier.isPhone ? 15 : 16, weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
