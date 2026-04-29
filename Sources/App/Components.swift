@@ -56,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0))
+                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }

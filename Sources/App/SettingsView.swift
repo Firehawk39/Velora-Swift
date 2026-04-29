@@ -35,7 +35,7 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 // ── Logo ──────────────────────────────────────────
                 Text("Velora.")
-                    .font(.custom("Stardom-Regular", size: ScreenTier.isSE ? 56 : 72))
+                    .font(.custom("Stardom", size: ScreenTier.isSE ? 56 : 72))
                     .kerning(-2.5)
                     .foregroundColor(isDark ? .white : .black)
                     .padding(.top, ScreenTier.isSE ? 30 : 60)
@@ -355,7 +355,7 @@ struct AppSettingsView: View {
                     // Header
                     VStack(spacing: 8) {
                         Text("Settings")
-                            .font(.custom("Stardom-Regular", size: ScreenTier.isSE ? 40 : 48))
+                            .font(.custom("Stardom", size: ScreenTier.isSE ? 40 : 48))
                             .fontWeight(.bold)
                             .foregroundColor(isDark ? .white : .black)
                         
