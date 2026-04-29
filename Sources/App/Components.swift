@@ -66,7 +66,9 @@ struct AppHeader: View {
     
     private var headerActions: some View {
         HStack(spacing: ScreenTier.isSE ? 16.0 : 20.0) {
-            themeToggle
+            if !isPlayingTab {
+                themeToggle
+            }
             profileButton
         }
     }
