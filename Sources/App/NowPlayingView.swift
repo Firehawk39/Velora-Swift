@@ -27,13 +27,24 @@ struct NowPlayingView: View {
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas {
-            if ScreenTier.isHuge { return isShortCanvas ? 420.0 : 540.0 }
-            return isShortCanvas ? 320.0 : 420.0
+            if ScreenTier.isHuge { return isShortCanvas ? 440.0 : 560.0 }
+            return isShortCanvas ? 340.0 : 460.0
         }
-        return isSE ? 180.0 : 240.0
+        if !isCompact { // 10.25" screens / Regular iPad
+            return isShortCanvas ? 280.0 : 340.0
+        }
+        return isSE ? 180.0 : 220.0
     }
-    private var tabletTitleSize:   CGFloat { isLargeCanvas ? (isShortCanvas ? 44.0 : 56.0) : 32.0 }
-    private var tabletArtistSize:  CGFloat { isLargeCanvas ? (isShortCanvas ? 22.0 : 28.0) : 20.0 }
+    private var tabletTitleSize:   CGFloat { 
+        if isLargeCanvas { return isShortCanvas ? 48.0 : 64.0 }
+        if !isCompact { return isShortCanvas ? 34.0 : 42.0 }
+        return isSE ? 22.0 : 28.0
+    }
+    private var tabletArtistSize:  CGFloat { 
+        if isLargeCanvas { return isShortCanvas ? 24.0 : 32.0 }
+        if !isCompact { return isShortCanvas ? 18.0 : 22.0 }
+        return isSE ? 14.0 : 18.0
+    }
 
     var displayProgress: Double {
         isDragging ? dragProgress : playback.progress
@@ -109,12 +120,14 @@ struct NowPlayingView: View {
                             .animation(.easeInOut(duration: 0.7), value: isIdle)
                     }
                     .padding(.top, isIdle ? 40 : headerHeight + 20)
+                    .padding(.bottom, 50) // Extra bottom clearance
+                    .contentShape(Rectangle()) // Ensures the entire area is scroll-reactive
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
             .simultaneousGesture(
-                DragGesture(minimumDistance: 10) // Lowered to 10 so scrolling wakes it up immediately
+                DragGesture(minimumDistance: 30) // Increased threshold to avoid blocking ScrollView gestures
                     .onChanged { _ in
                         resetIdleTimer()
                     }
@@ -236,103 +249,67 @@ struct NowPlayingView: View {
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
-        Group {
-            if isLargeCanvas {
-                // TRUE TABLET / INFOTAINMENT LAYOUT (3-column style)
-                HStack(spacing: 80) {
-                    if !isShortCanvas { Spacer() }
-                    
-                    HStack(alignment: .bottom, spacing: isIdle ? 16 : 48) { 
-                        artworkSection(size: tabletArtworkSize)
-                            .scaleEffect(isIdle ? 1.12 : 1.0, anchor: .bottomLeading)
-                            .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
-                        
-                        VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 12) {
-                            Text(playback.currentTrack?.title ?? "Not Playing")
-                                .font(.system(size: tabletTitleSize, weight: .black))
-                                .foregroundColor(.white)
-                                .lineLimit(isShortCanvas ? 1 : 2)
-                                .minimumScaleFactor(0.6)
-                            
-                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                .font(.system(size: tabletArtistSize, weight: .bold))
-                                .foregroundColor(.white.opacity(0.8))
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, isIdle ? 12 : 0)
-                        .offset(y: isIdle ? -20 : 0)
-                    }
-                    .padding(.horizontal, 60)
-                    .padding(.bottom, isIdle ? 30 : 20)
-                    
-                    progressBar
-                        .padding(.horizontal, 60)
-                        .padding(.bottom, isIdle ? (isShortCanvas ? 10 : 20) : (isShortCanvas ? 6 : 12))
-                    
-                    if !isShortCanvas { Spacer().frame(height: 20) }
-                    
-                    ZStack {
-                        HStack(alignment: .center, spacing: 32) {
-                            playbackControls
-                        }
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                        .background(Color.black.opacity(0.4))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
-                        
-                        HStack {
-                            Spacer()
-                            auxiliaryButtons
-                                .padding(.trailing, 60)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, 40)
-                    .opacity(isIdle ? 0.0 : 1.0)
-                    .frame(maxHeight: isIdle ? 0 : nil)
-                    .allowsHitTesting(!isIdle)
-                }
-            } else {
-                // PHONE LANDSCAPE LAYOUT (2-column style)
-                HStack(spacing: isSE ? 24 : 40) {
-                    artworkSection(size: isSE ? 160 : 220)
-                        .scaleEffect(isIdle ? 1.1 : 1.0, anchor: .center)
+        VStack(spacing: 0) {
+            // Immersive Infotainment Layout (Matching Image 2)
+            VStack(spacing: isShortCanvas ? 24 : 48) {
+                Spacer(minLength: isShortCanvas ? 10 : 30)
+                
+                // Top Section: Artwork & Metadata Side-by-Side
+                HStack(spacing: isLargeCanvas ? 80 : 40) {
+                    artworkSection(size: tabletArtworkSize)
+                        .scaleEffect(isIdle ? 1.08 : 1.0)
                         .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
                     
-                    VStack(alignment: .leading, spacing: isSE ? 8 : 16) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(playback.currentTrack?.title ?? "Not Playing")
-                                .font(.system(size: isSE ? 24 : 32, weight: .black))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            
-                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                .font(.system(size: isSE ? 14 : 18, weight: .bold))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
+                    VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 16) {
+                        Text(playback.currentTrack?.title ?? "Not Playing")
+                            .font(.system(size: tabletTitleSize, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.7)
                         
-                        progressBar
-                            .scaleEffect(0.9)
-                        
-                        if !isIdle {
-                            HStack {
+                        Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                            .font(.system(size: tabletArtistSize, weight: .bold))
+                            .foregroundColor(.white.opacity(0.8))
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, isLargeCanvas ? 100 : 40)
+                
+                // Middle Section: Immense Progress Bar
+                progressBar
+                    .padding(.horizontal, isLargeCanvas ? 100 : 40)
+                
+                // Bottom Section: Centered Playback Controls
+                VStack(spacing: 0) {
+                    if !isIdle {
+                        ZStack {
+                            HStack(spacing: 32) {
                                 playbackControls
+                            }
+                            .padding(.horizontal, 32)
+                            .padding(.vertical, 16)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                            
+                            HStack {
                                 Spacer()
                                 auxiliaryButtons
-                                    .scaleEffect(0.8)
+                                    .padding(.trailing, 20)
                             }
-                            .padding(.top, 8)
                         }
+                        .frame(maxWidth: .infinity)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, isSE ? 20 : 40)
-                .padding(.bottom, 20)
+                .padding(.horizontal, isLargeCanvas ? 100 : 40)
+                .padding(.bottom, isShortCanvas ? 20 : 40)
+                
+                Spacer(minLength: 80) // Fix for partial cut off at bottom
             }
         }
-        .animation(.spring(), value: isIdle)
+        .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
     }
 
     @ViewBuilder
@@ -532,9 +509,9 @@ struct NowPlayingView: View {
         VStack(spacing: 12) {
             GeometryReader { barGeo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 8)
+                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 12)
                     Capsule().fill(Color.white)
-                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 8)
+                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 12)
                 }
                 .contentShape(Rectangle())
                 .gesture(
@@ -552,7 +529,7 @@ struct NowPlayingView: View {
                         }
                 )
             }
-            .frame(height: 20)
+            .frame(height: 30)
 
             HStack {
                 Text(formatTime(displayProgress))
