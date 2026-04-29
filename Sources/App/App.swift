@@ -57,6 +57,4 @@ struct VeloraApp: App {
             print("❌ Error registering font: \(error!.takeUnretainedValue())")
         }
     }
-    }
-
 }

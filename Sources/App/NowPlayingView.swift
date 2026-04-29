@@ -58,31 +58,29 @@ struct NowPlayingView: View {
         GeometryReader { proxy in
             ZStack {
                 // Dynamic Ambient Background
-                Group {
-                    if let backdrop = fanart.currentBackdrop {
-                        Image(uiImage: backdrop)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .transition(.opacity.animation(.easeInOut(duration: 0.6)))
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                            .opacity(isIdle ? 0.45 : 0.35)
-                            .overlay(
-                                // Combined Vignette: Dark edges + Vertical fade
-                                ZStack {
-                                    RadialGradient(
-                                        gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
-                                        center: .center,
-                                        startRadius: 200,
-                                        endRadius: proxy.size.width * 0.8
-                                    )
-                                    LinearGradient(
-                                        gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                }
-                            )
-                    }
+                if let backdrop = fanart.currentBackdrop {
+                    Image(uiImage: backdrop)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .transition(.opacity.animation(.easeInOut(duration: 0.6)))
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .opacity(isIdle ? 0.45 : 0.35)
+                        .overlay(
+                            // Combined Vignette: Dark edges + Vertical fade
+                            ZStack {
+                                RadialGradient(
+                                    gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                    center: .center,
+                                    startRadius: 200,
+                                    endRadius: proxy.size.width * 0.8
+                                )
+                                LinearGradient(
+                                    gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            }
+                        )
                 } else if let track = playback.currentTrack, let url = track.coverArtUrl {
                     AsyncImage(url: url) { image in
                         image
