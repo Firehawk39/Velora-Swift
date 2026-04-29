@@ -210,6 +210,38 @@ struct TrackCard: View {
     }
 }
 
+struct SmartPortraitView: View {
+    let lowResUrl: URL?
+    let highResImage: UIImage?
+    let size: CGFloat
+    
+    var body: some View {
+        ZStack {
+            // Layer 1: Navidrome/Subsonic (Available immediately or fast fallback)
+            AsyncImage(url: lowResUrl) { phase in
+                if let img = phase.image {
+                    img.resizable().scaledToFill()
+                } else {
+                    Color.gray.opacity(0.1)
+                }
+            }
+            .opacity(highResImage == nil ? 1.0 : 0.4)
+            .blur(radius: highResImage == nil ? 0 : 10)
+            
+            // Layer 2: High-Quality Portrait (Cross-dissolve once loaded)
+            if let highRes = highResImage {
+                Image(uiImage: highRes)
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity.combined(with: .scale(scale: 1.05)).animation(.easeInOut(duration: 0.8)))
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .contentShape(Circle())
+    }
+}
+
 struct ArtistCircle: View {
     let artist: Artist
     let isDark: Bool

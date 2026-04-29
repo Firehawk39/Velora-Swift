@@ -93,7 +93,11 @@ struct ArtistDetailView: View {
             fetchArtistData()
             // Try cache by name first
             FanartManager.shared.fetchArtistPortrait(for: artistName) { img in
-                if self.artistPortrait == nil { self.artistPortrait = img }
+                if self.artistPortrait == nil {
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        self.artistPortrait = img
+                    }
+                }
             }
         }
     }
@@ -181,23 +185,11 @@ struct ArtistDetailView: View {
     }
     
     private func artistLogo(size: CGFloat) -> some View {
-        Group {
-            if let portrait = artistPortrait {
-                Image(uiImage: portrait)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
-                    if let img = phase.image {
-                        img.resizable().scaledToFill()
-                    } else {
-                        Color.gray.opacity(0.1)
-                    }
-                }
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
+        SmartPortraitView(
+            lowResUrl: URL(string: client.getCoverArtUrl(id: artistId)),
+            highResImage: artistPortrait,
+            size: size
+        )
         .shadow(color: .black.opacity(isDarkMode ? 0.3 : 0.15), radius: 30, x: 0, y: 15)
     }
     
@@ -416,7 +408,9 @@ struct ArtistDetailView: View {
             
             // High-quality portrait fetch
             FanartManager.shared.fetchArtistPortrait(for: artistName, mbid: mbid) { img in
-                self.artistPortrait = img
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    self.artistPortrait = img
+                }
             }
             
             client.fetchArtists { artists in
