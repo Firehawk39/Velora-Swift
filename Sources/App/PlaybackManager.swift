@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import MediaPlayer
+import UIKit
 
 struct LyricLine: Hashable {
     let time: Double
@@ -32,6 +33,14 @@ class PlaybackManager: ObservableObject {
         configureAudioSession()
         setupRemoteCommandCenter() // Activate steering wheel and lock screen controls
         loadDownloadedTracks()
+        
+        // Listen for app termination to clear now playing info
+        NotificationCenter.default.addObserver(self, selector: #selector(handleTerminate), name: UIApplication.willTerminateNotification, object: nil)
+    }
+    
+    @objc private func handleTerminate() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        player?.pause()
     }
     
     // MARK: - Audio Session
