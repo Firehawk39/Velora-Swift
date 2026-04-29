@@ -108,7 +108,7 @@ struct NowPlayingView: View {
                                 tabletLayout(proxy: proxy)
                             }
                         }
-                        .frame(height: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
+                        .frame(width: proxy.size.width, height: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
                         
                         metadataCards
                             .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
@@ -283,13 +283,8 @@ struct NowPlayingView: View {
                 // 3. Controls (Visible in Normal State)
                 if !isIdle {
                     VStack(spacing: 0) {
-                        HStack(alignment: .center) {
-                            // Empty spacer to maintain symmetrical centering on the left
-                            Color.clear.frame(width: 360)
-                            
-                            Spacer()
-                            
-                            // Playback Controls
+                        ZStack(alignment: .center) {
+                            // Playback Controls (Perfectly Centered)
                             HStack(spacing: isLargeCanvas ? 32 : 20) {
                                 playbackControls
                             }
@@ -299,13 +294,11 @@ struct NowPlayingView: View {
                             .clipShape(Capsule())
                             .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1.5))
                             
-                            Spacer()
-                            
-                            // Auxiliary controls (Lyrics, Queue, Download) on the right
+                            // Auxiliary controls (Lyrics, Queue, Download) on the right edge
                             HStack(spacing: isLargeCanvas ? 20 : 12) {
                                 auxiliaryButtons
                             }
-                            .frame(width: 360, alignment: .trailing)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         .padding(.horizontal, isLargeCanvas ? 60 : 24)
                     }
