@@ -163,8 +163,10 @@ struct ContentView: View {
                     artistId: id,
                     artistName: name,
                     onArtistClick: { nextId, nextName in
-                        selectedArtistId = nextId
-                        selectedArtistName = nextName
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            selectedArtistId = nextId
+                            selectedArtistName = nextName
+                        }
                     },
                     onPlay: { track, ctx in playback.playTrack(track, context: ctx) },
                     onBack: {
@@ -174,6 +176,7 @@ struct ContentView: View {
                         }
                     }
                 )
+                .id(id)
                 .background(isDarkMode ? Color.black : Color.white)
                 .transition(.move(edge: .trailing))
                 .zIndex(200)
