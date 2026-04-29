@@ -355,15 +355,15 @@ struct AppSettingsView: View {
                     // Header
                     VStack(spacing: 8) {
                         Text("Settings")
-                            .font(.system(size: 40, weight: .bold))
-                            .bold()
+                            .font(.custom("Stardom-Regular", size: ScreenTier.isSE ? 40 : 48))
+                            .fontWeight(.bold)
                             .foregroundColor(isDark ? .white : .black)
                         
                         Text("Manage your account and app preferences")
                             .font(.system(size: 16))
                             .foregroundColor(.gray)
                     }
-                    .padding(.top, 40)
+                    .padding(.top, 140)
                     .frame(maxWidth: .infinity, alignment: .center)
                     
                     VStack(spacing: 32) {
@@ -453,9 +453,10 @@ struct AppSettingsView: View {
                             }
                         }
                     }
-                    .frame(maxWidth: 400)
+                    .frame(maxWidth: 480)
                 }
                 .padding(24)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
         }
     }

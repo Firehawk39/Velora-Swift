@@ -529,6 +529,7 @@ struct NowPlayingView: View {
                     Capsule().fill(Color.white.opacity(0.15)).frame(height: 6)
                     Capsule().fill(Color.white)
                         .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 6)
+                        .animation(isDragging ? nil : .linear(duration: 0.5), value: progressFraction)
                 }
                 .contentShape(Rectangle())
                 .gesture(
