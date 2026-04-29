@@ -448,11 +448,11 @@ struct AppSettingsView: View {
                                     // 1. Fetch Artist Media & Metadata
                                     for artist in client.artists {
                                         // Image fetchers (they have their own internal caching)
-                                        FanartManager.shared.fetchBackdrop(for: artist.name, mbid: artist.mbid)
-                                        FanartManager.shared.fetchArtistPortrait(for: artist.name, mbid: artist.mbid) { _ in }
+                                        FanartManager.shared.fetchBackdrop(for: artist.name, mbid: nil)
+                                        FanartManager.shared.fetchArtistPortrait(for: artist.name, mbid: nil) { _ in }
                                         
                                         // Metadata fetch (MBID is preferred)
-                                        MusicBrainzManager.shared.fetchAboutArtist(artistName: artist.name, mbid: artist.mbid)
+                                        MusicBrainzManager.shared.fetchAboutArtist(artistName: artist.name, mbid: nil)
                                         
                                         // Respect MusicBrainz 1 req/sec limit + avoid hitting Fanart too hard
                                         try? await Task.sleep(nanoseconds: 1_200_000_000)
@@ -461,7 +461,7 @@ struct AppSettingsView: View {
                                     // 2. Fetch Album Metadata (Top 20 albums to avoid massive delay, or all if small)
                                     let albumsToFetch = client.albums.prefix(50) 
                                     for album in albumsToFetch {
-                                        MusicBrainzManager.shared.fetchAboutAlbum(albumName: album.name, artistName: album.artist)
+                                        MusicBrainzManager.shared.fetchAboutAlbum(albumName: album.name, artistName: album.artist ?? "Unknown Artist", mbid: nil)
                                         try? await Task.sleep(nanoseconds: 1_200_000_000)
                                     }
 

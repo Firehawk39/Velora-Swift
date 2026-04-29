@@ -13,6 +13,8 @@ struct NowPlayingView: View {
     @State private var isDragging   = false
     @State private var dragProgress: Double = 0
     @State private var idleTimer: Timer? = nil
+    @State private var showPlayPauseHint: Bool = false
+    @State private var hintIcon: String = "play.fill"
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     // Header height to avoid overlap
@@ -176,9 +178,10 @@ struct NowPlayingView: View {
             isIdle = false // Ensure we don't start in idle state
             startIdleTimer() 
             if let track = playback.currentTrack {
-                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: track.artistId)
-                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: track.albumId)
-                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: track.artistId)
+                // Pass nil for mbid to let managers resolve via name
+                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: nil)
+                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: nil)
+                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: nil)
             }
         }
         .onDisappear { 
@@ -197,9 +200,10 @@ struct NowPlayingView: View {
         .onChange(of: playback.currentTrack?.id) { _ in
             resetIdleTimer()
             if let track = playback.currentTrack {
-                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: track.artistId)
-                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: track.albumId)
-                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: track.artistId)
+                // Pass nil for mbid to let managers resolve via name
+                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: nil)
+                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: nil)
+                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: nil)
             }
         }
         .preferredColorScheme(.dark)
@@ -430,13 +434,43 @@ struct NowPlayingView: View {
                     Color.white.opacity(0.1)
                 }
             }
+            
+            // Hidden Secret Feedback Overlay
+            if showPlayPauseHint {
+                ZStack {
+                    Circle()
+                        .fill(.black.opacity(0.4))
+                        .frame(width: 70, height: 70)
+                        .blur(radius: 10)
+                    
+                    Image(systemName: hintIcon)
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
         }
         .frame(width: size, height: size)
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 20)
         .onTapGesture {
             if isIdle {
+                // Secret Toggle: No resetIdleTimer() called here
+                hintIcon = playback.isPlaying ? "pause.fill" : "play.fill"
                 playback.togglePlayPause()
+                
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    showPlayPauseHint = true
+                }
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    withAnimation(.easeOut(duration: 0.4)) {
+                        showPlayPauseHint = false
+                    }
+                }
+            } else {
+                // When not idle, regular tap might do something else or nothing
+                // For now, let's just make it do nothing to keep the "secret" feel
             }
         }
     }
