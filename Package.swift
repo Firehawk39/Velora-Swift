@@ -25,6 +25,9 @@ let package = Package(
                 .landscapeRight,
                 .landscapeLeft,
                 .portraitUpsideDown
+            ],
+            capabilities: [
+                .backgroundMode(.audio)
             ]
         )
     ],

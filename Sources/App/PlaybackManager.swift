@@ -30,6 +30,7 @@ class PlaybackManager: ObservableObject {
     
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var playerItemObserver: Any?
     private var currentArtworkTrackId: String? = nil
     var client: NavidromeClient
     
@@ -54,8 +55,71 @@ class PlaybackManager: ObservableObject {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .duckOthers])
             try AVAudioSession.sharedInstance().setActive(true)
+            
+            // Gold Standard: Handle Audio Interruptions (e.g., phone calls)
+            NotificationCenter.default.addObserver(self,
+                                                   selector: #selector(handleInterruption),
+                                                   name: AVAudioSession.interruptionNotification,
+                                                   object: AVAudioSession.sharedInstance())
+            
+            // Gold Standard: Handle Route Changes (e.g., headphones unplugged)
+            NotificationCenter.default.addObserver(self,
+                                                   selector: #selector(handleRouteChange),
+                                                   name: AVAudioSession.routeChangeNotification,
+                                                   object: AVAudioSession.sharedInstance())
+            
         } catch {
             print("Failed to configure audio session: \(error)")
+        }
+    }
+    
+    @objc private func handleInterruption(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+        
+        switch type {
+        case .began:
+            // Interruption began, take appropriate actions
+            DispatchQueue.main.async {
+                self.isPlaying = false
+                self.player?.pause()
+                self.updateNowPlayingInfo()
+            }
+        case .ended:
+            if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                if options.contains(.shouldResume) {
+                    DispatchQueue.main.async {
+                        self.player?.play()
+                        self.isPlaying = true
+                        self.updateNowPlayingInfo()
+                    }
+                }
+            }
+        @unknown default:
+            break
+        }
+    }
+    
+    @objc private func handleRouteChange(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            return
+        }
+        
+        switch reason {
+        case .oldDeviceUnavailable:
+            // e.g., headphones pulled out
+            DispatchQueue.main.async {
+                self.isPlaying = false
+                self.player?.pause()
+                self.updateNowPlayingInfo()
+            }
+        default: break
         }
     }
     
@@ -90,6 +154,10 @@ class PlaybackManager: ObservableObject {
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
+        }
+        if let itemObserver = playerItemObserver {
+            NotificationCenter.default.removeObserver(itemObserver)
+            playerItemObserver = nil
         }
         
         let playerItem = AVPlayerItem(url: urlToPlay)
@@ -146,7 +214,7 @@ class PlaybackManager: ObservableObject {
         }
         
         // Auto-advance to next track when done
-        NotificationCenter.default.addObserver(
+        playerItemObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
