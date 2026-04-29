@@ -417,10 +417,15 @@ struct NowPlayingView: View {
         .hoverEffect()
 
         // Repeat
-        Button { resetIdleTimer() } label: {
-            Image(systemName: "repeat").font(.system(size: 14)).foregroundColor(.white.opacity(0.5))
+        Button { 
+            playback.toggleRepeatMode()
+            resetIdleTimer() 
+        } label: {
+            Image(systemName: playback.repeatMode == .one ? "repeat.1" : "repeat")
+                .font(.system(size: 14))
+                .foregroundColor(playback.repeatMode == .off ? .white.opacity(0.5) : .accentColor)
         }
-        .accessibilityLabel("Repeat")
+        .accessibilityLabel("Repeat Mode")
         .hoverEffect()
     }
 

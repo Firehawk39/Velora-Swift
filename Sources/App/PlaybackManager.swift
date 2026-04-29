@@ -21,7 +21,12 @@ class PlaybackManager: ObservableObject {
     @Published var queue: [Track] = []
     @Published var queueIndex: Int = 0
     @Published var isShuffle: Bool = false
+    @Published var repeatMode: RepeatMode = .off
     @Published var downloadedTrackIds: Set<String> = []
+    
+    enum RepeatMode {
+        case off, one, all
+    }
     
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -146,10 +151,24 @@ class PlaybackManager: ObservableObject {
             object: playerItem,
             queue: .main
         ) { [weak self] _ in
-            if let track = self?.currentTrack {
-                self?.client.scrobble(id: track.id, submission: true)
+            guard let self = self else { return }
+            if let track = self.currentTrack {
+                self.client.scrobble(id: track.id, submission: true)
             }
-            self?.skipForward()
+            
+            switch self.repeatMode {
+            case .one:
+                self.loadAndPlay(track: self.queue[self.queueIndex])
+            case .all:
+                self.skipForward()
+            case .off:
+                if self.queueIndex < self.queue.count - 1 {
+                    self.skipForward()
+                } else {
+                    self.isPlaying = false
+                    self.player?.pause()
+                }
+            }
         }
         
         // Mark as "Now Playing" on server
@@ -180,6 +199,14 @@ class PlaybackManager: ObservableObject {
         }
         queueIndex = nextIndex
         loadAndPlay(track: queue[queueIndex])
+    }
+    
+    func toggleRepeatMode() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
+        }
     }
     
     func skipBackward() {
