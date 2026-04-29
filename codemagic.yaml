@@ -3,9 +3,9 @@ workflows:
     name: Velora Jailbreak IPA (Unsigned)
     instance_type: mac_mini_m1
     max_build_duration: 30
-    caching:
+    cache:
       cache_paths:
-        - $HOME/Library/Developer/Xcode/DerivedData
+        - ~/.swiftpm
     environment:
       vars:
         XCODE_SCHEME: "Velora"
