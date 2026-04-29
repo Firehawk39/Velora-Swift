@@ -168,7 +168,7 @@ struct NowPlayingView: View {
         stopIdleTimer()
         guard !isQueueOpen && !isLyricsMode else { return }
         
-        idleTimer = Timer.scheduledTimer(withTimeInterval: 9.0, repeats: false) { _ in
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
             withAnimation(.easeInOut(duration: 2.5)) {
                 isIdle = true
             }
