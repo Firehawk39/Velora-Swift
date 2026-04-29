@@ -229,6 +229,7 @@ class PlaybackManager: ObservableObject {
                 }
             }.resume()
         }
+    }
     
     // MARK: - Offline Downloads Management
     
