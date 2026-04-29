@@ -3,22 +3,14 @@ workflows:
     name: Velora Jailbreak IPA (Unsigned)
     instance_type: mac_mini_m1
     max_build_duration: 30
+    cacheing:
+      cache_paths:
+        - $HOME/Library/Developer/Xcode/DerivedData
     environment:
       vars:
         XCODE_SCHEME: "Velora"
       xcode: latest
     scripts:
-      - name: Build & Debug
-        script: |
-          xcodebuild -version
-          xcodebuild -list
-          # Real build to catch the 'culprit' errors
-          xcodebuild build \
-            -scheme Velora \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO
       - name: Build Unsigned App
         script: |
           xcodebuild archive \
