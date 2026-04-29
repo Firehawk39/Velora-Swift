@@ -108,7 +108,7 @@ struct NowPlayingView: View {
                                 tabletLayout(proxy: proxy)
                             }
                         }
-                        .frame(minHeight: proxy.size.height - (headerHeight + 20)) // Locked height to prevent scroll jumps
+                        .frame(minHeight: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
                         
                         metadataCards
                             .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
@@ -119,7 +119,7 @@ struct NowPlayingView: View {
                             .allowsHitTesting(!isIdle)
                             .animation(.easeInOut(duration: 0.7), value: isIdle)
                     }
-                    .padding(.top, isIdle ? 40 : headerHeight + 20)
+                    .padding(.top, isIdle ? 0 : headerHeight + 20)
                     .padding(.bottom, 50) // Extra bottom clearance
                     .contentShape(Rectangle()) // Ensures the entire area is scroll-reactive
                 }
@@ -250,88 +250,76 @@ struct NowPlayingView: View {
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            // Immersive Infotainment Layout
-            VStack(spacing: 0) {
-                Spacer() // Pushes everything to bottom
-                
-                VStack(spacing: isShortCanvas ? 24 : 40) {
-                    // Top Section: Artwork & Metadata Side-by-Side
-                    HStack(spacing: isLargeCanvas ? 80 : 40) {
-                        artworkSection(size: isIdle ? tabletArtworkSize * 0.9 : tabletArtworkSize)
-                            .scaleEffect(isIdle ? 1.05 : 1.0)
+            Spacer(minLength: 20) // Top spacer to allow content to move
+            
+            VStack(spacing: isIdle ? 20 : 40) {
+                // 1. Artwork & Metadata Section
+                HStack(spacing: isLargeCanvas ? 80 : 40) {
+                    artworkSection(size: tabletArtworkSize)
+                        .scaleEffect(isIdle ? 1.08 : 1.0)
+                    
+                    VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 16) {
+                        Text(playback.currentTrack?.title ?? "Not Playing")
+                            .font(.system(size: tabletTitleSize, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
                         
-                        VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 16) {
-                            Text(playback.currentTrack?.title ?? "Not Playing")
-                                .font(.system(size: tabletTitleSize, weight: .black))
-                                .foregroundColor(.white)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.7)
-                            
-                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                .font(.system(size: tabletArtistSize, weight: .bold))
-                                .foregroundColor(.white.opacity(0.8))
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                            .font(.system(size: tabletArtistSize, weight: .bold))
+                            .foregroundColor(.white.opacity(0.8))
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, isLargeCanvas ? 100 : 40)
+                
+                // 2. Progress Bar
+                progressBar
                     .padding(.horizontal, isLargeCanvas ? 100 : 40)
-                    .offset(y: isIdle ? 20 : 0) // Subtle drop in idle
-                    
-                    // Middle Section: Progress Bar
-                    progressBar
-                        .padding(.horizontal, isLargeCanvas ? 100 : 40)
-                        .offset(y: isIdle ? 30 : 0) // Pushes bar closer to bottom in idle
-                    
-                    // Bottom Section: Playback Controls
-                    if !isIdle {
+                
+                // 3. Controls (Visible in Normal State)
+                if !isIdle {
+                    VStack(spacing: 0) {
                         ZStack {
-                            HStack(spacing: isLargeCanvas ? 48 : 32) {
+                            HStack(spacing: 40) {
                                 playbackControls
                             }
-                            .padding(.horizontal, isLargeCanvas ? 48 : 32)
+                            .padding(.horizontal, 40)
                             .padding(.vertical, 20)
-                            .background(.ultraThinMaterial.opacity(0.6))
+                            .background(Color.black.opacity(0.5))
                             .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
-                            .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
+                            .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
                             
                             HStack {
                                 Spacer()
                                 auxiliaryButtons
-                                    .padding(.trailing, 24)
+                                    .padding(.trailing, 40)
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 10)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .bottom).combined(with: .opacity),
-                            removal: .opacity.combined(with: .scale(scale: 0.9))
-                        ))
                     }
+                    .padding(.bottom, 80) // Push the UI UP so it's fully visible and not cut off
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .opacity
+                    ))
                 }
-                .padding(.bottom, isIdle ? (isShortCanvas ? 20 : 40) : (isShortCanvas ? 80 : 120))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
             }
+            .padding(.bottom, isIdle ? (isShortCanvas ? 20 : 40) : 0) // Hug the bottom edge in Idle
+            .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
         }
-        .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
     }
 
     @ViewBuilder
     private var playbackControls: some View {
         // Shuffle
         Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
-            Image(systemName: "shuffle")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.6))
+            Image(systemName: "shuffle").font(.system(size: 20)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
         }
         .accessibilityLabel("Shuffle")
         .hoverEffect()
 
         // Previous
         Button { playback.skipBackward(); resetIdleTimer() } label: {
-            Image(systemName: "backward.fill")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundColor(.white)
+            Image(systemName: "backward.fill").font(.system(size: 30)).foregroundColor(.white)
         }
         .accessibilityLabel("Previous Track")
         .hoverEffect()
@@ -339,14 +327,9 @@ struct NowPlayingView: View {
         // Play/Pause
         Button { playback.togglePlayPause(); resetIdleTimer() } label: {
             ZStack {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
-                
+                Circle().fill(Color.white).frame(width: 64, height: 64)
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.black)
+                    .font(.system(size: 24)).foregroundColor(.black)
             }
         }
         .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
@@ -354,18 +337,14 @@ struct NowPlayingView: View {
 
         // Next
         Button { playback.skipForward(); resetIdleTimer() } label: {
-            Image(systemName: "forward.fill")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundColor(.white)
+            Image(systemName: "forward.fill").font(.system(size: 30)).foregroundColor(.white)
         }
         .accessibilityLabel("Next Track")
         .hoverEffect()
 
         // Repeat
         Button { resetIdleTimer() } label: {
-            Image(systemName: "repeat")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white.opacity(0.6))
+            Image(systemName: "repeat").font(.system(size: 20)).foregroundColor(.white.opacity(0.5))
         }
         .accessibilityLabel("Repeat")
         .hoverEffect()
