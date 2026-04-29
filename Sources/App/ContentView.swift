@@ -106,6 +106,8 @@ struct ContentView: View {
         .environmentObject(client)
         .environmentObject(playback)
         .preferredColorScheme((isDarkMode || activeTab == "now-playing") ? .dark : .light)
+        .statusBarHidden(true)
+        .persistentSystemOverlays(.hidden)
         .onAppear { autoLogin() }
         .onChange(of: activeTab) { _ in
             withAnimation { 
