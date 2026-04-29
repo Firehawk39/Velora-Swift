@@ -284,9 +284,8 @@ struct NowPlayingView: View {
                 // Controls Section
                 if !isIdle {
                     HStack(alignment: .center) {
-                        // 1. Left Section: Lyrics
+                        // 1. Left Section (Empty now)
                         HStack {
-                            lyricsButton
                             Spacer()
                         }
                         .frame(maxWidth: .infinity)
@@ -301,10 +300,11 @@ struct NowPlayingView: View {
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
                         
-                        // 3. Right Section: Queue & Download
+                        // 3. Right Section: Lyrics, Queue & Download
                         HStack {
                             Spacer()
                             HStack(spacing: 12) {
+                                lyricsButton
                                 queueButton
                                 downloadButton
                             }
@@ -509,18 +509,13 @@ struct NowPlayingView: View {
             }
             resetIdleTimer()
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 14, weight: .bold))
-                Text("Lyrics")
-                    .font(.system(size: 14, weight: .bold))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(playback.isLyricsMode ? Color.white : Color.black.opacity(0.5))
-            .foregroundColor(playback.isLyricsMode ? .black : .white)
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+            Image(systemName: "mic.fill")
+                .font(.system(size: 16, weight: .bold))
+                .frame(width: 44, height: 44)
+                .background(playback.isLyricsMode ? Color.white : Color.black.opacity(0.5))
+                .foregroundColor(playback.isLyricsMode ? .black : .white)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
         .accessibilityLabel("Lyrics Toggle")
     }
@@ -533,18 +528,13 @@ struct NowPlayingView: View {
             }
             resetIdleTimer()
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "list.bullet.indent")
-                    .font(.system(size: 14, weight: .bold))
-                Text("Queue")
-                    .font(.system(size: 14, weight: .bold))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(isQueueOpen ? Color.white : Color.black.opacity(0.5))
-            .foregroundColor(isQueueOpen ? .black : .white)
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+            Image(systemName: "list.bullet.indent")
+                .font(.system(size: 16, weight: .bold))
+                .frame(width: 44, height: 44)
+                .background(isQueueOpen ? Color.white : Color.black.opacity(0.5))
+                .foregroundColor(isQueueOpen ? .black : .white)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
         .accessibilityLabel("Queue Toggle")
     }
