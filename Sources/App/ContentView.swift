@@ -18,12 +18,6 @@ struct ContentView: View {
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
 
     var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 80 }
-    var mainPadH: CGFloat { 
-        if UIScreen.main.bounds.width < 1024 { return 20 }
-        if UIScreen.main.bounds.width >= 1500 { return 140 } // Extreme wide (Car display)
-        if UIScreen.main.bounds.width >= 1150 { return 100 } // iPad Pro 12.9
-        return 60 
-    }
 
     @AppStorage("velora_username") var username: String = ""
 
@@ -56,7 +50,6 @@ struct ContentView: View {
                         }
                     }
                 )
-                .padding(.horizontal, mainPadH)
                 .padding(.top, 14)
                 .opacity((isIdle && activeTab == "now-playing") ? 0 : 1)
                 .offset(y: (isIdle && activeTab == "now-playing") ? -100 : 0)
@@ -87,7 +80,7 @@ struct ContentView: View {
                                     showSettings = true
                                 }
                         )
-                        .padding(.trailing, mainPadH)
+                        .padding(.trailing, isCompact ? 24.0 : 48.0)
                         .padding(.top, headerHeight + 8)
                     }
                     Spacer()

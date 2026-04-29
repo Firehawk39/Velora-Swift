@@ -45,7 +45,7 @@ struct AppHeader: View {
             Spacer()
             headerActions
         }
-        .padding(.horizontal, ScreenTier.isSE ? 16.0 : 32.0)
+        .padding(.horizontal, isCompact ? 24.0 : 48.0)
     }
     
     private var logoButton: some View {

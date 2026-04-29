@@ -89,7 +89,7 @@ struct ArtistDetailView: View {
                 .opacity(Double(opacity))
             Spacer()
         }
-        .padding(.horizontal, 80)
+        .padding(.horizontal, isCompact ? 24 : 48)
         .frame(maxWidth: .infinity)
         .frame(height: 100)
         .background(
@@ -138,7 +138,7 @@ struct ArtistDetailView: View {
                         Spacer()
                     }
                 }
-                .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                .padding(.horizontal, isCompact ? 24 : 48)
             }
         }
         .frame(maxWidth: .infinity)

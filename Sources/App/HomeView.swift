@@ -9,7 +9,7 @@ struct HomeView: View {
     var isDark: Bool { isDarkMode }
     var isCompact: Bool { hSizeClass == .compact }
     var isSE: Bool { ScreenTier.isSE }
-    var hPad: CGFloat { isSE ? 14 : (isCompact ? 16 : 40) }
+    var hPad: CGFloat { isCompact ? 24 : 48 }
     var onArtistClick: ((String, String) -> Void)? = nil
 
     // Greeting — matches the web's time-of-day logic

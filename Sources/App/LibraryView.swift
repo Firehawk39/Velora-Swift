@@ -16,7 +16,7 @@ struct LibraryView: View {
     var onArtistClick: ((String, String) -> Void)?
 
     var isCompact: Bool { hSizeClass == .compact }
-    var hPad: CGFloat { isCompact ? 16 : 40 }
+    var hPad: CGFloat { isCompact ? 24 : 48 }
 
     let menuItems: [(id: String, label: String, icon: String)] = [
         ("playlists", "Playlists", "music.note.list"),
