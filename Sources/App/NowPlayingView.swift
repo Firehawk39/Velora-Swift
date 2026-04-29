@@ -274,6 +274,7 @@ struct NowPlayingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, isLargeCanvas ? 100 : 40)
+                .padding(.bottom, isIdle ? 10 : 20)
                 
                 // Middle Section: Progress Bar
                 progressBar
@@ -286,8 +287,8 @@ struct NowPlayingView: View {
                             playbackControls
                         }
                         .padding(.horizontal, 32)
-                        .padding(.vertical, 12)
-                        .background(Color.black.opacity(0.4))
+                        .padding(.vertical, 16)
+                        .background(.ultraThinMaterial)
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
                         
@@ -300,7 +301,8 @@ struct NowPlayingView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.bottom, isIdle ? (isShortCanvas ? 40 : 60) : (isShortCanvas ? 20 : 40))
+            .padding(.bottom, isIdle ? (isShortCanvas ? 12 : 24) : (isShortCanvas ? 60 : 100))
+            .offset(y: isIdle ? 20 : 0) // Subtle extra nudge down for idle
         }
         .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
     }
@@ -324,9 +326,14 @@ struct NowPlayingView: View {
         // Play/Pause
         Button { playback.togglePlayPause(); resetIdleTimer() } label: {
             ZStack {
-                Circle().fill(Color.white).frame(width: 64, height: 64)
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 72, height: 72)
+                    .shadow(color: .white.opacity(0.3), radius: 10, x: 0, y: 0)
+                
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 24)).foregroundColor(.black)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.black)
             }
         }
         .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
@@ -549,7 +556,7 @@ struct NowPlayingView: View {
                         .font(.system(size: 16, weight: .bold))
                     if isLargeCanvas {
                         Text("Lyrics")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                     }
                 }
                 .padding(.horizontal, isLargeCanvas ? 16 : 12)
@@ -574,7 +581,7 @@ struct NowPlayingView: View {
                         .font(.system(size: 16, weight: .bold))
                     if isLargeCanvas {
                         Text("Queue")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                     }
                 }
                 .padding(.horizontal, isLargeCanvas ? 16 : 12)
