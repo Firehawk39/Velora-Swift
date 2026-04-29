@@ -321,7 +321,6 @@ struct NowPlayingView: View {
         }
         .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
-    }
 
     @ViewBuilder
     private var playbackControls: some View {
