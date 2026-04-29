@@ -43,7 +43,7 @@ struct ArtistDetailView: View {
                         } else {
                             HStack(alignment: .top, spacing: 64) {
                                 mostFavoriteSection
-                                    .frame(maxWidth: 350)
+                                    .frame(maxWidth: 400)
                                 
                                 songsByArtistSection
                             }
@@ -73,9 +73,7 @@ struct ArtistDetailView: View {
             headerOverlay
             
             // Back
-            if isCompact {
-                backButton
-            }
+            backButton
         }
         .onAppear {
             fetchArtistData()
@@ -121,46 +119,30 @@ struct ArtistDetailView: View {
                     playAllButton
                         .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95)
                 }
-                .padding(.horizontal, 24)
             } else {
-                VStack(alignment: .leading, spacing: 32) {
-                    ZStack(alignment: .topLeading) {
-                        Button(action: onBack) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(isDarkMode ? .white : .black)
-                                .frame(width: 36, height: 36)
-                                .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
-                                .clipShape(Circle())
-                        }
-                        .padding(.leading, 0)
-                        .padding(.top, 20)
+                VStack(alignment: .leading, spacing: 24) {
+                    HStack(alignment: .bottom, spacing: 24) {
+                        artistLogo(size: 100)
                         
-                        HStack {
-                            Spacer()
-                            artistLogo(size: 220)
-                            Spacer()
-                        }
-                    }
-                    
-                    HStack(alignment: .bottom) {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 12) {
                             artistLabel
-                            artistNameText(size: 64)
+                            
+                            HStack(alignment: .bottom, spacing: 20) {
+                                artistNameText(size: heroNameSize)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                
+                                playAllButton
+                                    .padding(.bottom, 4)
+                            }
                         }
-                        
                         Spacer()
-                        
-                        playAllButton
-                            .padding(.bottom, 8)
                     }
-                    .padding(.top, 16)
                 }
-                .padding(.horizontal, 48)
+                .padding(.horizontal, isCompact ? 24 : 48)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 20)
+        .padding(.top, 80)
         .padding(.bottom, 32)
     }
     
@@ -174,7 +156,7 @@ struct ArtistDetailView: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .shadow(color: .black.opacity(isDarkMode ? 0.3 : 0.15), radius: 30, x: 0, y: 15)
+        .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
     }
     
     private var artistLabel: some View {
@@ -218,9 +200,55 @@ struct ArtistDetailView: View {
                 .foregroundColor(isDarkMode ? .white : .black)
             
             if let track = favoriteSongs.first {
-                trackRow(track)
+                Button(action: { onPlay(track, favoriteSongs) }) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        AsyncImage(url: track.coverArtUrl) { phase in
+                            if let img = phase.image {
+                                img.resizable().scaledToFill()
+                            } else {
+                                Color.gray.opacity(0.1)
+                            }
+                        }
+                        .aspectRatio(1, contentMode: .fill)
+                        .cornerRadius(8)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(track.title)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isDarkMode ? .white : .black)
+                            
+                            Text("\(track.playCount ?? 0) plays")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
             } else if let track = topSongs.first {
-                trackRow(track)
+                Button(action: { onPlay(track, topSongs) }) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        AsyncImage(url: track.coverArtUrl) { phase in
+                            if let img = phase.image {
+                                img.resizable().scaledToFill()
+                            } else {
+                                Color.gray.opacity(0.1)
+                            }
+                        }
+                        .aspectRatio(1, contentMode: .fill)
+                        .cornerRadius(8)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(track.title)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isDarkMode ? .white : .black)
+                            
+                            Text("\(track.playCount ?? 0) plays")
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }
@@ -238,11 +266,19 @@ struct ArtistDetailView: View {
                     }
                 }
             } else {
-                VStack(spacing: 12) {
-                    ForEach(topSongs.prefix(8)) { track in
-                        trackRow(track)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHGrid(rows: [
+                        GridItem(.fixed(60)),
+                        GridItem(.fixed(60)),
+                        GridItem(.fixed(60))
+                    ], spacing: 12) {
+                        ForEach(topSongs) { track in
+                            trackRow(track)
+                                .frame(width: isLargeCanvas ? 300 : 260)
+                        }
                     }
                 }
+                .frame(height: 210)
             }
         }
     }
@@ -344,11 +380,9 @@ struct ArtistDetailView: View {
     private var backButton: some View {
         Button(action: onBack) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 18, weight: .bold))
                 .foregroundColor(isDarkMode ? .white : .black)
-                .frame(width: 36, height: 36)
-                .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
-                .clipShape(Circle())
+                .frame(width: 40, height: 40)
         }
         .padding(.leading, 24)
         .padding(.top, 60)
