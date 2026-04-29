@@ -30,24 +30,31 @@ class FanartManager: ObservableObject {
     
     private var activeBackdropFetches = Set<String>()
     
-    func fetchBackdrop(for artist: String, mbid: String? = nil) {
+    /// Synchronously checks if a backdrop exists in cache and returns it
+    func getCachedBackdrop(for artist: String) -> UIImage? {
         let sanitized = sanitizeFileName(artist)
         let fileName = sanitized + ".jpg"
         let fileUrl = backdropDir.appendingPathComponent(fileName)
         
-        // 1. Check Cache
         if fileManager.fileExists(atPath: fileUrl.path),
-           let data = try? Data(contentsOf: fileUrl),
-           let image = UIImage(data: data) {
-            DispatchQueue.main.async { 
-                // We use a simple check; ideally we'd compare data but for UI flashes 
-                // even an instance check is better than nothing.
-                if self.currentBackdrop == nil || self.currentBackdrop?.size != image.size {
-                    self.currentBackdrop = image 
-                }
+           let data = try? Data(contentsOf: fileUrl) {
+            return UIImage(data: data)
+        }
+        return nil
+    }
+
+    func fetchBackdrop(for artist: String, mbid: String? = nil) {
+        // 1. Check Cache Synchronously first to see if we can update immediately
+        if let cached = getCachedBackdrop(for: artist) {
+            if self.currentBackdrop == nil || self.currentBackdrop?.size != cached.size {
+                self.currentBackdrop = cached
             }
             return
         }
+        
+        let sanitized = sanitizeFileName(artist)
+        let fileName = sanitized + ".jpg"
+        let fileUrl = backdropDir.appendingPathComponent(fileName)
         
         // 2. Prevent duplicate active fetches
         if activeBackdropFetches.contains(sanitized) { return }
@@ -59,7 +66,11 @@ class FanartManager: ObservableObject {
                 if let url = url {
                     self.downloadAndCache(from: url, to: fileUrl) { image in
                         self.activeBackdropFetches.remove(sanitized)
-                        DispatchQueue.main.async { self.currentBackdrop = image }
+                        DispatchQueue.main.async { 
+                            withAnimation(.easeInOut(duration: 0.8)) {
+                                self.currentBackdrop = image 
+                            }
+                        }
                     }
                 } else {
                     self.activeBackdropFetches.remove(sanitized)
@@ -84,7 +95,11 @@ class FanartManager: ObservableObject {
             if let url = url {
                 self.downloadAndCache(from: url, to: fileUrl) { image in
                     self.activeBackdropFetches.remove(sanitized)
-                    DispatchQueue.main.async { self.currentBackdrop = image }
+                    DispatchQueue.main.async { 
+                        withAnimation(.easeInOut(duration: 0.8)) {
+                            self.currentBackdrop = image 
+                        }
+                    }
                 }
             } else {
                 self.getMBID(for: artist) { resolved in
@@ -98,7 +113,6 @@ class FanartManager: ObservableObject {
         }
     }
     
-    /// Bulk download helper that doesn't touch the published currentBackdrop
     func downloadBackdropSilently(for artist: String, mbid: String? = nil) {
         let sanitized = sanitizeFileName(artist)
         let fileName = sanitized + ".jpg"
@@ -122,11 +136,8 @@ class FanartManager: ObservableObject {
             query(mbid)
         } else {
             getMBID(for: artist) { resolved in
-                if let resolved = resolved { 
-                    query(resolved) 
-                } else {
-                    self.activeBackdropFetches.remove(sanitized)
-                }
+                if let resolved = resolved { query(resolved) }
+                else { self.activeBackdropFetches.remove(sanitized) }
             }
         }
     }
@@ -134,7 +145,8 @@ class FanartManager: ObservableObject {
     // MARK: - Artist Portraits
     
     func fetchArtistPortrait(for artist: String, mbid: String? = nil, completion: @escaping (UIImage?) -> Void) {
-        let fileName = sanitizeFileName(artist) + ".jpg"
+        let sanitized = sanitizeFileName(artist)
+        let fileName = sanitized + ".jpg"
         let fileUrl = portraitDir.appendingPathComponent(fileName)
         
         if fileManager.fileExists(atPath: fileUrl.path),
@@ -195,8 +207,9 @@ class FanartManager: ObservableObject {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if type == .background {
                         if let bgs = json["artistbackground"] as? [[String: Any]], !bgs.isEmpty {
-                            // Deterministic selection based on artist name to prevent switching between multiple backdrops
-                            let index = abs(artistName.hashValue) % bgs.count
+                            // Stable Deterministic Selection: FNV-1a hash ensures consistency across app launches
+                            let hashValue = self.stableHash(artistName.lowercased())
+                            let index = abs(hashValue) % bgs.count
                             let selected = bgs[index]["url"] as? String
                             completion(selected); return
                         }
@@ -213,6 +226,15 @@ class FanartManager: ObservableObject {
     }
     
     // MARK: - Helpers
+    
+    private func stableHash(_ s: String) -> Int {
+        var h: UInt64 = 14695981039346656037
+        for byte in s.utf8 {
+            h ^= UInt64(byte)
+            h &*= 1099511628211
+        }
+        return Int(truncatingIfNeeded: h)
+    }
     
     private func downloadAndCache(from urlString: String, to localUrl: URL, completion: @escaping (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else { return }
