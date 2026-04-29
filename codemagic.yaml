@@ -103,6 +103,10 @@ workflows:
                   <key>NSAllowsLocalNetworking</key>
                   <true/>
               </dict>
+              <key>CADisableMinimumFrameDuration</key>
+              <true/>
+              <key>CADisableMinimumFrameDurationOnPhone</key>
+              <true/>
               <key>NSLocalNetworkUsageDescription</key>
               <string>Velora needs to connect to your Navidrome server on your local network.</string>
               <key>NSBonjourServices</key>
