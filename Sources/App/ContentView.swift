@@ -105,7 +105,6 @@ struct ContentView: View {
                 HStack {
                     Spacer()
                     QueuePanel(isDarkMode: isDarkMode, onClose: { withAnimation { isQueueOpen = false } })
-                        .transition(.move(edge: .trailing))
                 }
                 .ignoresSafeArea()
                 .zIndex(350)

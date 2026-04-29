@@ -21,13 +21,14 @@ class PlaybackManager: ObservableObject {
     init(client: NavidromeClient) {
         self.client = client
         configureAudioSession()
+        setupRemoteCommandCenter() // Activate steering wheel and lock screen controls
     }
     
     // MARK: - Audio Session
     
     private func configureAudioSession() {
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP, .duckOthers])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("Failed to configure audio session: \(error)")
@@ -201,5 +202,22 @@ class PlaybackManager: ObservableObject {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        
+        // Asynchronously load artwork for the Control Center
+        if let artworkUrl = track.coverArtUrl {
+            URLSession.shared.dataTask(with: artworkUrl) { data, _, _ in
+                if let data = data, let image = UIImage(data: data) {
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    DispatchQueue.main.async {
+                        // Check if we are still playing the same track
+                        if self.currentTrack?.id == track.id {
+                            var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
+                            updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                            MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                        }
+                    }
+                }
+            }.resume()
+        }
     }
 }

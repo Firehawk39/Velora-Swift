@@ -509,9 +509,9 @@ struct NowPlayingView: View {
         VStack(spacing: 12) {
             GeometryReader { barGeo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 12)
+                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 6)
                     Capsule().fill(Color.white)
-                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 12)
+                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 6)
                 }
                 .contentShape(Rectangle())
                 .gesture(
@@ -529,7 +529,7 @@ struct NowPlayingView: View {
                         }
                 )
             }
-            .frame(height: 30)
+            .frame(height: 20)
 
             HStack {
                 Text(formatTime(displayProgress))

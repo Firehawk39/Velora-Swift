@@ -56,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 22 : 26) : 32.0))
+                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 42.0))
                 .kerning(-1.5)
                 .foregroundColor(headerFG)
         }
@@ -126,7 +126,7 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(ScreenTier.isPhone ? 4 : 6)
+        .padding(ScreenTier.isPhone ? 6 : 10)
         .background(.ultraThinMaterial.opacity(0.5))
         .clipShape(Capsule())
         .scaleEffect(ScreenTier.isPhone ? 0.9 : 1.0) // Slightly smaller on phones
@@ -153,7 +153,7 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: 15, weight: isActive ? .bold : .medium))
+                .font(.system(size: ScreenTier.isPhone ? 15 : 18, weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -365,9 +365,7 @@ struct QueuePanel: View {
                             isCurrent: playback.currentTrack?.id == track.id,
                             isDarkMode: isDarkMode
                         ) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                playback.playTrack(track, context: playback.queue)
-                            }
+                            playback.playTrack(track, context: playback.queue)
                         }
                     }
                 }
