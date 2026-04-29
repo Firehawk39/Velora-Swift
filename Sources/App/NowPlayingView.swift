@@ -254,11 +254,10 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer()
             
-            VStack(spacing: isIdle ? 24 : 32) {
+            VStack(spacing: isIdle ? 16 : 20) {
                 // 1. Artwork & Metadata Section
                 HStack(alignment: .bottom, spacing: isLargeCanvas ? 40 : 24) {
-                    artworkSection(size: tabletArtworkSize)
-                        .scaleEffect(isIdle ? 0.95 : 1.0)
+                    artworkSection(size: isIdle ? tabletArtworkSize * 0.95 : tabletArtworkSize)
                     
                     VStack(alignment: .leading, spacing: isShortCanvas ? 4 : 8) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
@@ -286,7 +285,7 @@ struct NowPlayingView: View {
                     VStack(spacing: 0) {
                         HStack(alignment: .center) {
                             // Empty spacer to maintain symmetrical centering on the left
-                            Color.clear.frame(width: 280)
+                            Color.clear.frame(width: 360)
                             
                             Spacer()
                             
@@ -306,7 +305,7 @@ struct NowPlayingView: View {
                             HStack(spacing: isLargeCanvas ? 20 : 12) {
                                 auxiliaryButtons
                             }
-                            .frame(width: 280, alignment: .trailing)
+                            .frame(width: 360, alignment: .trailing)
                         }
                         .padding(.horizontal, isLargeCanvas ? 60 : 24)
                     }
@@ -568,6 +567,7 @@ struct NowPlayingView: View {
                     if isLargeCanvas {
                         Text("Lyrics")
                             .font(.system(size: 14, weight: .bold))
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
                 .padding(.horizontal, isLargeCanvas ? 16 : 12)
@@ -593,6 +593,7 @@ struct NowPlayingView: View {
                     if isLargeCanvas {
                         Text("Queue")
                             .font(.system(size: 14, weight: .bold))
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
                 .padding(.horizontal, isLargeCanvas ? 16 : 12)
