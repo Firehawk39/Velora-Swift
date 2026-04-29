@@ -130,8 +130,8 @@ struct AppHeader: View {
         }
         .padding(ScreenTier.isPhone ? 6 : 8)
         .background(
-            isPlayingTab ? Color.white.opacity(0.1) :
-            (isDarkMode ? .ultraThinMaterial.opacity(0.5) : AnyShapeStyle(Color(hex: "#e5e7eb")))
+            isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
+            (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
         .scaleEffect(ScreenTier.isPhone ? 0.9 : 0.95) // Slightly smaller on everything
