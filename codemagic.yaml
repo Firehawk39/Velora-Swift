@@ -21,6 +21,7 @@ workflows:
             -derivedDataPath derived_data \
             -sdk iphoneos \
             ARCHS=arm64 \
+            TARGETED_DEVICE_FAMILY="1,2" \
             INSTALL_PATH=/Applications \
             PRODUCT_NAME=Velora \
             WRAPPER_EXTENSION=app \

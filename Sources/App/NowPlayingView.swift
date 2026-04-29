@@ -27,8 +27,8 @@ struct NowPlayingView: View {
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas {
-            if ScreenTier.isHuge { return isShortCanvas ? 440.0 : 560.0 }
-            return isShortCanvas ? 340.0 : 460.0
+            if ScreenTier.isHuge { return isShortCanvas ? 400.0 : 480.0 }
+            return isShortCanvas ? 320.0 : 400.0
         }
         if !isCompact { // 10.25" screens / Regular iPad
             return isShortCanvas ? 280.0 : 340.0
@@ -36,8 +36,8 @@ struct NowPlayingView: View {
         return isSE ? 180.0 : 220.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 48.0 : 64.0 }
-        if !isCompact { return isShortCanvas ? 34.0 : 42.0 }
+        if isLargeCanvas { return isShortCanvas ? 40.0 : 52.0 }
+        if !isCompact { return isShortCanvas ? 32.0 : 38.0 }
         return isSE ? 22.0 : 28.0
     }
     private var tabletArtistSize:  CGFloat { 
