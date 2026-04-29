@@ -8,7 +8,6 @@ struct NowPlayingView: View {
     @Binding var isQueueOpen: Bool
     @Binding var isIdle:      Bool
 
-    @State private var isLyricsMode = false
     @State private var isDragging   = false
     @State private var dragProgress: Double = 0
     @State private var idleTimer: Timer? = nil
@@ -146,7 +145,7 @@ struct NowPlayingView: View {
         .onChange(of: isQueueOpen) { isOpen in
             if isOpen { stopIdleTimer() } else { resetIdleTimer() }
         }
-        .onChange(of: isLyricsMode) { isMode in
+        .onChange(of: playback.isLyricsMode) { isMode in
             if isMode { stopIdleTimer() } else { resetIdleTimer() }
         }
         .preferredColorScheme(.dark)
@@ -154,7 +153,7 @@ struct NowPlayingView: View {
 
     private func startIdleTimer() {
         stopIdleTimer()
-        guard !isQueueOpen && !isLyricsMode else { return }
+        guard !isQueueOpen && !playback.isLyricsMode else { return }
         
         idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
             withAnimation(.easeInOut(duration: 2.5)) {
@@ -183,7 +182,7 @@ struct NowPlayingView: View {
             Spacer()
             
             VStack(spacing: isSE ? 24 : 32) {
-                if isLyricsMode {
+                if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 24)
@@ -237,7 +236,7 @@ struct NowPlayingView: View {
             }
             .padding(.bottom, isIdle ? 60 : 32)
         }
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isLyricsMode)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
         .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
@@ -247,7 +246,7 @@ struct NowPlayingView: View {
             Spacer() // Push everything to bottom
             
             VStack(spacing: isShortCanvas ? 20 : 32) {
-                if isLyricsMode {
+                if playback.isLyricsMode {
                     // Inline Lyrics State
                     HStack {
                         inlineLyricsView
@@ -321,7 +320,7 @@ struct NowPlayingView: View {
             }
             .padding(.bottom, isIdle ? (isShortCanvas ? 40 : 60) : 32)
         }
-        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isLyricsMode)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
         .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
@@ -505,8 +504,8 @@ struct NowPlayingView: View {
     private var lyricsButton: some View {
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                isLyricsMode.toggle()
-                if isLyricsMode { isQueueOpen = false }
+                playback.isLyricsMode.toggle()
+                if playback.isLyricsMode { isQueueOpen = false }
             }
             resetIdleTimer()
         } label: {
@@ -518,8 +517,8 @@ struct NowPlayingView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(isLyricsMode ? Color.white : Color.black.opacity(0.5))
-            .foregroundColor(isLyricsMode ? .black : .white)
+            .background(playback.isLyricsMode ? Color.white : Color.black.opacity(0.5))
+            .foregroundColor(playback.isLyricsMode ? .black : .white)
             .clipShape(Capsule())
             .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
@@ -530,7 +529,7 @@ struct NowPlayingView: View {
         Button {
             withAnimation(.spring(response: animationResponse, dampingFraction: 0.8)) {
                 isQueueOpen.toggle()
-                if isQueueOpen { isLyricsMode = false }
+                if isQueueOpen { playback.isLyricsMode = false }
             }
             resetIdleTimer()
         } label: {

@@ -8,6 +8,7 @@ class PlaybackManager: ObservableObject {
     @Published var progress: Double = 0
     @Published var duration: Double = 0
     @Published var currentLyrics: String? = nil
+    @Published var isLyricsMode: Bool = false
     
     // Queue support
     @Published var queue: [Track] = []
