@@ -26,19 +26,19 @@ struct NowPlayingView: View {
     
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
-        if isLargeCanvas { return 260 }
-        if !isCompact { return 200 }
-        return isSE ? 100.0 : 140.0
+        if isLargeCanvas { return 220 }
+        if !isCompact { return 160 }
+        return isSE ? 100.0 : 120.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return 38 }
-        if !isCompact { return 30 }
-        return isSE ? 18.0 : 22.0
+        if isLargeCanvas { return 32 }
+        if !isCompact { return 26 }
+        return isSE ? 18.0 : 20.0
     }
     private var tabletArtistSize:  CGFloat { 
-        if isLargeCanvas { return 20 }
-        if !isCompact { return 18 }
-        return isSE ? 14.0 : 16.0
+        if isLargeCanvas { return 18 }
+        if !isCompact { return 16 }
+        return isSE ? 14.0 : 14.0
     }
 
     var displayProgress: Double {
@@ -189,19 +189,19 @@ struct NowPlayingView: View {
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
-                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.6 : 0.7), 280) : tabletArtworkSize)
-                        .padding(.bottom, isSE ? 8 : 16)
+                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.55 : 0.65), 260) : tabletArtworkSize)
+                        .padding(.bottom, isSE ? 8 : 12)
                     
                     // Centered Metadata
                     VStack(alignment: .center, spacing: 8) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
-                            .font(.system(size: isSE ? 24 : 30, weight: .black))
+                            .font(.system(size: isSE ? 20 : 26, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                         
                         Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                            .font(.system(size: isSE ? 16 : 18, weight: .bold))
+                            .font(.system(size: isSE ? 14 : 16, weight: .bold))
                             .foregroundColor(.white.opacity(0.6))
                             .lineLimit(1)
                             .multilineTextAlignment(.center)
@@ -258,7 +258,7 @@ struct NowPlayingView: View {
                     .transition(.opacity)
                 } else {
                     // Artwork & Metadata side-by-side
-                    HStack(alignment: .bottom, spacing: isLargeCanvas ? 60 : 32) {
+                    HStack(alignment: .bottom, spacing: isLargeCanvas ? 40 : 24) {
                         artworkSection(size: tabletArtworkSize)
                         
                         VStack(alignment: .leading, spacing: 8) {
@@ -381,7 +381,6 @@ struct NowPlayingView: View {
         .frame(width: size, height: size)
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 20)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.6), lineWidth: 2.5))
     }
 
     private var metadataCards: some View {
