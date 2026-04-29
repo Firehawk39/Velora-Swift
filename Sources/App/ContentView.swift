@@ -195,27 +195,15 @@ struct ContentView: View {
     }
 
     private func autoLogin() {
-        // Check for existing session
-        let serverUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
-        let user = UserDefaults.standard.string(forKey: "velora_username") ?? ""
+        let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
+        let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
         
-        if !serverUrl.isEmpty && !user.isEmpty,
-           let passData = KeychainHelper.shared.read(service: "velora-password", account: user),
-           let pass = String(data: passData, encoding: .utf8) {
-            
-            client.configure(url: serverUrl, user: user, pass: pass)
-            client.fetchEverything()
-        } else {
-            // --- TESTING LOGIN BYPASS ---
-            // Automatically log in with testing credentials to save time
-            let devServer = "http://192.168.1.13:4533" 
-            let devUser = "tony"
-            let devPass = "u4vTyG7BcBxR-9-" 
-            
-            client.configure(url: devServer, user: devUser, pass: devPass)
-            client.fetchEverything()
-            
-            showSettings = false // Bypass the login screen
-        }
+        let finalUrl = savedUrl.isEmpty ? "http://192.168.1.13:4533" : savedUrl
+        let finalUser = savedUser.isEmpty ? "tony" : savedUser
+        let finalPass = "u4vTyG7BcBxR-9-"
+        
+        client.configure(url: finalUrl, user: finalUser, pass: finalPass)
+        client.fetchEverything()
+        showSettings = false
     }
 }

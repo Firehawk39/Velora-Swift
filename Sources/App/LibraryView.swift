@@ -53,15 +53,15 @@ struct LibraryView: View {
                 Button(action: { activeCategory = nil }) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: isCompact ? 22 : 28, weight: .semibold))
+                            .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
                             .foregroundColor(.red)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Library")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.red.opacity(0.6))
                                 .textCase(.uppercase)
                             Text(menuItems.first(where: { $0.id == category })?.label ?? "")
-                                .font(.system(size: isCompact ? 22 : 28, weight: .semibold))
+                                .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
                                 .foregroundColor(.red)
                         }
                     }

@@ -100,50 +100,50 @@ struct ArtistDetailView: View {
     }
     
     private var heroNameSize: CGFloat { 
-        if isLargeCanvas { return 96.0 }
-        if ScreenTier.isPhone { return ScreenTier.isSE ? 36 : 42 }
-        return 72.0
+        if isLargeCanvas { return 24.0 }
+        if ScreenTier.isPhone { return ScreenTier.isSE ? 24 : 28 }
+        return 20.0
     }
     
     private var heroSection: some View {
         Group {
             if isCompact {
-                VStack(spacing: ScreenTier.isSE ? 20 : 32) {
-                    artistLogo(size: ScreenTier.isSE ? 140 : 160)
+                VStack(spacing: ScreenTier.isSE ? 16 : 24) {
+                    artistLogo(size: ScreenTier.isSE ? 120 : 140)
                     
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         artistLabel
-                        artistNameText(size: ScreenTier.isSE ? 32 : 40)
+                        artistNameText(size: ScreenTier.isSE ? 28 : 32)
                     }
                     
                     playAllButton
-                        .scaleEffect(ScreenTier.isPhone ? 0.9 : 1.0)
+                        .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 48) {
-                    HStack(alignment: .bottom, spacing: 48) {
-                        artistLogo(size: 240)
+                VStack(alignment: .leading, spacing: 24) {
+                    HStack(alignment: .bottom, spacing: 24) {
+                        artistLogo(size: 100)
                         
-                        VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 12) {
                             artistLabel
                             
-                            HStack(alignment: .bottom, spacing: 32) {
+                            HStack(alignment: .bottom, spacing: 20) {
                                 artistNameText(size: heroNameSize)
                                     .fixedSize(horizontal: false, vertical: true)
                                 
                                 playAllButton
-                                    .padding(.bottom, 12)
+                                    .padding(.bottom, 4)
                             }
                         }
                         Spacer()
                     }
                 }
-                .padding(.horizontal, isLargeCanvas ? 80 : 48)
+                .padding(.horizontal, isLargeCanvas ? 60 : 32)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 100)
-        .padding(.bottom, 48)
+        .padding(.top, 80)
+        .padding(.bottom, 32)
     }
     
     private func artistLogo(size: CGFloat) -> some View {
@@ -194,14 +194,14 @@ struct ArtistDetailView: View {
     }
     
     private var mostFavoriteSection: some View {
-        VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 16 : 24) {
+        VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
             Text("Most Favourite")
-                .font(.system(size: ScreenTier.isPhone ? 18 : 20, weight: .black))
+                .font(.system(size: ScreenTier.isPhone ? 16 : 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
             if let track = favoriteSongs.first {
                 Button(action: { onPlay(track, favoriteSongs) }) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         AsyncImage(url: track.coverArtUrl) { phase in
                             if let img = phase.image {
                                 img.resizable().scaledToFill()
@@ -210,24 +210,23 @@ struct ArtistDetailView: View {
                             }
                         }
                         .aspectRatio(1, contentMode: .fill)
-                        .cornerRadius(12)
+                        .cornerRadius(8)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title)
-                                .font(.system(size: 18, weight: .bold))
+                                .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(isDarkMode ? .white : .black)
                             
                             Text("\(track.playCount ?? 0) plays")
-                                .font(.system(size: 14))
+                                .font(.system(size: 12))
                                 .foregroundColor(.gray)
                         }
                     }
                 }
                 .buttonStyle(PlainButtonStyle())
             } else if let track = topSongs.first {
-                // Fallback to top song if no stars
                 Button(action: { onPlay(track, topSongs) }) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         AsyncImage(url: track.coverArtUrl) { phase in
                             if let img = phase.image {
                                 img.resizable().scaledToFill()
@@ -236,15 +235,15 @@ struct ArtistDetailView: View {
                             }
                         }
                         .aspectRatio(1, contentMode: .fill)
-                        .cornerRadius(12)
+                        .cornerRadius(8)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title)
-                                .font(.system(size: 18, weight: .bold))
+                                .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(isDarkMode ? .white : .black)
                             
                             Text("\(track.playCount ?? 0) plays")
-                                .font(.system(size: 14))
+                                .font(.system(size: 12))
                                 .foregroundColor(.gray)
                         }
                     }
@@ -255,13 +254,13 @@ struct ArtistDetailView: View {
     }
     
     private var songsByArtistSection: some View {
-        VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 16 : 24) {
+        VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
             Text("Songs by \(artistName)")
-                .font(.system(size: ScreenTier.isPhone ? 18 : 20, weight: .black))
+                .font(.system(size: ScreenTier.isPhone ? 16 : 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
             if isCompact {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     ForEach(topSongs.prefix(5)) { track in
                         trackRow(track)
                     }
@@ -269,17 +268,17 @@ struct ArtistDetailView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHGrid(rows: [
-                        GridItem(.fixed(72)),
-                        GridItem(.fixed(72)),
-                        GridItem(.fixed(72))
-                    ], spacing: 16) {
+                        GridItem(.fixed(60)),
+                        GridItem(.fixed(60)),
+                        GridItem(.fixed(60))
+                    ], spacing: 12) {
                         ForEach(topSongs) { track in
                             trackRow(track)
-                                .frame(width: isLargeCanvas ? 400 : 320)
+                                .frame(width: isLargeCanvas ? 300 : 260)
                         }
                     }
                 }
-                .frame(height: 250) // Approx 3 rows * 72 + spacing
+                .frame(height: 210)
             }
         }
     }

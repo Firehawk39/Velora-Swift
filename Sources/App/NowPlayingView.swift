@@ -27,23 +27,23 @@ struct NowPlayingView: View {
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas {
-            if ScreenTier.isHuge { return isShortCanvas ? 300.0 : 340.0 }
-            return isShortCanvas ? 260.0 : 300.0
+            if ScreenTier.isHuge { return isShortCanvas ? 180.0 : 220.0 }
+            return isShortCanvas ? 160.0 : 180.0
         }
         if !isCompact { // 10.25" screens / Regular iPad
-            return isShortCanvas ? 240.0 : 280.0
+            return isShortCanvas ? 160.0 : 180.0
         }
-        return isSE ? 180.0 : 220.0
+        return isSE ? 120.0 : 160.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 32.0 : 38.0 }
-        if !isCompact { return isShortCanvas ? 28.0 : 32.0 }
-        return isSE ? 22.0 : 28.0
+        if isLargeCanvas { return isShortCanvas ? 22.0 : 24.0 }
+        if !isCompact { return isShortCanvas ? 18.0 : 22.0 }
+        return isSE ? 16.0 : 20.0
     }
     private var tabletArtistSize:  CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 20.0 : 24.0 }
-        if !isCompact { return isShortCanvas ? 16.0 : 18.0 }
-        return isSE ? 14.0 : 18.0
+        if isLargeCanvas { return isShortCanvas ? 14.0 : 16.0 }
+        if !isCompact { return isShortCanvas ? 12.0 : 14.0 }
+        return isSE ? 12.0 : 14.0
     }
 
     var displayProgress: Double {
@@ -252,13 +252,13 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 20) // Top spacer to allow content to move
             
-            VStack(spacing: isIdle ? 16 : 24) {
+            VStack(spacing: isIdle ? 16 : 20) {
                 // 1. Artwork & Metadata Section
-                HStack(spacing: isLargeCanvas ? 80 : 40) {
+                HStack(spacing: isLargeCanvas ? 30 : 24) {
                     artworkSection(size: tabletArtworkSize)
-                        .scaleEffect(isIdle ? 1.08 : 1.0)
+                        .scaleEffect(isIdle ? 0.95 : 1.0)
                     
-                    VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 16) {
+                    VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 12) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
                             .font(.system(size: tabletTitleSize, weight: .black))
                             .foregroundColor(.white)
@@ -270,11 +270,11 @@ struct NowPlayingView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, isLargeCanvas ? 100 : 40)
+                .padding(.horizontal, isLargeCanvas ? 40 : 24)
                 
                 // 2. Progress Bar
                 progressBar
-                    .padding(.horizontal, isLargeCanvas ? 100 : 40)
+                    .padding(.horizontal, isLargeCanvas ? 40 : 24)
                 
                 // 3. Controls (Visible in Normal State)
                 if !isIdle {
@@ -284,7 +284,7 @@ struct NowPlayingView: View {
                                 playbackControls
                             }
                             .padding(.horizontal, 40)
-                            .padding(.vertical, 20)
+                            .padding(.vertical, 16)
                             .background(Color.black.opacity(0.5))
                             .clipShape(Capsule())
                             .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
@@ -296,7 +296,7 @@ struct NowPlayingView: View {
                             }
                         }
                     }
-                    .padding(.bottom, 80) // Push the UI UP so it's fully visible and not cut off
+                    .padding(.bottom, isShortCanvas ? 20 : 40)
                     .transition(.asymmetric(
                         insertion: .move(edge: .bottom).combined(with: .opacity),
                         removal: .opacity
@@ -304,8 +304,12 @@ struct NowPlayingView: View {
                 }
             }
             .padding(.bottom, isIdle ? (isShortCanvas ? 8 : 12) : 0) // Flush with bottom in Idle
-            .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
+            
+            if !isIdle {
+                Spacer(minLength: 20) // Center UI in Normal state
+            }
         }
+        .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
     }
 
     @ViewBuilder
