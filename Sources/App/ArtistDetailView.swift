@@ -28,6 +28,17 @@ struct ArtistDetailView: View {
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
             
+            // Radiated background glow behind the artist image
+            RadialGradient(
+                gradient: Gradient(colors: [Color(hex: "#FFCCD5").opacity(isDarkMode ? 0.12 : 0.22), .clear]),
+                center: .top,
+                startRadius: 0,
+                endRadius: isCompact ? 250 : 450
+            )
+            .frame(height: isCompact ? 400 : 600)
+            .allowsHitTesting(false)
+            .ignoresSafeArea()
+            
             ScrollView {
                 VStack(spacing: 0) {
                     heroSection
@@ -146,7 +157,7 @@ struct ArtistDetailView: View {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
                             artistLabel
-                            artistNameText(size: 64)
+                            artistNameText(size: 44)
                         }
                         
                         Spacer()
@@ -160,7 +171,7 @@ struct ArtistDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 20)
+        .padding(.top, isCompact ? 20 : 100)
         .padding(.bottom, 32)
     }
     
@@ -214,13 +225,39 @@ struct ArtistDetailView: View {
     private var mostFavoriteSection: some View {
         VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
             Text("Most Favourite")
-                .font(.system(size: ScreenTier.isPhone ? 16 : 18, weight: .black))
+                .font(.system(size: 16, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
-            if let track = favoriteSongs.first {
-                trackRow(track)
-            } else if let track = topSongs.first {
-                trackRow(track)
+            if let track = favoriteSongs.first ?? topSongs.first {
+                Button(action: { onPlay(track, topSongs) }) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        AsyncImage(url: track.coverArtUrl) { phase in
+                            if let img = phase.image {
+                                img.resizable().scaledToFill()
+                            } else {
+                                Color.gray.opacity(0.1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: isCompact ? 200 : 240)
+                        .cornerRadius(16)
+                        .clipped()
+                        .shadow(color: .black.opacity(isDarkMode ? 0.25 : 0.1), radius: 15, x: 0, y: 8)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(track.title)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isDarkMode ? .white : .black)
+                                .lineLimit(1)
+                            
+                            Text(track.album ?? "Unknown Album")
+                                .font(.system(size: 14))
+                                .foregroundColor(.gray)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }
@@ -262,12 +299,12 @@ struct ArtistDetailView: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundColor(isDarkMode ? .white : .black)
                         .lineLimit(1)
                     
                     Text(track.album ?? "Unknown Album")
-                        .font(.system(size: 14))
+                        .font(.system(size: 13))
                         .foregroundColor(.gray)
                         .lineLimit(1)
                 }
@@ -351,7 +388,7 @@ struct ArtistDetailView: View {
                 .clipShape(Circle())
         }
         .padding(.leading, 24)
-        .padding(.top, 60)
+        .padding(.top, 100)
         .zIndex(110)
     }
     
