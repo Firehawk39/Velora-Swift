@@ -113,9 +113,9 @@ struct ArtistDetailView: View {
     }
     
     private var heroNameSize: CGFloat { 
-        if isLargeCanvas { return 24.0 }
-        if ScreenTier.isPhone { return ScreenTier.isSE ? 24 : 28 }
-        return 20.0
+        if isLargeCanvas { return 20.0 }
+        if ScreenTier.isPhone { return ScreenTier.isSE ? 18 : 24 }
+        return 16.0
     }
     
     private var heroSection: some View {
@@ -126,7 +126,7 @@ struct ArtistDetailView: View {
                     
                     VStack(spacing: 6) {
                         artistLabel
-                        artistNameText(size: ScreenTier.isSE ? 28 : 32)
+                        artistNameText(size: ScreenTier.isSE ? 24 : 28)
                     }
                     
                     playAllButton
@@ -157,7 +157,7 @@ struct ArtistDetailView: View {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
                             artistLabel
-                            artistNameText(size: 44)
+                            artistNameText(size: 36)
                         }
                         
                         Spacer()
@@ -225,7 +225,7 @@ struct ArtistDetailView: View {
     private var mostFavoriteSection: some View {
         VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
             Text("Most Favourite")
-                .font(.system(size: 16, weight: .black))
+                .font(.system(size: 14, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
             if let track = favoriteSongs.first ?? topSongs.first {
@@ -246,12 +246,12 @@ struct ArtistDetailView: View {
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title)
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(isDarkMode ? .white : .black)
                                 .lineLimit(1)
                             
                             Text(track.album ?? "Unknown Album")
-                                .font(.system(size: 14))
+                                .font(.system(size: 12))
                                 .foregroundColor(.gray)
                                 .lineLimit(1)
                         }
@@ -265,7 +265,7 @@ struct ArtistDetailView: View {
     private var songsByArtistSection: some View {
         VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
             Text("Songs by \(artistName)")
-                .font(.system(size: ScreenTier.isPhone ? 16 : 18, weight: .black))
+                .font(.system(size: ScreenTier.isPhone ? 14 : 16, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
             if isCompact {
@@ -299,12 +299,12 @@ struct ArtistDetailView: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(isDarkMode ? .white : .black)
                         .lineLimit(1)
                     
                     Text(track.album ?? "Unknown Album")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundColor(.gray)
                         .lineLimit(1)
                 }
@@ -325,7 +325,7 @@ struct ArtistDetailView: View {
     private var discographySection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("Discography")
-                .font(.system(size: 20, weight: .black))
+                .font(.system(size: 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .padding(.horizontal, isCompact ? 24 : 48)
             
@@ -344,7 +344,7 @@ struct ArtistDetailView: View {
     private var fansAlsoLikeSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("Fans also like")
-                .font(.system(size: 20, weight: .black))
+                .font(.system(size: 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .padding(.horizontal, isCompact ? 24 : 48)
             
@@ -365,13 +365,13 @@ struct ArtistDetailView: View {
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("About")
-                .font(.system(size: 20, weight: .black))
+                .font(.system(size: 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .padding(.horizontal, isCompact ? 24 : 48)
             
             if let bio = biography {
                 Text(bio)
-                    .font(.system(size: 16))
+                    .font(.system(size: 14))
                     .foregroundColor(.gray)
                     .padding(.horizontal, isCompact ? 24 : 48)
             }
