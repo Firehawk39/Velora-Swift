@@ -171,7 +171,7 @@ struct ArtistDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, isCompact ? 20 : 100)
+        .padding(.top, isCompact ? 60 : 160)
         .padding(.bottom, 32)
     }
     

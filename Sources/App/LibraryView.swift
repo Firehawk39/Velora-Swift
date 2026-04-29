@@ -9,9 +9,10 @@ struct LibraryView: View {
     @State private var activeCategory: String? = nil
     @State private var viewMode: ViewMode = .grid
     @State private var sortMode: SortMode = .alphabetical
+    @State private var showSortDropdown: Bool = false
     
     enum ViewMode { case grid, list }
-    enum SortMode { case alphabetical, recent }
+    enum SortMode { case alphabetical, recent, topPlayed }
     
     var onArtistClick: ((String, String) -> Void)?
 
@@ -100,9 +101,12 @@ struct LibraryView: View {
                         Button(action: { sortMode = .recent }) {
                             Label("Recently Added", systemImage: "clock.fill")
                         }
+                        Button(action: { sortMode = .topPlayed }) {
+                            Label("Top Played", systemImage: "play.circle.fill")
+                        }
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: sortMode == .alphabetical ? "textformat" : "clock.fill")
+                            Image(systemName: sortMode == .alphabetical ? "textformat" : (sortMode == .recent ? "clock.fill" : "play.circle.fill"))
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 10, weight: .bold))
                         }
@@ -213,7 +217,9 @@ private struct PlaylistGridView: View {
 
     var body: some View {
         let sorted = client.playlists.sorted { a, b in
-            sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
+            if sortMode == .alphabetical { return a.name < b.name }
+            if sortMode == .topPlayed { return false } // Playlists don't have play counts
+            return (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
@@ -270,7 +276,9 @@ private struct ArtistGridView: View {
 
     var body: some View {
         let sorted = client.artists.sorted { a, b in
-            sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
+            if sortMode == .alphabetical { return a.name < b.name }
+            if sortMode == .topPlayed { return false } // Artists don't have direct play counts in this model yet
+            return (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
@@ -318,7 +326,9 @@ private struct AlbumGridView: View {
 
     var body: some View {
         let sorted = client.albums.sorted { a, b in
-            sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
+            if sortMode == .alphabetical { return a.name < b.name }
+            if sortMode == .topPlayed { return false } // Albums don't have direct play counts in this model yet
+            return (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
@@ -374,7 +384,9 @@ private struct SongListView: View {
 
     var body: some View {
         let sorted = client.allSongs.sorted { a, b in
-            sortMode == .alphabetical ? a.title < b.title : (a.created ?? "") > (b.created ?? "")
+            if sortMode == .alphabetical { return a.title < b.title }
+            if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
+            return (a.created ?? "") > (b.created ?? "")
         }
         
         if viewMode == .grid {

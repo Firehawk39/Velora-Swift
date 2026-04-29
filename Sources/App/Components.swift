@@ -129,7 +129,10 @@ struct AppHeader: View {
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
         .padding(ScreenTier.isPhone ? 6 : 8)
-        .background(.ultraThinMaterial.opacity(0.5))
+        .background(
+            isPlayingTab ? Color.white.opacity(0.1) :
+            (isDarkMode ? .ultraThinMaterial.opacity(0.5) : AnyShapeStyle(Color(hex: "#e5e7eb")))
+        )
         .clipShape(Capsule())
         .scaleEffect(ScreenTier.isPhone ? 0.9 : 0.95) // Slightly smaller on everything
     }
@@ -160,9 +163,10 @@ private struct TabButton: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(
-                    isActive ? (isDarkMode || activeTab == "now-playing" ? Color.white.opacity(0.15) : Color.black.opacity(0.05)) : Color.clear
+                    isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
                 )
                 .clipShape(Capsule())
+                .shadow(color: isActive && !isDarkMode && !isPlayingTab ? Color.black.opacity(0.05) : Color.clear, radius: 2, y: 1)
         }
         .buttonStyle(PlainButtonStyle())
     }

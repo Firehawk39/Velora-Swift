@@ -251,70 +251,60 @@ struct NowPlayingView: View {
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
-        VStack(spacing: 0) {
-            Spacer()
+        HStack(alignment: .center, spacing: isLargeCanvas ? 80 : 48) {
+            // Left: Artwork
+            artworkSection(size: isLargeCanvas ? proxy.size.height * 0.55 : proxy.size.height * 0.5)
+                .scaleEffect(isIdle ? 1.05 : 1.0)
             
-            VStack(spacing: isIdle ? 16 : 20) {
-                // 1. Artwork & Metadata Section
-                HStack(alignment: .bottom, spacing: isLargeCanvas ? 40 : 24) {
-                    artworkSection(size: isIdle ? tabletArtworkSize * 0.95 : tabletArtworkSize)
+            // Right: Metadata & Controls
+            VStack(alignment: .leading, spacing: isShortCanvas ? 24 : 40) {
+                // Metadata
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(playback.currentTrack?.title ?? "Not Playing")
+                        .font(.system(size: isLargeCanvas ? 48 : 36, weight: .black))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
                     
-                    VStack(alignment: .leading, spacing: isShortCanvas ? 4 : 8) {
-                        Text(playback.currentTrack?.title ?? "Not Playing")
-                            .font(.system(size: tabletTitleSize, weight: .black))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
-                        
-                        Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                            .font(.system(size: tabletArtistSize, weight: .bold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                        .font(.system(size: isLargeCanvas ? 24 : 20, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(1)
                 }
-                .padding(.horizontal, isLargeCanvas ? 60 : 24)
-                .offset(y: isIdle ? 40 : 0)
                 
-                // 2. Progress Bar
+                // Progress
                 progressBar
-                    .padding(.horizontal, isLargeCanvas ? 60 : 24)
-                    .offset(y: isIdle ? 40 : 0)
                 
-                // 3. Controls (Visible in Normal State)
+                // Controls
                 if !isIdle {
-                    VStack(spacing: 0) {
-                        HStack(spacing: 0) {
-                            // 1. Proportional left spacer to balance the grid
-                            Color.clear
-                                .frame(maxWidth: .infinity)
-                            
-                            // 2. Playback Controls (Perfectly Centered)
-                            HStack(spacing: isLargeCanvas ? 32 : 20) {
-                                playbackControls
-                            }
-                            .padding(.horizontal, 32)
-                            .padding(.vertical, 12)
-                            .background(Color.black.opacity(0.4))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1.5))
-                            
-                            // 3. Auxiliary controls (Lyrics, Queue) grouped on the right
-                            HStack(spacing: isLargeCanvas ? 20 : 12) {
-                                auxiliaryButtons
-                            }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    HStack {
+                        // Playback Controls
+                        HStack(spacing: isLargeCanvas ? 32 : 24) {
+                            playbackControls
                         }
-                        .padding(.horizontal, isLargeCanvas ? 60 : 24)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 16)
+                        .background(Color.black.opacity(0.4))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1.5))
+                        
+                        Spacer()
+                        
+                        // Aux Buttons
+                        HStack(spacing: isLargeCanvas ? 24 : 16) {
+                            auxiliaryButtons
+                        }
                     }
-                    .padding(.bottom, isShortCanvas ? 20 : 40)
                     .transition(.asymmetric(
                         insertion: .move(edge: .bottom).combined(with: .opacity),
                         removal: .move(edge: .bottom).combined(with: .opacity)
                     ))
                 }
             }
-            .padding(.bottom, isIdle ? 40 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.trailing, isLargeCanvas ? 60 : 32)
         }
+        .padding(.leading, isLargeCanvas ? 80 : 48)
+        .frame(maxHeight: .infinity, alignment: .center)
         .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
@@ -631,13 +621,13 @@ struct NowPlayingView: View {
     private var lyricsView: some View {
         ZStack {
             // ── Background: Performance-Optimized Vignette (Non-GPU Heavy) ──
-            (isDarkMode ? Color(hex: "#0a0a0a") : Color(hex: "#f5f5f5"))
+            Color(hex: "#0a0a0a")
                 .ignoresSafeArea()
             
             // Subtle accent gradient instead of blur
             LinearGradient(
                 gradient: Gradient(colors: [
-                    (isDarkMode ? Color.blue.opacity(0.15) : Color.blue.opacity(0.05)),
+                    Color.blue.opacity(0.15),
                     .clear
                 ]),
                 startPoint: .topLeading,
