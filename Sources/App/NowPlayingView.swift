@@ -154,13 +154,6 @@ struct NowPlayingView: View {
         .onChange(of: isLyricsMode) { isMode in
             if isMode { stopIdleTimer() } else { resetIdleTimer() }
         }
-        .overlay {
-            if isLyricsMode {
-                lyricsView
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(500)
-            }
-        }
         .preferredColorScheme(.dark)
     }
 
@@ -194,131 +187,134 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer()
             
-            // Album Art
-            artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.65 : 0.72), 280) : tabletArtworkSize)
-                .scaleEffect(isIdle ? 1.08 : 1.0)
-                .padding(.top, isSE ? 20 : 0)
-                .padding(.bottom, isIdle ? (isSE ? 16 : 32) : (isSE ? 16 : 24))
-                .offset(y: isIdle ? 40 : 0)
-
-            // Centered Metadata
-            VStack(alignment: .center, spacing: isSE ? 2 : 8) {
-                Text(playback.currentTrack?.title ?? "Not Playing")
-                    .font(.system(size: ScreenTier.isPhone ? (isSE ? 22 : 28) : (ScreenTier.isHuge ? 52 : 38), weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+            VStack(spacing: isSE ? 24 : 32) {
+                if isLyricsMode {
+                    inlineLyricsView
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 24)
+                } else {
+                    // Album Art
+                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.7 : 0.8), 320) : tabletArtworkSize)
+                        .padding(.bottom, isSE ? 8 : 16)
+                    
+                    // Centered Metadata
+                    VStack(alignment: .center, spacing: 8) {
+                        Text(playback.currentTrack?.title ?? "Not Playing")
+                            .font(.system(size: isSE ? 28 : 34, weight: .black))
+                            .foregroundColor(.white)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                        
+                        Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                            .font(.system(size: isSE ? 18 : 22, weight: .bold))
+                            .foregroundColor(.white.opacity(0.6))
+                            .lineLimit(1)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 24)
+                }
                 
-                Text(playback.currentTrack?.artist ?? "Select a track")
-                    .font(.system(size: ScreenTier.isPhone ? (isSE ? 16 : 20) : (ScreenTier.isHuge ? 32 : 25), weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-                    .lineLimit(1)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, isSE ? 20 : 32)
-            .padding(.bottom, isIdle ? (isSE ? 40 : 60) : (isSE ? 24 : 40))
-            .offset(y: isIdle ? 40 : 0)
-
-            // Progress Bar
-            progressBar
-                .padding(.horizontal, isSE ? 20 : 32)
-                .padding(.bottom, isIdle ? (isSE ? 30 : 40) : (isSE ? 12 : 20))
-                .offset(y: isIdle ? 40 : 0)
-
-            if !isIdle {
-                auxiliaryButtons
-                    .scaleEffect(isSE ? 0.9 : 1.0)
-                    .padding(.bottom, isSE ? 24 : 32)
-            }
-
-            // Controls
-            VStack(spacing: 0) {
+                // Progress Bar
+                progressBar
+                    .padding(.horizontal, 24)
+                
                 if !isIdle {
-                    compactControls
-                        .scaleEffect(ScreenTier.isPhone ? (isSE ? 0.8 : 0.95) : 1.0)
-                        .padding(.horizontal, isSE ? 12 : 32)
-                        .padding(.bottom, ScreenTier.isPhone ? (isSE ? 20 : 32) : 48)
+                    // Controls Section for Portrait
+                    VStack(spacing: 24) {
+                        HStack(spacing: 24) {
+                            playbackControls
+                        }
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 16)
+                        .background(Color.black.opacity(0.5))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                        
+                        auxiliaryButtons
+                            .scaleEffect(0.9)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .opacity(isIdle ? 0.0 : 1.0)
-            .frame(maxHeight: isIdle ? 0 : nil)
-            .allowsHitTesting(!isIdle)
-            .animation(.easeInOut(duration: 0.7), value: isIdle)
+            .padding(.bottom, isIdle ? 60 : 32)
         }
-        .animation(.spring(response: 1.0, dampingFraction: 0.8), value: isIdle)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isLyricsMode)
+        .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            Spacer()
+            Spacer() // Push everything to bottom
             
-            VStack(spacing: isIdle ? 24 : 32) {
-                // 1. Artwork & Metadata Section
-                HStack(alignment: .bottom, spacing: isLargeCanvas ? 40 : 24) {
-                    artworkSection(size: tabletArtworkSize)
-                        .scaleEffect(isIdle ? 0.95 : 1.0)
-                    
-                    VStack(alignment: .leading, spacing: isShortCanvas ? 4 : 8) {
-                        Text(playback.currentTrack?.title ?? "Not Playing")
-                            .font(.system(size: tabletTitleSize, weight: .black))
-                            .foregroundColor(.white)
-                            .lineLimit(2)
+            VStack(spacing: isShortCanvas ? 20 : 32) {
+                if isLyricsMode {
+                    // Inline Lyrics State
+                    HStack {
+                        inlineLyricsView
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Spacer(minLength: 40)
+                    }
+                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                    .transition(.opacity)
+                } else {
+                    // Artwork & Metadata side-by-side
+                    HStack(alignment: .bottom, spacing: isLargeCanvas ? 60 : 32) {
+                        artworkSection(size: isLargeCanvas ? 320 : 240)
                         
-                        Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                            .font(.system(size: tabletArtistSize, weight: .bold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, isLargeCanvas ? 60 : 24)
-                .offset(y: isIdle ? 40 : 0)
-                
-                // 2. Progress Bar
-                progressBar
-                    .padding(.horizontal, isLargeCanvas ? 60 : 24)
-                    .offset(y: isIdle ? 40 : 0)
-                
-                // 3. Controls (Visible in Normal State)
-                if !isIdle {
-                    VStack(spacing: 0) {
-                        HStack(alignment: .center) {
-                            // Empty spacer to maintain symmetrical centering on the left
-                            Color.clear.frame(width: 280)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(playback.currentTrack?.title ?? "Not Playing")
+                                .font(.system(size: isLargeCanvas ? 48 : 38, weight: .black))
+                                .foregroundColor(.white)
+                                .lineLimit(2)
                             
-                            Spacer()
-                            
-                            // Playback Controls
-                            HStack(spacing: isLargeCanvas ? 32 : 20) {
-                                playbackControls
-                            }
-                            .padding(.horizontal, 32)
-                            .padding(.vertical, 12)
-                            .background(Color.black.opacity(0.4))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1.5))
-                            
-                            Spacer()
-                            
-                            // Auxiliary controls (Lyrics, Queue, Download) on the right
-                            HStack(spacing: isLargeCanvas ? 20 : 12) {
-                                auxiliaryButtons
-                            }
-                            .frame(width: 280, alignment: .trailing)
+                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                .font(.system(size: isLargeCanvas ? 26 : 22, weight: .bold))
+                                .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(1)
                         }
-                        .padding(.horizontal, isLargeCanvas ? 60 : 24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.bottom, isShortCanvas ? 20 : 40)
+                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                    .transition(.opacity)
+                }
+                
+                // Progress Bar (Always visible below content)
+                progressBar
+                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                
+                // Controls Section
+                if !isIdle {
+                    HStack(alignment: .center) {
+                        Spacer()
+                        
+                        // Playback Controls Pill
+                        HStack(spacing: isLargeCanvas ? 32 : 24) {
+                            playbackControls
+                        }
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 16)
+                        .background(Color.black.opacity(0.5))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
+                        
+                        Spacer()
+                        
+                        // Auxiliary Buttons Grouped on Right
+                        HStack(spacing: 12) {
+                            auxiliaryButtons
+                        }
+                    }
+                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
                     .transition(.asymmetric(
                         insertion: .move(edge: .bottom).combined(with: .opacity),
                         removal: .move(edge: .bottom).combined(with: .opacity)
                     ))
                 }
             }
-            .padding(.bottom, isIdle ? 40 : 0)
+            .padding(.bottom, isIdle ? (isShortCanvas ? 40 : 60) : 32)
         }
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isLyricsMode)
         .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
@@ -376,9 +372,9 @@ struct NowPlayingView: View {
             }
         }
         .frame(width: size, height: size)
-        .cornerRadius(24)
-        .shadow(color: .black.opacity(0.35), radius: 25, x: 0, y: 15) // Premium shadow
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 20)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.6), lineWidth: 2.5))
     }
 
     private var metadataCards: some View {
@@ -462,66 +458,14 @@ struct NowPlayingView: View {
         .clipShape(Circle())
     }
 
-    private var compactControls: some View {
-        HStack(spacing: 0) {
-            // Shuffle
-            Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
-                Image(systemName: "shuffle")
-                    .font(.system(size: 16))
-                    .foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
-                    .frame(width: 40, height: 40)
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("Shuffle")
-            
-            Button { playback.skipBackward(); resetIdleTimer() } label: {
-                Image(systemName: "backward.fill").font(.system(size: 26)).foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("Previous Track")
-            
-            Button(action: { playback.togglePlayPause(); resetIdleTimer() }) {
-                ZStack {
-                    Circle().fill(Color.white).frame(width: 64, height: 64)
-                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 24)).foregroundColor(.black)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-            
-            Button { playback.skipForward(); resetIdleTimer() } label: {
-                Image(systemName: "forward.fill").font(.system(size: 26)).foregroundColor(.white)
-                    .frame(width: 56, height: 56)
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("Next Track")
-            
-            // Repeat
-            Button { resetIdleTimer() } label: {
-                Image(systemName: "repeat")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white.opacity(0.5))
-                    .frame(width: 40, height: 40)
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("Repeat")
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.4))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
-    }
 
     private var progressBar: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             GeometryReader { barGeo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.15)).frame(height: 6)
+                    Capsule().fill(Color.white.opacity(0.2)).frame(height: 4)
                     Capsule().fill(Color.white)
-                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 6)
+                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 4)
                         .animation(isDragging ? nil : .linear(duration: 0.5), value: progressFraction)
                 }
                 .contentShape(Rectangle())
@@ -540,21 +484,20 @@ struct NowPlayingView: View {
                         }
                 )
             }
-            .frame(height: 20)
+            .frame(height: 12)
 
             HStack {
                 Text(formatTime(displayProgress))
                 Spacer()
                 Text(formatTime(playback.duration))
             }
-            .font(.system(size: 14, weight: .bold, design: .monospaced))
-            .foregroundColor(.white.opacity(0.6))
-            .opacity(isIdle ? 0 : 1)
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .foregroundColor(.white.opacity(0.5))
         }
     }
     private var auxiliaryButtons: some View {
-        HStack(spacing: isLargeCanvas ? 24 : 16) {
-            // Lyrics
+        HStack(spacing: 12) {
+            // Lyrics Pill
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     isLyricsMode.toggle()
@@ -564,22 +507,20 @@ struct NowPlayingView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 16, weight: .bold))
-                    if isLargeCanvas {
-                        Text("Lyrics")
-                            .font(.system(size: 14, weight: .bold))
-                    }
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Lyrics")
+                        .font(.system(size: 14, weight: .bold))
                 }
-                .padding(.horizontal, isLargeCanvas ? 16 : 12)
-                .padding(.vertical, 10)
-                .background(isLyricsMode ? Color.white : Color.white.opacity(0.1))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(isLyricsMode ? Color.white : Color.black.opacity(0.5))
                 .foregroundColor(isLyricsMode ? .black : .white)
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
             }
             .accessibilityLabel("Lyrics Toggle")
             
-            // Queue
+            // Queue Pill
             Button {
                 withAnimation(.spring(response: animationResponse, dampingFraction: 0.8)) {
                     isQueueOpen.toggle()
@@ -589,22 +530,20 @@ struct NowPlayingView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "list.bullet.indent")
-                        .font(.system(size: 16, weight: .bold))
-                    if isLargeCanvas {
-                        Text("Queue")
-                            .font(.system(size: 14, weight: .bold))
-                    }
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Queue")
+                        .font(.system(size: 14, weight: .bold))
                 }
-                .padding(.horizontal, isLargeCanvas ? 16 : 12)
-                .padding(.vertical, 10)
-                .background(isQueueOpen ? Color.white : Color.white.opacity(0.1))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(isQueueOpen ? Color.white : Color.black.opacity(0.5))
                 .foregroundColor(isQueueOpen ? .black : .white)
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
             }
             .accessibilityLabel("Queue Toggle")
 
-            // Download
+            // Download Circle
             Button {
                 resetIdleTimer()
                 if let track = playback.currentTrack {
@@ -613,15 +552,38 @@ struct NowPlayingView: View {
             } label: {
                 let isDownloaded = playback.downloadedTrackIds.contains(playback.currentTrack?.id ?? "")
                 Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.to.line.compact")
-                    .font(.system(size: 18, weight: .bold))
-                    .padding(10)
+                    .font(.system(size: 16, weight: .bold))
                     .frame(width: 44, height: 44)
-                    .background(isDownloaded ? Color.green.opacity(0.3) : Color.white.opacity(0.1))
+                    .background(Color.black.opacity(0.5))
                     .foregroundColor(isDownloaded ? .green : .white)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(isDownloaded ? Color.green.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1))
+                    .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
             }
             .accessibilityLabel("Download")
+        }
+    }
+
+    private var inlineLyricsView: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                if let lyrics = playback.currentLyrics {
+                    let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                    
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        Text(line)
+                            .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
+                            .foregroundColor(.white)
+                            .opacity(index == 2 ? 1.0 : 0.4) // Simulated active line logic
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    Text("Looking for lyrics...")
+                        .font(.system(size: 32, weight: .black))
+                        .foregroundColor(.white.opacity(0.4))
+                }
+            }
+            .padding(.vertical, 40)
         }
     }
 
@@ -630,81 +592,4 @@ struct NowPlayingView: View {
         return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
     }
 
-    private var lyricsView: some View {
-        ZStack {
-            // ── Background: Performance-Optimized Vignette (Non-GPU Heavy) ──
-            (isDarkMode ? Color(hex: "#0a0a0a") : Color(hex: "#f5f5f5"))
-                .ignoresSafeArea()
-            
-            // Subtle accent gradient instead of blur
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    (isDarkMode ? Color.blue.opacity(0.15) : Color.blue.opacity(0.05)),
-                    .clear
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                // ── Header ────────────────────────────────────────────────
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(playback.currentTrack?.title ?? "Lyrics")
-                            .font(.system(size: 26, weight: .bold))
-                            .foregroundColor(.white)
-                        Text(playback.currentTrack?.artist ?? "")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    Spacer()
-                    Button {
-                        withAnimation(.spring(response: animationResponse, dampingFraction: 0.8)) {
-                            isLyricsMode = false
-                        }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 32))
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
-                .padding(.horizontal, 32)
-                .padding(.top, 60)
-                .padding(.bottom, 32)
-                
-                // ── Lyrics Content ────────────────────────────────────────
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 32) {
-                        if let lyrics = playback.currentLyrics {
-                            let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                            
-                            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                                Text(line)
-                                    .font(.system(size: isLargeCanvas ? 48 : 34, weight: .black))
-                                    .foregroundColor(.white)
-                                    .opacity(0.9)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
-                            }
-                        } else {
-                            VStack(spacing: 24) {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(1.5)
-                                Text("Fetching lyrics...")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 100)
-                        }
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 120)
-                }
-            }
-        }
-    }
 }
