@@ -142,39 +142,34 @@ struct NowPlayingView: View {
                     .padding(.top, isIdle ? 0 : headerHeight + 20)
                     .padding(.bottom, 50) // Extra bottom clearance
                     .contentShape(Rectangle()) // Ensures the entire area is scroll-reactive
+                    .onTapGesture {
+                        if isIdle { resetIdleTimer() }
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
-            .overlay {
-                // Tap-to-wake overlay: Only active when idle to catch any touch
-                if isIdle {
-                    Color.black.opacity(0.001)
-                        .ignoresSafeArea()
-                        .onTapGesture {
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 40)
+                    .onChanged { _ in
+                        // Nothing needed on change
+                    }
+                    .onEnded { value in
+                        if isIdle {
+                            let horizontal = value.translation.width
+                            let vertical = value.translation.height
+                            
+                            if abs(horizontal) > abs(vertical) && abs(horizontal) > 50 {
+                                if horizontal < 0 {
+                                    playback.skipForward()
+                                } else {
+                                    playback.skipBackward()
+                                }
+                            }
                             resetIdleTimer()
                         }
-                        .gesture(
-                            DragGesture(minimumDistance: 40)
-                                .onChanged { _ in
-                                    // Nothing needed on change
-                                }
-                                .onEnded { value in
-                                    let horizontal = value.translation.width
-                                    let vertical = value.translation.height
-                                    
-                                    if abs(horizontal) > abs(vertical) && abs(horizontal) > 50 {
-                                        if horizontal < 0 {
-                                            playback.skipForward()
-                                        } else {
-                                            playback.skipBackward()
-                                        }
-                                    }
-                                    resetIdleTimer()
-                                }
-                        )
-                }
-            }
+                    }
+            )
         }
         .onAppear { 
             isIdle = false // Ensure we don't start in idle state
@@ -428,6 +423,11 @@ struct NowPlayingView: View {
         .frame(width: size, height: size)
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 20)
+        .onTapGesture {
+            if isIdle {
+                playback.togglePlayPause()
+            }
+        }
     }
 
     private var metadataCards: some View {
@@ -614,12 +614,7 @@ struct NowPlayingView: View {
                         let activeIndex = syncedLyrics.lastIndex(where: { playback.progress >= $0.time }) ?? 0
                         
                         ForEach(Array(syncedLyrics.enumerated()), id: \.offset) { index, line in
-                            Text(line.text)
-                                .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
-                                .foregroundColor(.white)
-                                .opacity(index == activeIndex ? 1.0 : 0.4)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
+                            renderLyricLine(line: line, index: index, activeIndex: activeIndex, syncedLyrics: syncedLyrics)
                                 .id(index)
                         }
                         .onChange(of: activeIndex) { newIndex in
@@ -654,4 +649,32 @@ struct NowPlayingView: View {
         return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
     }
 
+    private func renderLyricLine(line: LyricLine, index: Int, activeIndex: Int, syncedLyrics: [LyricLine]) -> Text {
+        let baseFont = Font.system(size: isLargeCanvas ? 44 : 32, weight: .black)
+        
+        if index != activeIndex {
+            return Text(line.text)
+                .font(baseFont)
+                .foregroundColor(.white.opacity(0.4))
+        } else {
+            let duration = (index + 1 < syncedLyrics.count) ? (syncedLyrics[index + 1].time - line.time) : 5.0
+            let elapsed = max(0, playback.progress - line.time)
+            
+            let words = line.text.split(separator: " ").map(String.init)
+            let wordDuration = duration / Double(max(1, words.count))
+            
+            var concatenatedText = Text("")
+            for (i, word) in words.enumerated() {
+                let wordStart = Double(i) * wordDuration
+                // Add a small 0.1s buffer for smooth feeling
+                let isSpoken = elapsed >= (wordStart - 0.1)
+                let opacity = isSpoken ? 1.0 : 0.4
+                
+                let textSegment = Text(word + (i == words.count - 1 ? "" : " ")).foregroundColor(.white.opacity(opacity))
+                concatenatedText = concatenatedText + textSegment
+            }
+            
+            return concatenatedText.font(baseFont)
+        }
+    }
 }
