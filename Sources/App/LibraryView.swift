@@ -69,24 +69,50 @@ struct LibraryView: View {
                 Spacer()
                 
                 // View Mode & Sort Mode Controls
-                HStack(spacing: isCompact ? 8 : 20) {
-                    // View Toggle
-                    Picker("View Mode", selection: $viewMode) {
-                        Image(systemName: "square.grid.2x2.fill").tag(ViewMode.grid)
-                        Image(systemName: "list.bullet").tag(ViewMode.list)
+                HStack(spacing: isCompact ? 12 : 20) {
+                    // View Mode Menu
+                    Menu {
+                        Button(action: { viewMode = .grid }) {
+                            Label("Grid View", systemImage: "square.grid.2x2.fill")
+                        }
+                        Button(action: { viewMode = .list }) {
+                            Label("List View", systemImage: "list.bullet")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: viewMode == .grid ? "square.grid.2x2.fill" : "list.bullet")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: isCompact ? 70 : 100)
-                    .accessibilityLabel("Switch View Mode")
-
-                    // Sort Toggle
-                    Picker("Sort Mode", selection: $sortMode) {
-                        Image(systemName: "textformat").tag(SortMode.alphabetical)
-                        Image(systemName: "clock.fill").tag(SortMode.recent)
+                    .accessibilityLabel("View Options")
+                    
+                    // Sort Mode Menu
+                    Menu {
+                        Button(action: { sortMode = .alphabetical }) {
+                            Label("Alphabetical", systemImage: "textformat")
+                        }
+                        Button(action: { sortMode = .recent }) {
+                            Label("Recently Added", systemImage: "clock.fill")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: sortMode == .alphabetical ? "textformat" : "clock.fill")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: isCompact ? 70 : 100)
-                    .accessibilityLabel("Switch Sort Mode")
+                    .accessibilityLabel("Sort Options")
                 }
             }
             .padding(.horizontal, hPad)
@@ -190,13 +216,23 @@ private struct PlaylistGridView: View {
             sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 160), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { p in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Rectangle().fill(Color.gray.opacity(0.1)).aspectRatio(1, contentMode: .fit).cornerRadius(12)
-                            .overlay(Image(systemName: "music.note.list").foregroundColor(.gray).font(.system(size: isCompact ? 24 : 32)))
-                        Text(p.name).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
-                        Text("\(p.songCount ?? 0) tracks").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
+                    VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
+                        Rectangle().fill(Color.gray.opacity(0.1)).aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                            .overlay(Image(systemName: "music.note.list").foregroundColor(.gray).font(.system(size: isCompact ? 20 : 28)))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name)
+                                .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Text("\(p.songCount ?? 0) tracks")
+                                .font(.system(size: isCompact ? 11 : 13))
+                                .foregroundColor(.gray)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
                     }
                     .onTapGesture { client.fetchPlaylistTracks(playlistId: p.id) { t in if !t.isEmpty { playback.playTrack(t[0], context: t) } } }
                 }
@@ -237,12 +273,18 @@ private struct ArtistGridView: View {
             sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 120 : 150), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { a in
-                    VStack(spacing: 10) {
+                    VStack(spacing: isCompact ? 6 : 8) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Circle().fill(Color.gray.opacity(0.1)) }
-                            .frame(width: isCompact ? 120 : 150, height: isCompact ? 120 : 150).clipShape(Circle())
-                        Text(a.name).font(.system(size: isCompact ? 15 : 20, weight: .bold)).lineLimit(1).multilineTextAlignment(.center)
+                            .aspectRatio(1, contentMode: .fit)
+                            .clipShape(Circle())
+                        
+                        Text(a.name)
+                            .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .multilineTextAlignment(.center)
                     }
                     .onTapGesture { onArtistClick?(a.id, a.name) }
                 }
@@ -279,13 +321,23 @@ private struct AlbumGridView: View {
             sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 160), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { a in
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                            .aspectRatio(1, contentMode: .fit).cornerRadius(12)
-                        Text(a.name).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
-                        Text(a.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
+                            .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(a.name)
+                                .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Text(a.artist ?? "")
+                                .font(.system(size: isCompact ? 11 : 13))
+                                .foregroundColor(.gray)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
                     }
                     .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { playback.playTrack(t[0], context: t) } } }
                 }
@@ -326,13 +378,23 @@ private struct SongListView: View {
         }
         
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 180 : 220), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { t in
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                         AsyncImage(url: t.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                            .aspectRatio(1, contentMode: .fit).cornerRadius(16)
-                        Text(t.title).font(.system(size: isCompact ? 18 : 24, weight: .bold)).lineLimit(1)
-                        Text(t.artist ?? "").font(.system(size: isCompact ? 14 : 18)).foregroundColor(.gray).lineLimit(1)
+                            .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(t.title)
+                                .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            Text(t.artist ?? "")
+                                .font(.system(size: isCompact ? 11 : 13))
+                                .foregroundColor(.gray)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
                     }
                     .onTapGesture { playback.playTrack(t, context: sorted) }
                 }

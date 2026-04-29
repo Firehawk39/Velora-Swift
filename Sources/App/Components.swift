@@ -56,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 26.0))
+                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -78,25 +78,27 @@ struct AppHeader: View {
             }
         }) {
             ZStack {
-                Capsule()
-                    .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: ScreenTier.isSE ? 56 : 64, height: ScreenTier.isSE ? 28 : 32)
-                
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: ScreenTier.isSE ? 22 : 24, height: ScreenTier.isSE ? 22 : 24)
-                    .offset(x: isDarkMode ? (ScreenTier.isSE ? 14 : 16) : (ScreenTier.isSE ? -14 : -16))
-                
-                HStack {
-                    Image(systemName: "sun.max.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(isDarkMode ? .gray : .yellow)
-                    Spacer()
-                    Image(systemName: "moon.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(isDarkMode ? .blue : .gray)
+                GeometryReader { geo in
+                    let topInset = geo.safeAreaInsets.top + 40.0
+                    Rectangle()
+                        .fill(isDarkMode ? Color.yellow.opacity(0.7) : Color.black.opacity(0.5))
+                        .frame(width: 1.5, height: topInset + 8)
+                        .offset(x: geo.size.width / 2 - 0.75, y: -topInset)
                 }
-                .frame(width: 44)
+                .frame(width: 36, height: 36)
+                
+                if isDarkMode {
+                    Circle()
+                        .fill(Color.yellow.opacity(0.2))
+                        .frame(width: 36, height: 36)
+                        .blur(radius: 6)
+                }
+                
+                Image(systemName: "lightbulb.fill")
+                    .font(.system(size: ScreenTier.isPhone ? 22 : 26))
+                    .foregroundColor(isDarkMode ? .yellow : Color(hex: "#6b7280"))
+                    .shadow(color: isDarkMode ? .yellow.opacity(0.5) : .clear, radius: isDarkMode ? 8 : 0)
+                    .offset(y: 4)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
@@ -312,15 +314,7 @@ struct ProfileDropdown: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: toggleDark) {
-                HStack {
-                    Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
-                    Text(isDarkMode ? "Light Mode" : "Dark Mode")
-                    Spacer()
-                }
-                .padding()
-            }
-            Divider().background(Color.white.opacity(0.1))
+
             Button(action: onSettings) {
                 HStack {
                     Image(systemName: "gearshape.fill")

@@ -27,11 +27,11 @@ struct NowPlayingView: View {
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas {
-            if ScreenTier.isHuge { return isShortCanvas ? 180.0 : 220.0 }
-            return isShortCanvas ? 160.0 : 180.0
+            if ScreenTier.isHuge { return isShortCanvas ? 320.0 : 400.0 }
+            return isShortCanvas ? 260.0 : 320.0
         }
         if !isCompact { // 10.25" screens / Regular iPad
-            return isShortCanvas ? 160.0 : 180.0
+            return isShortCanvas ? 240.0 : 280.0
         }
         return isSE ? 120.0 : 160.0
     }
@@ -168,8 +168,8 @@ struct NowPlayingView: View {
         stopIdleTimer()
         guard !isQueueOpen && !isLyricsMode else { return }
         
-        idleTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 1.0)) {
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 9.0, repeats: false) { _ in
+            withAnimation(.easeInOut(duration: 2.5)) {
                 isIdle = true
             }
         }
@@ -279,24 +279,33 @@ struct NowPlayingView: View {
                 // 3. Controls (Visible in Normal State)
                 if !isIdle {
                     VStack(spacing: 0) {
-                        ZStack {
-                            HStack(spacing: 40) {
+                        HStack(alignment: .center) {
+                            // Auxiliary controls (Lyrics, Queue, Download)
+                            HStack(spacing: isLargeCanvas ? 20 : 12) {
+                                auxiliaryButtons
+                            }
+                            .frame(width: 280, alignment: .leading)
+                            
+                            Spacer()
+                            
+                            // Playback Controls
+                            HStack(spacing: isLargeCanvas ? 40 : 24) {
                                 playbackControls
                             }
-                            .padding(.horizontal, 40)
-                            .padding(.vertical, 16)
-                            .background(Color.black.opacity(0.5))
+                            .padding(.horizontal, 32)
+                            .padding(.vertical, 12)
+                            .background(Color.black.opacity(0.4))
                             .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
+                            .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1.5))
                             
-                            HStack {
-                                Spacer()
-                                auxiliaryButtons
-                                    .padding(.trailing, 40)
-                            }
+                            Spacer()
+                            
+                            // Empty spacer to maintain symmetrical centering
+                            Color.clear.frame(width: 280)
                         }
+                        .padding(.horizontal, isLargeCanvas ? 40 : 24)
                     }
-                    .padding(.bottom, isShortCanvas ? 20 : 40)
+                    .padding(.bottom, isShortCanvas ? 16 : 32)
                     .transition(.asymmetric(
                         insertion: .move(edge: .bottom).combined(with: .opacity),
                         removal: .opacity
@@ -596,15 +605,19 @@ struct NowPlayingView: View {
             // Download
             Button {
                 resetIdleTimer()
+                if let track = playbackManager.currentTrack {
+                    playbackManager.downloadTrack(track)
+                }
             } label: {
-                Image(systemName: "arrow.down.to.line.compact")
+                let isDownloaded = playbackManager.downloadedTrackIds.contains(playbackManager.currentTrack?.id ?? "")
+                Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.to.line.compact")
                     .font(.system(size: 18, weight: .bold))
                     .padding(10)
                     .frame(width: 44, height: 44)
-                    .background(Color.white.opacity(0.1))
-                    .foregroundColor(.white)
+                    .background(isDownloaded ? Color.green.opacity(0.3) : Color.white.opacity(0.1))
+                    .foregroundColor(isDownloaded ? .green : .white)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                    .overlay(Circle().stroke(isDownloaded ? Color.green.opacity(0.5) : Color.white.opacity(0.15), lineWidth: 1))
             }
             .accessibilityLabel("Download")
         }
