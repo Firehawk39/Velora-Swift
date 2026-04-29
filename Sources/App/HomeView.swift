@@ -111,6 +111,8 @@ struct HomeView: View {
                 Spacer().frame(height: 48)
             }
             .padding(.top, 4)
+        .onAppear {
+            client.fetchRecentlyPlayed()
         }
     }
 }

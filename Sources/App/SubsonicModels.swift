@@ -30,6 +30,7 @@ struct SubsonicBody: Codable {
 
 struct RecentlyPlayedWrapper: Codable {
     let song: [SubsonicSong]?
+    let entry: [SubsonicSong]?
 }
 
 struct SubsonicAlbumDetail: Codable {
@@ -120,6 +121,7 @@ struct PlaylistWrapper: Codable {
 
 struct RandomSongsWrapper: Codable {
     let song: [SubsonicSong]?
+    let entry: [SubsonicSong]?
 }
 
 struct SearchResult3: Codable {

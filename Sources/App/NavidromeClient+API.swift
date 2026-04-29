@@ -34,10 +34,12 @@ extension NavidromeClient {
             guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let items = decoded.subsonicResponse?.recentlyPlayed?.song ?? []
+                let recentlyPlayed = decoded.subsonicResponse?.recentlyPlayed
+                let items = recentlyPlayed?.song ?? recentlyPlayed?.entry ?? []
                 
-                // Fallback to random if server doesn't support getRecentlyPlayed
+                // Fallback to random if server doesn't support getRecentlyPlayed or it's empty
                 if items.isEmpty {
+                    self.fetchRandomAsRecent()
                     return
                 }
                 
@@ -49,7 +51,31 @@ extension NavidromeClient {
                                artistId: s.artistId, albumId: s.albumId)
                     }
                 }
-            } catch { print("Error decoding recent songs: \(error)") }
+            } catch { 
+                print("Error decoding recent songs: \(error)")
+                self.fetchRandomAsRecent()
+            }
+        }.resume()
+    }
+
+    private func fetchRandomAsRecent() {
+        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": "15"]) else { return }
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            guard error == nil, let data = data else { return }
+            do {
+                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+                let wrapper = decoded.subsonicResponse?.randomSongs ?? decoded.subsonicResponse?.randomSongs2
+                let items = wrapper?.song ?? wrapper?.entry ?? []
+                
+                DispatchQueue.main.async {
+                    self.recentlyPlayed = items.map { s in
+                        Track(id: s.id, title: s.title ?? "Unknown",
+                               album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
+                               duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                               artistId: s.artistId, albumId: s.albumId)
+                    }
+                }
+            } catch { print("Error decoding random songs as fallback: \(error)") }
         }.resume()
     }
 
