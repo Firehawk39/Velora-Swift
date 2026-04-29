@@ -348,6 +348,8 @@ struct AppSettingsView: View {
     @AppStorage("velora_display_name") private var displayName: String = ""
     @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
     @State private var cacheCleared = false
+    @State private var cacheSize: String = "Calculating..."
+    @State private var downloadingAll = false
     
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")
@@ -543,6 +545,14 @@ struct AppSettingsView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .onAppear {
+                DispatchQueue.global(qos: .background).async {
+                    let size = client.getMediaCacheSize()
+                    DispatchQueue.main.async {
+                        self.cacheSize = size
+                    }
+                }
             }
         }
     }

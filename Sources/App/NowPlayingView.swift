@@ -176,9 +176,9 @@ struct NowPlayingView: View {
             isIdle = false // Ensure we don't start in idle state
             startIdleTimer() 
             if let track = playback.currentTrack {
-                mb.fetchAboutArtist(artistName: track.artist, mbid: track.artistId)
-                mb.fetchAboutAlbum(albumName: track.album, artistName: track.artist, mbid: track.albumId)
-                fanart.fetchBackdrop(for: track.artist, mbid: track.artistId)
+                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: track.artistId)
+                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: track.albumId)
+                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: track.artistId)
             }
         }
         .onDisappear { 
@@ -197,9 +197,9 @@ struct NowPlayingView: View {
         .onChange(of: playback.currentTrack?.id) { _ in
             resetIdleTimer()
             if let track = playback.currentTrack {
-                mb.fetchAboutArtist(artistName: track.artist, mbid: track.artistId)
-                mb.fetchAboutAlbum(albumName: track.album, artistName: track.artist, mbid: track.albumId)
-                fanart.fetchBackdrop(for: track.artist, mbid: track.artistId)
+                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: track.artistId)
+                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: track.albumId)
+                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: track.artistId)
             }
         }
         .preferredColorScheme(.dark)
