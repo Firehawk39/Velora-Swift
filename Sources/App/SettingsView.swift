@@ -332,7 +332,6 @@ struct FloatingLabelField: View {
 struct AppSettingsView: View {
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var client: NavidromeClient
-    @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
     @AppStorage("velora_server_url") private var serverUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""
     @AppStorage("velora_display_name") private var displayName: String = ""
@@ -395,32 +394,6 @@ struct AppSettingsView: View {
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
-                            .cornerRadius(16)
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                        }
-                        
-                        // Preferences Section
-                        VStack(alignment: .leading, spacing: 20) {
-                            Text("Preferences")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(labelCol)
-                                .textCase(.uppercase)
-                                .padding(.leading, 4)
-                            
-                            HStack {
-                                Image(systemName: isDarkMode ? "moon.fill" : "sun.max.fill")
-                                    .foregroundColor(isDarkMode ? labelCol : .orange)
-                                Text("Dark Mode")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(isDarkMode ? .white : .black)
-                                Spacer()
-                                Toggle("", isOn: $isDarkMode)
-                                    .labelsHidden()
-                                    .toggleStyle(SwitchToggleStyle(tint: labelCol))
-                            }
-                            .padding()
-                            .frame(height: 60)
-                            .background(isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                             .cornerRadius(16)
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }

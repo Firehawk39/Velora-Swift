@@ -66,14 +66,7 @@ struct AppHeader: View {
     
     private var headerActions: some View {
         HStack(spacing: ScreenTier.isSE ? 16.0 : 20.0) {
-            Toggle("", isOn: Binding(get: { isDarkMode }, set: { _ in
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    toggleDark()
-                }
-            }))
-            .labelsHidden()
-            .toggleStyle(SwitchToggleStyle(tint: Color(hex: "#60a5fa")))
-            
+            themeToggle
             profileButton
         }
     }
@@ -85,27 +78,25 @@ struct AppHeader: View {
             }
         }) {
             ZStack {
-                GeometryReader { geo in
-                    let topInset = geo.safeAreaInsets.top + 40.0
-                    Rectangle()
-                        .fill(isDarkMode ? Color.yellow.opacity(0.7) : Color.black.opacity(0.5))
-                        .frame(width: 1.5, height: topInset + 8)
-                        .offset(x: geo.size.width / 2 - 0.75, y: -topInset)
-                }
-                .frame(width: 36, height: 36)
+                Capsule()
+                    .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
+                    .frame(width: 72, height: 36)
                 
-                if isDarkMode {
-                    Circle()
-                        .fill(Color.yellow.opacity(0.2))
-                        .frame(width: 36, height: 36)
-                        .blur(radius: 6)
-                }
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 28, height: 28)
+                    .offset(x: isDarkMode ? 18 : -18)
                 
-                Image(systemName: "lightbulb.fill")
-                    .font(.system(size: ScreenTier.isPhone ? 22 : 26))
-                    .foregroundColor(isDarkMode ? .yellow : Color(hex: "#6b7280"))
-                    .shadow(color: isDarkMode ? .yellow.opacity(0.5) : .clear, radius: isDarkMode ? 8 : 0)
-                    .offset(y: 4)
+                HStack {
+                    Image(systemName: "sun.max.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isDarkMode ? .gray : .yellow)
+                    Spacer()
+                    Image(systemName: "moon.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(isDarkMode ? .blue : .gray)
+                }
+                .frame(width: 48)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
