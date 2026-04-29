@@ -27,8 +27,8 @@ struct NowPlayingView: View {
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas {
-            if ScreenTier.isHuge { return isShortCanvas ? 320.0 : 400.0 }
-            return isShortCanvas ? 280.0 : 340.0
+            if ScreenTier.isHuge { return isShortCanvas ? 400.0 : 480.0 }
+            return isShortCanvas ? 320.0 : 400.0
         }
         if !isCompact { // 10.25" screens / Regular iPad
             return isShortCanvas ? 280.0 : 340.0
@@ -36,8 +36,8 @@ struct NowPlayingView: View {
         return isSE ? 180.0 : 220.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 32.0 : 42.0 }
-        if !isCompact { return isShortCanvas ? 28.0 : 34.0 }
+        if isLargeCanvas { return isShortCanvas ? 40.0 : 52.0 }
+        if !isCompact { return isShortCanvas ? 32.0 : 38.0 }
         return isSE ? 22.0 : 28.0
     }
     private var tabletArtistSize:  CGFloat { 
@@ -250,16 +250,17 @@ struct NowPlayingView: View {
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 0) // Push everything to the bottom
-            
-            VStack(spacing: isShortCanvas ? 20 : 32) {
+            // Immersive Infotainment Layout (Matching Image 2)
+            VStack(spacing: isShortCanvas ? 24 : 48) {
+                Spacer(minLength: isShortCanvas ? 10 : 30)
+                
                 // Top Section: Artwork & Metadata Side-by-Side
-                HStack(spacing: isLargeCanvas ? 60 : 30) {
+                HStack(spacing: isLargeCanvas ? 80 : 40) {
                     artworkSection(size: tabletArtworkSize)
-                        .scaleEffect(isIdle ? 1.05 : 1.0)
+                        .scaleEffect(isIdle ? 1.08 : 1.0)
                         .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
                     
-                    VStack(alignment: .leading, spacing: isShortCanvas ? 4 : 8) {
+                    VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 16) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
                             .font(.system(size: tabletTitleSize, weight: .black))
                             .foregroundColor(.white)
@@ -274,84 +275,77 @@ struct NowPlayingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, isLargeCanvas ? 100 : 40)
-                .padding(.bottom, isIdle ? 10 : 20)
                 
-                // Middle Section: Progress Bar
                 progressBar
                     .padding(.horizontal, isLargeCanvas ? 100 : 40)
                 
-                // Bottom Section: Playback Controls (Hidden when idle)
                 if !isIdle {
                     ZStack {
-                        HStack(spacing: 32) {
+                        HStack(spacing: isLargeCanvas ? 60 : 40) {
                             playbackControls
                         }
-                        .padding(.horizontal, 32)
+                        .padding(.horizontal, 40)
                         .padding(.vertical, 16)
-                        .background(.ultraThinMaterial)
+                        .background(Color.white.opacity(0.1))
                         .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
                         
                         HStack {
                             Spacer()
                             auxiliaryButtons
-                                .padding(.trailing, 20)
+                                .padding(.trailing, 24)
                         }
                     }
+                    .padding(.bottom, isShortCanvas ? 20 : 40)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.bottom, isIdle ? (isShortCanvas ? 12 : 24) : (isShortCanvas ? 60 : 100))
-            .offset(y: isIdle ? 20 : 0) // Subtle extra nudge down for idle
+            .padding(.bottom, isIdle ? (isShortCanvas ? 10 : 30) : (isShortCanvas ? 40 : 80))
         }
         .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
     }
 
     @ViewBuilder
     private var playbackControls: some View {
-        // Shuffle
-        Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
-            Image(systemName: "shuffle").font(.system(size: 20)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
-        }
-        .accessibilityLabel("Shuffle")
-        .hoverEffect()
-
-        // Previous
-        Button { playback.skipBackward(); resetIdleTimer() } label: {
-            Image(systemName: "backward.fill").font(.system(size: 30)).foregroundColor(.white)
-        }
-        .accessibilityLabel("Previous Track")
-        .hoverEffect()
-
-        // Play/Pause
-        Button { playback.togglePlayPause(); resetIdleTimer() } label: {
-            ZStack {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 72, height: 72)
-                    .shadow(color: .white.opacity(0.3), radius: 10, x: 0, y: 0)
-                
-                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.black)
+        Group {
+            // Shuffle
+            Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
+                Image(systemName: "shuffle").font(.system(size: 24)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.6))
             }
-        }
-        .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
-        .hoverEffect()
+            .hoverEffect()
 
-        // Next
-        Button { playback.skipForward(); resetIdleTimer() } label: {
-            Image(systemName: "forward.fill").font(.system(size: 30)).foregroundColor(.white)
-        }
-        .accessibilityLabel("Next Track")
-        .hoverEffect()
+            // Previous
+            Button { playback.skipBackward(); resetIdleTimer() } label: {
+                Image(systemName: "backward.fill").font(.system(size: 36)).foregroundColor(.white)
+            }
+            .hoverEffect()
 
-        // Repeat
-        Button { resetIdleTimer() } label: {
-            Image(systemName: "repeat").font(.system(size: 20)).foregroundColor(.white.opacity(0.5))
+            // Play/Pause
+            Button { playback.togglePlayPause(); resetIdleTimer() } label: {
+                ZStack {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 80, height: 80)
+                        .shadow(color: .white.opacity(0.3), radius: 10)
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(.black)
+                }
+            }
+            .hoverEffect()
+
+            // Next
+            Button { playback.skipForward(); resetIdleTimer() } label: {
+                Image(systemName: "forward.fill").font(.system(size: 36)).foregroundColor(.white)
+            }
+            .hoverEffect()
+
+            // Repeat
+            Button { resetIdleTimer() } label: {
+                Image(systemName: "repeat").font(.system(size: 24)).foregroundColor(.white.opacity(0.6))
+            }
+            .hoverEffect()
         }
-        .accessibilityLabel("Repeat")
-        .hoverEffect()
     }
 
     private func artworkSection(size: CGFloat) -> some View {
@@ -556,7 +550,7 @@ struct NowPlayingView: View {
                         .font(.system(size: 16, weight: .bold))
                     if isLargeCanvas {
                         Text("Lyrics")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                     }
                 }
                 .padding(.horizontal, isLargeCanvas ? 16 : 12)
@@ -581,7 +575,7 @@ struct NowPlayingView: View {
                         .font(.system(size: 16, weight: .bold))
                     if isLargeCanvas {
                         Text("Queue")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                     }
                 }
                 .padding(.horizontal, isLargeCanvas ? 16 : 12)
