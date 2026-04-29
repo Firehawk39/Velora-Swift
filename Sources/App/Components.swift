@@ -66,6 +66,14 @@ struct AppHeader: View {
     
     private var headerActions: some View {
         HStack(spacing: ScreenTier.isSE ? 16.0 : 20.0) {
+            Toggle("", isOn: Binding(get: { isDarkMode }, set: { _ in
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    toggleDark()
+                }
+            }))
+            .labelsHidden()
+            .toggleStyle(SwitchToggleStyle(tint: Color(hex: "#60a5fa")))
+            
             profileButton
         }
     }
@@ -313,17 +321,6 @@ struct ProfileDropdown: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: toggleDark) {
-                HStack {
-                    Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
-                    Text(isDarkMode ? "Light Mode" : "Dark Mode")
-                    Spacer()
-                }
-                .padding()
-                .foregroundColor(isDarkMode ? .white : .black)
-            }
-            Divider().background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
-
             Button(action: onSettings) {
                 HStack {
                     Image(systemName: "gearshape.fill")

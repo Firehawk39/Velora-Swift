@@ -27,13 +27,13 @@ struct NowPlayingView: View {
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas {
-            if ScreenTier.isHuge { return isShortCanvas ? 320.0 : 400.0 }
-            return isShortCanvas ? 260.0 : 320.0
+            if ScreenTier.isHuge { return isShortCanvas ? 220.0 : 280.0 }
+            return isShortCanvas ? 180.0 : 220.0
         }
         if !isCompact { // 10.25" screens / Regular iPad
-            return isShortCanvas ? 240.0 : 280.0
+            return isShortCanvas ? 160.0 : 200.0
         }
-        return isSE ? 120.0 : 160.0
+        return isSE ? 100.0 : 140.0
     }
     private var tabletTitleSize:   CGFloat { 
         if isLargeCanvas { return isShortCanvas ? 22.0 : 24.0 }
@@ -254,11 +254,11 @@ struct NowPlayingView: View {
             
             VStack(spacing: isIdle ? 16 : 20) {
                 // 1. Artwork & Metadata Section
-                HStack(spacing: isLargeCanvas ? 30 : 24) {
+                HStack(alignment: .bottom, spacing: isLargeCanvas ? 30 : 24) {
                     artworkSection(size: tabletArtworkSize)
                         .scaleEffect(isIdle ? 0.95 : 1.0)
                     
-                    VStack(alignment: .leading, spacing: isShortCanvas ? 8 : 12) {
+                    VStack(alignment: .leading, spacing: isShortCanvas ? 4 : 8) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
                             .font(.system(size: tabletTitleSize, weight: .black))
                             .foregroundColor(.white)
@@ -266,7 +266,15 @@ struct NowPlayingView: View {
                         
                         Text(playback.currentTrack?.artist ?? "Unknown Artist")
                             .font(.system(size: tabletArtistSize, weight: .bold))
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.white.opacity(0.9))
+                            .lineLimit(1)
+                        
+                        if let album = playback.currentTrack?.album, !album.isEmpty {
+                            Text(album)
+                                .font(.system(size: tabletArtistSize * 0.9, weight: .medium))
+                                .foregroundColor(.white.opacity(0.6))
+                                .lineLimit(1)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
