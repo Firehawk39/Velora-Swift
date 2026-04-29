@@ -10,6 +10,7 @@ class FanartManager: ObservableObject {
     private let fileManager = FileManager.default
     private let backdropDir: URL
     private let portraitDir: URL
+    private let fetchQueue = DispatchQueue(label: "com.velora.fanart.fetches")
     
     // Fanart.tv API Key - Provided by user
     private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80" 
@@ -45,98 +46,90 @@ class FanartManager: ObservableObject {
     }
 
     func fetchBackdrop(for artist: String, mbid: String? = nil) {
-        // If it's the same artist and we already have a backdrop, don't do anything
-        if currentArtistName == artist && currentBackdrop != nil { return }
-        currentArtistName = artist
+        // Clear previous state immediately to avoid "sticky" visuals
+        DispatchQueue.main.async {
+            if self.currentArtistName != artist {
+                self.currentBackdrop = nil
+                self.currentArtistName = artist
+            }
+        }
         
-        // 1. Check Cache Synchronously first to see if we can update immediately
+        // 1. Check Cache Synchronously first
         if let cached = getCachedBackdrop(for: artist) {
-            if self.currentBackdrop == nil || self.currentBackdrop?.size != cached.size {
-                self.currentBackdrop = cached
+            DispatchQueue.main.async {
+                if self.currentBackdrop == nil || self.currentBackdrop?.size != cached.size {
+                    self.currentBackdrop = cached
+                }
             }
             return
         }
         
-        // 2. If not in cache, clear the old backdrop IMMEDIATELY
-        // This prevents the previous artist's image from "sticking" while we fetch or if we fail
-        self.currentBackdrop = nil
-        
         let sanitized = sanitizeFileName(artist)
-        let fileName = sanitized + ".jpg"
-        let fileUrl = backdropDir.appendingPathComponent(fileName)
+        let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
         
-        // 3. Prevent duplicate active fetches
-        if activeBackdropFetches.contains(sanitized) { return }
-        activeBackdropFetches.insert(sanitized)
+        // 2. Prevent duplicate active fetches safely
+        var alreadyFetching = false
+        fetchQueue.sync {
+            alreadyFetching = activeBackdropFetches.contains(sanitized)
+            if !alreadyFetching {
+                activeBackdropFetches.insert(sanitized)
+            }
+        }
+        if alreadyFetching { return }
         
         let queryFanart = { (resolvedMBID: String) in
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url in
                 if let url = url {
-                    self.downloadAndCache(from: url, to: fileUrl) { image in
-                        self.activeBackdropFetches.remove(sanitized)
-                        DispatchQueue.main.async { 
-                            withAnimation(.easeInOut(duration: 0.8)) {
-                                self.currentBackdrop = image 
-                            }
-                        }
+                    // Priority: UI fetch
+                    self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: .high) { image in
+                        self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                     }
                 } else {
-                    self.activeBackdropFetches.remove(sanitized)
+                    self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                 }
             }
         }
         
-        // 3. Fetch from Fanart.tv
+        // 3. Resolve MBID and Fetch
         guard let validMBID = mbid, !validMBID.isEmpty else {
             self.getMBID(for: artist) { resolved in
                 if let resolved = resolved {
                     queryFanart(resolved)
                 } else {
-                    self.activeBackdropFetches.remove(sanitized)
+                    self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                 }
             }
             return
         }
         
-        let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
-        self.fetchFromFanart(urlString: originalUrlString, type: .background, artistName: artist) { url in
-            if let url = url {
-                self.downloadAndCache(from: url, to: fileUrl) { image in
-                    self.activeBackdropFetches.remove(sanitized)
-                    DispatchQueue.main.async { 
-                        withAnimation(.easeInOut(duration: 0.8)) {
-                            self.currentBackdrop = image 
-                        }
-                    }
-                }
-            } else {
-                self.getMBID(for: artist) { resolved in
-                    if let resolved = resolved, resolved != validMBID {
-                        queryFanart(resolved)
-                    } else {
-                        self.activeBackdropFetches.remove(sanitized)
-                    }
-                }
-            }
-        }
+        queryFanart(validMBID)
     }
     
     func downloadBackdropSilently(for artist: String, mbid: String? = nil) {
         let sanitized = sanitizeFileName(artist)
-        let fileName = sanitized + ".jpg"
-        let fileUrl = backdropDir.appendingPathComponent(fileName)
+        let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
         
         if fileManager.fileExists(atPath: fileUrl.path) { return }
-        if activeBackdropFetches.contains(sanitized) { return }
-        activeBackdropFetches.insert(sanitized)
+        
+        var alreadyFetching = false
+        fetchQueue.sync {
+            alreadyFetching = activeBackdropFetches.contains(sanitized)
+            if !alreadyFetching {
+                activeBackdropFetches.insert(sanitized)
+            }
+        }
+        if alreadyFetching { return }
         
         let query = { (resolvedMBID: String) in
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url in
-                self.activeBackdropFetches.remove(sanitized)
                 if let url = url {
-                    self.downloadAndCache(from: url, to: fileUrl) { _ in }
+                    self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: .low) { _ in
+                        self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
+                    }
+                } else {
+                    self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                 }
             }
         }
@@ -146,7 +139,7 @@ class FanartManager: ObservableObject {
         } else {
             getMBID(for: artist) { resolved in
                 if let resolved = resolved { query(resolved) }
-                else { self.activeBackdropFetches.remove(sanitized) }
+                else { self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) } }
             }
         }
     }
@@ -245,17 +238,32 @@ class FanartManager: ObservableObject {
         return Int(truncatingIfNeeded: h)
     }
     
-    private func downloadAndCache(from urlString: String, to localUrl: URL, completion: @escaping (UIImage?) -> Void) {
+    private func downloadAndCache(from urlString: String, to localUrl: URL, artistName: String, priority: URLSessionTask.Priority = .default, completion: @escaping (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else { return }
         
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+        var request = URLRequest(url: url)
+        request.networkServiceType = priority == .high ? .responsiveData : .background
+        
+        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
             if let data = data, let image = UIImage(data: data) {
                 try? data.write(to: localUrl)
-                DispatchQueue.main.async { completion(image) }
+                
+                // CRITICAL: Even if this was a "silent" or background fetch, 
+                // if the artist is the one we are currently viewing, update the UI!
+                DispatchQueue.main.async {
+                    if self.currentArtistName == artistName {
+                        withAnimation(.easeInOut(duration: 0.8)) {
+                            self.currentBackdrop = image
+                        }
+                    }
+                    completion(image)
+                }
             } else {
                 DispatchQueue.main.async { completion(nil) }
             }
-        }.resume()
+        }
+        task.priority = priority.rawValue
+        task.resume()
     }
     
     private func sanitizeFileName(_ name: String) -> String {
