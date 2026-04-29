@@ -283,8 +283,12 @@ struct NowPlayingView: View {
                 // 3. Controls (Visible in Normal State)
                 if !isIdle {
                     VStack(spacing: 0) {
-                        ZStack(alignment: .center) {
-                            // Playback Controls (Perfectly Centered)
+                        HStack(spacing: 0) {
+                            // 1. Proportional left spacer to balance the grid
+                            Color.clear
+                                .frame(maxWidth: .infinity)
+                            
+                            // 2. Playback Controls (Perfectly Centered)
                             HStack(spacing: isLargeCanvas ? 32 : 20) {
                                 playbackControls
                             }
@@ -294,7 +298,7 @@ struct NowPlayingView: View {
                             .clipShape(Capsule())
                             .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1.5))
                             
-                            // Auxiliary controls (Lyrics, Queue, Download) on the right edge
+                            // 3. Auxiliary controls (Lyrics, Queue) grouped on the right
                             HStack(spacing: isLargeCanvas ? 20 : 12) {
                                 auxiliaryButtons
                             }
