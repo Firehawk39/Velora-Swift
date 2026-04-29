@@ -605,11 +605,11 @@ struct NowPlayingView: View {
             // Download
             Button {
                 resetIdleTimer()
-                if let track = playbackManager.currentTrack {
-                    playbackManager.downloadTrack(track)
+                if let track = playback.currentTrack {
+                    playback.downloadTrack(track)
                 }
             } label: {
-                let isDownloaded = playbackManager.downloadedTrackIds.contains(playbackManager.currentTrack?.id ?? "")
+                let isDownloaded = playback.downloadedTrackIds.contains(playback.currentTrack?.id ?? "")
                 Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.to.line.compact")
                     .font(.system(size: 18, weight: .bold))
                     .padding(10)
