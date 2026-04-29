@@ -1,5 +1,6 @@
 // swift-tools-version: 5.8
 import PackageDescription
+import AppleProductTypes
 
 let package = Package(
     name: "Velora",
@@ -7,9 +8,27 @@ let package = Package(
         .iOS(.v15)
     ],
     products: [
-        .executable(
+        .iOSApplication(
             name: "Velora",
-            targets: ["Velora"]
+            targets: ["Velora"],
+            bundleIdentifier: "com.velora.aistudio",
+            displayVersion: "1.0",
+            bundleVersion: "1",
+            iconAssetName: "AppIcon",
+            accentColorAssetName: "AccentColor",
+            supportedDeviceFamilies: [
+                .pad,
+                .phone
+            ],
+            supportedInterfaceOrientations: [
+                .portrait,
+                .landscapeRight,
+                .landscapeLeft,
+                .portraitUpsideDown
+            ],
+            capabilities: [
+                .backgroundModes(modes: [.audio])
+            ]
         )
     ],
     targets: [
