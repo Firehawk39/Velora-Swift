@@ -27,7 +27,7 @@ let package = Package(
                 .portraitUpsideDown
             ],
             capabilities: [
-                .backgroundMode(.audio)
+                .backgroundModes([.audio])
             ]
         )
     ],
