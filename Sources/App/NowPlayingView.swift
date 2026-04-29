@@ -83,6 +83,31 @@ struct NowPlayingView: View {
                                 }
                             )
                     }
+                } else if let track = playback.currentTrack, let url = track.coverArtUrl {
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .opacity(isIdle ? 0.45 : 0.35)
+                            .overlay(
+                                ZStack {
+                                    RadialGradient(
+                                        gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                        center: .center,
+                                        startRadius: 200,
+                                        endRadius: proxy.size.width * 0.8
+                                    )
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                }
+                            )
+                    } placeholder: {
+                        Color.black
+                    }
                 } else {
                     Color.black
                 }
