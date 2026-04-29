@@ -175,6 +175,30 @@ class PlaybackManager: ObservableObject {
         client.scrobble(id: track.id, submission: false)
         
         updateNowPlayingInfo()
+        prefetchNextTracks()
+    }
+    
+    private func prefetchNextTracks() {
+        let prefetchCount = 3
+        let start = queueIndex + 1
+        let end = min(start + prefetchCount, queue.count)
+        
+        guard start < end else { return }
+        
+        for i in start..<end {
+            let track = queue[i]
+            let artist = track.artist ?? ""
+            
+            // 1. Prefetch Backdrop Silently
+            FanartManager.shared.downloadBackdropSilently(for: artist)
+            
+            // 2. Prefetch Metadata Silently
+            Task {
+                // Ensure we don't spam the API during rapid skips
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
+            }
+        }
     }
     
     func togglePlayPause() {
