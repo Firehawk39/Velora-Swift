@@ -146,29 +146,6 @@ struct NowPlayingView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 40)
-                    .onChanged { _ in
-                        if !isIdle { resetIdleTimer() }
-                    }
-                    .onEnded { value in
-                        if isIdle {
-                            let horizontal = value.translation.width
-                            let vertical = value.translation.height
-                            
-                            if abs(horizontal) > abs(vertical) && abs(horizontal) > 50 {
-                                if horizontal < 0 {
-                                    playback.skipForward()
-                                } else {
-                                    playback.skipBackward()
-                                }
-                            }
-                            resetIdleTimer()
-                        } else {
-                            resetIdleTimer()
-                        }
-                    }
-            )
             .overlay {
                 // Tap-to-wake overlay: Only active when idle to catch any touch
                 if isIdle {
@@ -177,6 +154,25 @@ struct NowPlayingView: View {
                         .onTapGesture {
                             resetIdleTimer()
                         }
+                        .gesture(
+                            DragGesture(minimumDistance: 40)
+                                .onChanged { _ in
+                                    // Nothing needed on change
+                                }
+                                .onEnded { value in
+                                    let horizontal = value.translation.width
+                                    let vertical = value.translation.height
+                                    
+                                    if abs(horizontal) > abs(vertical) && abs(horizontal) > 50 {
+                                        if horizontal < 0 {
+                                            playback.skipForward()
+                                        } else {
+                                            playback.skipBackward()
+                                        }
+                                    }
+                                    resetIdleTimer()
+                                }
+                        )
                 }
             }
         }

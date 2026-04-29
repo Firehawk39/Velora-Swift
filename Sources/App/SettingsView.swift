@@ -18,6 +18,9 @@ struct SettingsView: View {
     @State private var displayName: String  = UserDefaults.standard.string(forKey: "velora_display_name") ?? ""
     @State private var showPassword: Bool   = false
     @State private var status: ConnStatus  = .idle
+    @State private var cacheCleared: Bool   = false
+    @State private var cacheSize: String    = "Calculating..."
+    @State private var downloadingAll: Bool = false
 
     enum ConnStatus { case idle, connecting, connected, error }
 
@@ -52,6 +55,14 @@ struct SettingsView: View {
             }
             .frame(maxWidth: 360)
             .frame(maxWidth: .infinity)
+        }
+        .onAppear {
+            DispatchQueue.global(qos: .background).async {
+                let size = client.getMediaCacheSize()
+                DispatchQueue.main.async {
+                    self.cacheSize = size
+                }
+            }
         }
     }
 
@@ -430,8 +441,45 @@ struct AppSettingsView: View {
                                 .padding(.leading, 4)
                             
                             Button(action: {
+                                downloadingAll = true
+                                Task {
+                                    for artist in client.artists {
+                                        FanartManager.shared.fetchBackdrop(for: artist.name, mbid: artist.mbid)
+                                        FanartManager.shared.fetchArtistPortrait(for: artist.name, mbid: artist.mbid) { _ in }
+                                        try? await Task.sleep(nanoseconds: 500_000_000)
+                                    }
+                                    DispatchQueue.main.async { 
+                                        downloadingAll = false 
+                                        // Update cache size after download
+                                        DispatchQueue.global(qos: .background).async {
+                                            let size = client.getMediaCacheSize()
+                                            DispatchQueue.main.async { self.cacheSize = size }
+                                        }
+                                    }
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "icloud.and.arrow.down.fill")
+                                    Text(downloadingAll ? "Downloading..." : "Download All Backgrounds & Portraits")
+                                    Spacer()
+                                    if downloadingAll {
+                                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                                    } else {
+                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .frame(height: 60)
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .foregroundColor(isDark ? .white : .black)
+                            }
+                            .disabled(downloadingAll)
+                            
+                            Button(action: {
                                 client.clearCache()
                                 cacheCleared = true
+                                self.cacheSize = "0 MB"
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                                     cacheCleared = false
                                 }
@@ -444,7 +492,7 @@ struct AppSettingsView: View {
                                         Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)
                                         Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
                                     } else {
-                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                        Text(cacheSize).font(.system(size: 14)).foregroundColor(.gray)
                                     }
                                 }
                                 .padding()

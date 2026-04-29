@@ -356,14 +356,61 @@ extension NavidromeClient {
             self.recentlyPlayed.removeAll()
         }
         URLCache.shared.removeAllCachedResponses()
-        let tempDir = FileManager.default.temporaryDirectory
-        if let contents = try? FileManager.default.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil) {
-            contents.forEach { try? FileManager.default.removeItem(at: $0) }
+        let fileManager = FileManager.default
+        let tempDir = fileManager.temporaryDirectory
+        if let contents = try? fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil) {
+            contents.forEach { try? fileManager.removeItem(at: $0) }
         }
+        
+        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let backdropDir = docs.appendingPathComponent("Backdrops")
+        let portraitDir = docs.appendingPathComponent("ArtistPortraits")
+        
+        for dir in [backdropDir, portraitDir] {
+            if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                contents.forEach { try? fileManager.removeItem(at: $0) }
+            }
+        }
+        
         fetchRecentlyPlayed()
         fetchAlbums()
         fetchArtists()
         fetchPlaylists()
         fetchAllSongs()
+    }
+    
+    func getMediaCacheSize() -> String {
+        var totalSize: Int64 = 0
+        let fileManager = FileManager.default
+        
+        totalSize += Int64(URLCache.shared.currentDiskUsage)
+        
+        let tempDir = fileManager.temporaryDirectory
+        if let enumerator = fileManager.enumerator(at: tempDir, includingPropertiesForKeys: [.fileSizeKey]) {
+            for case let fileURL as URL in enumerator {
+                if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                    totalSize += Int64(fileSize)
+                }
+            }
+        }
+        
+        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let backdropDir = docs.appendingPathComponent("Backdrops")
+        let portraitDir = docs.appendingPathComponent("ArtistPortraits")
+        
+        for dir in [backdropDir, portraitDir] {
+            if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
+                for case let fileURL as URL in enumerator {
+                    if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                        totalSize += Int64(fileSize)
+                    }
+                }
+            }
+        }
+        
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: totalSize)
     }
 }
