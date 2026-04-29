@@ -29,7 +29,11 @@ struct VeloraApp: App {
         let fontName = "Stardom-Regular"
         let fontExt = "otf"
         
-        var url = Bundle.main.url(forResource: fontName, withExtension: fontExt)
+        var url = Bundle.module.url(forResource: fontName, withExtension: fontExt)
+        
+        if url == nil {
+            url = Bundle.main.url(forResource: fontName, withExtension: fontExt)
+        }
         
         if url == nil {
             // In some environments, resources are in a separate .bundle folder
