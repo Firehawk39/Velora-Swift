@@ -46,20 +46,22 @@ class FanartManager: ObservableObject {
     }
 
     func fetchBackdrop(for artist: String, mbid: String? = nil) {
-        // Clear previous state immediately to avoid "sticky" visuals
-        DispatchQueue.main.async {
-            if self.currentArtistName != artist {
-                self.currentBackdrop = nil
-                self.currentArtistName = artist
+        // 1. Update state synchronously to prevent race conditions during rapid skips
+        let isNewArtist = self.currentArtistName != artist
+        self.currentArtistName = artist
+        
+        if isNewArtist {
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    self.currentBackdrop = nil
+                }
             }
         }
         
-        // 1. Check Cache Synchronously first
+        // 2. Check Cache Synchronously
         if let cached = getCachedBackdrop(for: artist) {
             DispatchQueue.main.async {
-                if self.currentBackdrop == nil || self.currentBackdrop?.size != cached.size {
-                    self.currentBackdrop = cached
-                }
+                self.currentBackdrop = cached
             }
             return
         }
