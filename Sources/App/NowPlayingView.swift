@@ -169,7 +169,7 @@ struct NowPlayingView: View {
         guard !isQueueOpen && !isLyricsMode else { return }
         
         idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 2.5)) {
+            withAnimation(.easeInOut(duration: 4.0)) {
                 isIdle = true
             }
         }
@@ -200,7 +200,7 @@ struct NowPlayingView: View {
                 .animation(.spring(response: animationResponse, dampingFraction: 0.8), value: isIdle)
                 .padding(.top, isSE ? 20 : 0)
                 .padding(.bottom, isIdle ? (isSE ? 16 : 32) : (isSE ? 16 : 24))
-                .offset(y: isIdle ? -10 : 0)
+                .offset(y: isIdle ? 70 : 0)
 
             // Centered Metadata
             VStack(alignment: .center, spacing: isSE ? 2 : 8) {
@@ -216,12 +216,14 @@ struct NowPlayingView: View {
                     .lineLimit(1)
                     .multilineTextAlignment(.center)
             }
+            .offset(y: isIdle ? 70 : 0)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, isSE ? 20 : 32)
             .padding(.bottom, isIdle ? (isSE ? 40 : 60) : (isSE ? 24 : 40))
 
             // Progress Bar
             progressBar
+                .offset(y: isIdle ? 70 : 0)
                 .padding(.horizontal, isSE ? 20 : 32)
                 .padding(.bottom, isIdle ? (isSE ? 30 : 40) : (isSE ? 12 : 20))
 
@@ -269,20 +271,17 @@ struct NowPlayingView: View {
                             .foregroundColor(.white.opacity(0.9))
                             .lineLimit(1)
                         
-                        if let album = playback.currentTrack?.album, !album.isEmpty {
-                            Text(album)
-                                .font(.system(size: tabletArtistSize * 0.9, weight: .medium))
-                                .foregroundColor(.white.opacity(0.6))
-                                .lineLimit(1)
-                        }
+
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, isLargeCanvas ? 40 : 24)
+                .offset(y: isIdle ? 70 : 0)
                 
                 // 2. Progress Bar
                 progressBar
                     .padding(.horizontal, isLargeCanvas ? 40 : 24)
+                    .offset(y: isIdle ? 70 : 0)
                 
                 // 3. Controls (Visible in Normal State)
                 if !isIdle {

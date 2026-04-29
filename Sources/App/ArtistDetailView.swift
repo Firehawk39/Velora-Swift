@@ -100,9 +100,9 @@ struct ArtistDetailView: View {
     }
     
     private var heroNameSize: CGFloat { 
-        if isLargeCanvas { return 24.0 }
-        if ScreenTier.isPhone { return ScreenTier.isSE ? 24 : 28 }
-        return 20.0
+        if isLargeCanvas { return 64.0 }
+        if ScreenTier.isPhone { return ScreenTier.isSE ? 28 : 36 }
+        return 48.0
     }
     
     private var heroSection: some View {
@@ -254,31 +254,15 @@ struct ArtistDetailView: View {
     }
     
     private var songsByArtistSection: some View {
-        VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
+        VStack(alignment: .leading, spacing: isCompact ? 16 : 24) {
             Text("Songs by \(artistName)")
-                .font(.system(size: ScreenTier.isPhone ? 16 : 18, weight: .black))
+                .font(.system(size: isCompact ? 20 : 24, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
             
-            if isCompact {
-                VStack(spacing: 10) {
-                    ForEach(topSongs.prefix(5)) { track in
-                        trackRow(track)
-                    }
+            VStack(spacing: 12) {
+                ForEach(topSongs.prefix(isCompact ? 5 : 10)) { track in
+                    trackRow(track)
                 }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHGrid(rows: [
-                        GridItem(.fixed(60)),
-                        GridItem(.fixed(60)),
-                        GridItem(.fixed(60))
-                    ], spacing: 12) {
-                        ForEach(topSongs) { track in
-                            trackRow(track)
-                                .frame(width: isLargeCanvas ? 300 : 260)
-                        }
-                    }
-                }
-                .frame(height: 210)
             }
         }
     }
