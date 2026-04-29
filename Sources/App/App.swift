@@ -55,23 +55,8 @@ struct VeloraApp: App {
         var error: Unmanaged<CFError>?
         if !CTFontManagerRegisterGraphicsFont(font, &error) {
             print("❌ Error registering font: \(error!.takeUnretainedValue())")
-        } else {
-            print("✅ Successfully registered Stardom font")
-            
-            // Debug: Print all available fonts
-            #if canImport(UIKit)
-            print("--- Registered Font Families ---")
-            for family in UIFont.familyNames {
-                if family.contains("Stardom") || family.hasPrefix("S") {
-                    print("Found font family: \(family)")
-                    for name in UIFont.fontNames(forFamilyName: family) {
-                        print("   - Font name: \(name)")
-                    }
-                }
-            }
-            print("--------------------------------")
-            #endif
         }
+    }
     }
 
 }
