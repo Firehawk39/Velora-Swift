@@ -108,7 +108,7 @@ struct NowPlayingView: View {
                                 tabletLayout(proxy: proxy)
                             }
                         }
-                        .frame(minHeight: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
+                        .frame(height: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
                         
                         metadataCards
                             .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
@@ -250,11 +250,11 @@ struct NowPlayingView: View {
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 20) // Top spacer to allow content to move
+            Spacer() // Push everything to the absolute bottom
             
-            VStack(spacing: isIdle ? 16 : 20) {
+            VStack(spacing: isIdle ? 24 : 32) {
                 // 1. Artwork & Metadata Section
-                HStack(alignment: .bottom, spacing: isLargeCanvas ? 30 : 24) {
+                HStack(alignment: .bottom, spacing: isLargeCanvas ? 40 : 24) {
                     artworkSection(size: tabletArtworkSize)
                         .scaleEffect(isIdle ? 0.95 : 1.0)
                     
@@ -268,21 +268,16 @@ struct NowPlayingView: View {
                             .font(.system(size: tabletArtistSize, weight: .bold))
                             .foregroundColor(.white.opacity(0.9))
                             .lineLimit(1)
-                        
-                        if let album = playback.currentTrack?.album, !album.isEmpty {
-                            Text(album)
-                                .font(.system(size: tabletArtistSize * 0.9, weight: .medium))
-                                .foregroundColor(.white.opacity(0.6))
-                                .lineLimit(1)
-                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(.horizontal, isLargeCanvas ? 40 : 24)
+                .padding(.horizontal, isLargeCanvas ? 60 : 24)
+                .offset(y: isIdle ? 70 : 0)
                 
                 // 2. Progress Bar
                 progressBar
-                    .padding(.horizontal, isLargeCanvas ? 40 : 24)
+                    .padding(.horizontal, isLargeCanvas ? 60 : 24)
+                    .offset(y: isIdle ? 70 : 0)
                 
                 // 3. Controls (Visible in Normal State)
                 if !isIdle {
@@ -297,8 +292,8 @@ struct NowPlayingView: View {
                             HStack(spacing: isLargeCanvas ? 32 : 20) {
                                 playbackControls
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 8)
+                            .padding(.horizontal, 32)
+                            .padding(.vertical, 12)
                             .background(Color.black.opacity(0.4))
                             .clipShape(Capsule())
                             .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1.5))
@@ -311,22 +306,18 @@ struct NowPlayingView: View {
                             }
                             .frame(width: 280, alignment: .trailing)
                         }
-                        .padding(.horizontal, isLargeCanvas ? 40 : 24)
+                        .padding(.horizontal, isLargeCanvas ? 60 : 24)
                     }
-                    .padding(.bottom, isShortCanvas ? 16 : 32)
+                    .padding(.bottom, isShortCanvas ? 20 : 40)
                     .transition(.asymmetric(
                         insertion: .move(edge: .bottom).combined(with: .opacity),
-                        removal: .opacity
+                        removal: .move(edge: .bottom).combined(with: .opacity)
                     ))
                 }
             }
-            .padding(.bottom, isIdle ? (isShortCanvas ? 8 : 12) : 0) // Flush with bottom in Idle
-            
-            if !isIdle {
-                Spacer(minLength: 20) // Center UI in Normal state
-            }
+            .padding(.bottom, isIdle ? 40 : 0)
         }
-        .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
+        .animation(.spring(response: 0.85, dampingFraction: 0.85), value: isIdle)
     }
 
     @ViewBuilder
@@ -427,31 +418,6 @@ struct NowPlayingView: View {
                             }
                         }
                     }
-                }
-                .padding(isSE ? 20 : 32)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(isSE ? 20 : 32)
-            }
-            
-            // Album Info
-            VStack(alignment: .leading, spacing: isSE ? 16 : 24) {
-                Text("From the Album")
-                    .font(.system(size: isSE ? 28 : 32, weight: .bold))
-                    .foregroundColor(.white)
-                
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(playback.currentTrack?.album ?? "Unknown Album")
-                            .font(.system(size: isSE ? 24 : 28, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                        Text("Album • \(playback.currentTrack?.artist ?? "Unknown")")
-                            .font(.system(size: isSE ? 14 : 16))
-                            .foregroundColor(.white.opacity(0.5))
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.title3).foregroundColor(.white.opacity(0.3))
                 }
                 .padding(isSE ? 20 : 32)
                 .background(Color.white.opacity(0.05))
