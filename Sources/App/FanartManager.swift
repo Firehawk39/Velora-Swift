@@ -29,6 +29,7 @@ class FanartManager: ObservableObject {
     // MARK: - Backdrops
     
     private var activeBackdropFetches = Set<String>()
+    private var currentArtistName: String?
     
     /// Synchronously checks if a backdrop exists in cache and returns it
     func getCachedBackdrop(for artist: String) -> UIImage? {
@@ -44,6 +45,10 @@ class FanartManager: ObservableObject {
     }
 
     func fetchBackdrop(for artist: String, mbid: String? = nil) {
+        // If it's the same artist and we already have a backdrop, don't do anything
+        if currentArtistName == artist && currentBackdrop != nil { return }
+        currentArtistName = artist
+        
         // 1. Check Cache Synchronously first to see if we can update immediately
         if let cached = getCachedBackdrop(for: artist) {
             if self.currentBackdrop == nil || self.currentBackdrop?.size != cached.size {
@@ -52,11 +57,15 @@ class FanartManager: ObservableObject {
             return
         }
         
+        // 2. If not in cache, clear the old backdrop IMMEDIATELY
+        // This prevents the previous artist's image from "sticking" while we fetch or if we fail
+        self.currentBackdrop = nil
+        
         let sanitized = sanitizeFileName(artist)
         let fileName = sanitized + ".jpg"
         let fileUrl = backdropDir.appendingPathComponent(fileName)
         
-        // 2. Prevent duplicate active fetches
+        // 3. Prevent duplicate active fetches
         if activeBackdropFetches.contains(sanitized) { return }
         activeBackdropFetches.insert(sanitized)
         
