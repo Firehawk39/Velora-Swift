@@ -91,8 +91,9 @@ struct ArtistDetailView: View {
         }
         .onAppear {
             fetchArtistData()
+            // Try cache by name first
             FanartManager.shared.fetchArtistPortrait(for: artistName) { img in
-                self.artistPortrait = img
+                if self.artistPortrait == nil { self.artistPortrait = img }
             }
         }
     }
@@ -406,12 +407,17 @@ struct ArtistDetailView: View {
     
     private func fetchArtistData() {
         isLoading = true
-        client.fetchArtistData(artistId: artistId) { tracks, albums, bio in
+        client.fetchArtistData(artistId: artistId) { tracks, albums, bio, mbid in
             self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
             self.favoriteSongs = tracks.filter { $0.isStarred }
             self.albums = albums
             self.biography = bio
             self.isLoading = false
+            
+            // High-quality portrait fetch
+            FanartManager.shared.fetchArtistPortrait(for: artistName, mbid: mbid) { img in
+                self.artistPortrait = img
+            }
             
             client.fetchArtists { artists in
                 self.relatedArtists = Array(artists.shuffled().prefix(6)).filter { $0.id != artistId }

@@ -120,10 +120,10 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func fetchArtistData(artistId: String, completion: @escaping ([Track], [Album], String?) -> Void) {
-        guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil); return }
+    func fetchArtistData(artistId: String, completion: @escaping ([Track], [Album], String?, String?) -> Void) {
+        guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion([], [], nil); return }
+            guard error == nil, let data = data else { completion([], [], nil, nil); return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let subsonicArtist = decoded.subsonicResponse?.artist
@@ -155,32 +155,35 @@ extension NavidromeClient {
                     }
                 }
                 
-                // Also fetch bio
+                // Also fetch bio & MBID
                 var bio: String? = nil
+                var mbid: String? = nil
                 group.enter()
-                self.fetchArtistInfo(artistId: artistId) { b in
+                self.fetchArtistInfo(artistId: artistId) { b, m in
                     bio = b
+                    mbid = m
                     group.leave()
                 }
                 
                 group.notify(queue: .main) {
-                    completion(allTracks, albums, bio)
+                    completion(allTracks, albums, bio, mbid)
                 }
             } catch {
                 print("Error decoding artist details: \(error)")
-                DispatchQueue.main.async { completion([], [], nil) }
+                DispatchQueue.main.async { completion([], [], nil, nil) }
             }
         }.resume()
     }
 
-    func fetchArtistInfo(artistId: String, completion: @escaping (String?) -> Void) {
-        guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil); return }
+    func fetchArtistInfo(artistId: String, completion: @escaping (String?, String?) -> Void) {
+        guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion(nil); return }
+            guard error == nil, let data = data else { completion(nil, nil); return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                completion(decoded.subsonicResponse?.artistInfo?.biography)
-            } catch { completion(nil) }
+                let info = decoded.subsonicResponse?.artistInfo ?? decoded.subsonicResponse?.artistInfo2
+                completion(info?.biography, info?.musicBrainzId)
+            } catch { completion(nil, nil) }
         }.resume()
     }
 

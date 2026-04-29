@@ -88,7 +88,13 @@ class PlaybackManager: ObservableObject {
         }
         
         // Fetch Backdrop (Fanart/Discogs)
-        FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
+        if let artistId = track.artistId {
+            client.fetchArtistInfo(artistId: artistId) { _, mbid in
+                FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+            }
+        } else {
+            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
+        }
         
         player?.play()
         self.isPlaying = true
@@ -289,5 +295,17 @@ class PlaybackManager: ObservableObject {
         }.resume()
     }
     
+    func downloadAll(tracks: [Track]) {
+        for track in tracks {
+            downloadTrack(track)
+        }
+    }
+    
+    func shufflePlay(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        let shuffled = tracks.shuffled()
+        if let first = shuffled.first {
+            playTrack(first, context: shuffled)
+        }
     }
 }

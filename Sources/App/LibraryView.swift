@@ -117,6 +117,35 @@ struct LibraryView: View {
                         .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
                     .accessibilityLabel("Sort Options")
+                    
+                    // Shuffle & Download All for Songs
+                    if category == "songs" {
+                        HStack(spacing: 8) {
+                            Button(action: {
+                                playback.shufflePlay(tracks: client.allSongs)
+                            }) {
+                                Image(systemName: "shuffle")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                            }
+                            .accessibilityLabel("Shuffle Play All")
+                            
+                            Button(action: {
+                                playback.downloadAll(tracks: client.allSongs)
+                            }) {
+                                Image(systemName: "arrow.down.to.line.compact")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 36, height: 36)
+                                    .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                                    .clipShape(Circle())
+                            }
+                            .accessibilityLabel("Download All Songs")
+                        }
+                    }
                 }
             }
             .padding(.horizontal, hPad)
