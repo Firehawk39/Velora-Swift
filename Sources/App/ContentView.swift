@@ -58,9 +58,9 @@ struct ContentView: View {
                 )
                 .padding(.horizontal, mainPadH)
                 .padding(.top, 14)
-                .opacity(isIdle ? 0 : 1)
-                .offset(y: isIdle ? -100 : 0)
-                .allowsHitTesting(!isIdle)
+                .opacity((isIdle && activeTab == "now-playing") ? 0 : 1)
+                .offset(y: (isIdle && activeTab == "now-playing") ? -100 : 0)
+                .allowsHitTesting(!(isIdle && activeTab == "now-playing"))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) // Ensure header is ALWAYS on top, above ArtistDetailView (200)
             }
