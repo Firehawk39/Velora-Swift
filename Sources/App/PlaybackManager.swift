@@ -9,7 +9,6 @@ class PlaybackManager: ObservableObject {
     @Published var duration: Double = 0
     @Published var currentLyrics: String? = nil
     @Published var isLyricsMode: Bool = false
-    @Published var currentBackdrop: UIImage? = nil
     
     // Queue support
     @Published var queue: [Track] = []
@@ -89,7 +88,7 @@ class PlaybackManager: ObservableObject {
         }
         
         // Fetch Backdrop (Fanart/Discogs)
-        fetchBackdrop(for: track.artist ?? "")
+        FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
         
         player?.play()
         self.isPlaying = true
@@ -290,12 +289,5 @@ class PlaybackManager: ObservableObject {
         }.resume()
     }
     
-    private func fetchBackdrop(for artist: String) {
-        self.currentBackdrop = nil
-        ArtistDataManager.shared.getBackdrop(for: artist) { [weak self] image in
-            if self?.currentTrack?.artist == artist {
-                self?.currentBackdrop = image
-            }
-        }
     }
 }

@@ -3,6 +3,7 @@ import Foundation
 
 struct NowPlayingView: View {
     @EnvironmentObject var playback: PlaybackManager
+    @StateObject var fanart = FanartManager.shared
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass)   var vSizeClass
     @Binding var isQueueOpen: Bool
@@ -58,7 +59,7 @@ struct NowPlayingView: View {
             ZStack {
                 // Dynamic Ambient Background
                 Group {
-                    if let backdrop = playback.currentBackdrop {
+                    if let backdrop = fanart.currentBackdrop {
                         Image(uiImage: backdrop)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -111,7 +112,7 @@ struct NowPlayingView: View {
                     }
                 }
                 .animation(.easeInOut(duration: 1.2), value: isIdle)
-                .animation(.easeInOut(duration: 1.2), value: playback.currentBackdrop)
+                .animation(.easeInOut(duration: 1.2), value: fanart.currentBackdrop)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
                 .drawingGroup() // Flattens the gradients into a single GPU texture for smoother performance

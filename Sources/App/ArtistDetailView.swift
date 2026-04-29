@@ -91,6 +91,9 @@ struct ArtistDetailView: View {
         }
         .onAppear {
             fetchArtistData()
+            FanartManager.shared.fetchArtistPortrait(for: artistName) { img in
+                self.artistPortrait = img
+            }
         }
     }
     
@@ -403,27 +406,11 @@ struct ArtistDetailView: View {
     
     private func fetchArtistData() {
         isLoading = true
-        
-        // 1. Fetch high-quality portrait and bio from ArtistDataManager
-        ArtistDataManager.shared.getPortrait(for: artistName) { image in
-            self.artistPortrait = image
-        }
-        
-        ArtistDataManager.shared.getBio(for: artistName) { bio in
-            if bio != nil {
-                self.biography = bio
-            }
-        }
-        
-        // 2. Fetch standard data from Navidrome
         client.fetchArtistData(artistId: artistId) { tracks, albums, bio in
             self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
             self.favoriteSongs = tracks.filter { $0.isStarred }
             self.albums = albums
-            // Only update bio if we don't have a high-quality one yet
-            if self.biography == nil {
-                self.biography = bio
-            }
+            self.biography = bio
             self.isLoading = false
             
             client.fetchArtists { artists in
