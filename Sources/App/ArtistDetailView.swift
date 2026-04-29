@@ -73,7 +73,9 @@ struct ArtistDetailView: View {
             headerOverlay
             
             // Back
-            backButton
+            if isCompact {
+                backButton
+            }
         }
         .onAppear {
             fetchArtistData()
@@ -119,26 +121,42 @@ struct ArtistDetailView: View {
                     playAllButton
                         .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95)
                 }
+                .padding(.horizontal, 24)
             } else {
-                VStack(alignment: .leading, spacing: 24) {
-                    HStack(alignment: .bottom, spacing: 24) {
-                        artistLogo(size: 100)
-                        
-                        VStack(alignment: .leading, spacing: 12) {
-                            artistLabel
-                            
-                            HStack(alignment: .bottom, spacing: 20) {
-                                artistNameText(size: heroNameSize)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                
-                                playAllButton
-                                    .padding(.bottom, 4)
-                            }
+                VStack(alignment: .leading, spacing: 32) {
+                    ZStack(alignment: .topLeading) {
+                        Button(action: onBack) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isDarkMode ? .white : .black)
+                                .frame(width: 36, height: 36)
+                                .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                                .clipShape(Circle())
                         }
-                        Spacer()
+                        .padding(.leading, 0)
+                        .padding(.top, 20)
+                        
+                        HStack {
+                            Spacer()
+                            artistLogo(size: 220)
+                            Spacer()
+                        }
                     }
+                    
+                    HStack(alignment: .bottom) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            artistLabel
+                            artistNameText(size: 64)
+                        }
+                        
+                        Spacer()
+                        
+                        playAllButton
+                            .padding(.bottom, 8)
+                    }
+                    .padding(.top, 16)
                 }
-                .padding(.horizontal, isCompact ? 24 : 48)
+                .padding(.horizontal, 48)
             }
         }
         .frame(maxWidth: .infinity)
