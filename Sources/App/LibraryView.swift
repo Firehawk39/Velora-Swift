@@ -131,8 +131,8 @@ private struct LibraryMenuView: View {
                 ForEach(menuItems, id: \.id) { item in
                     Button(action: { activeCategory = item.id }) {
                         HStack(spacing: 20) {
-                            Image(systemName: item.icon).foregroundColor(.red).font(.system(size: isCompact ? 20 : 24)).frame(width: isCompact ? 28 : 36)
-                            Text(item.label).font(.system(size: isCompact ? 20 : 24, weight: .medium))
+                            Image(systemName: item.icon).foregroundColor(.red).font(.system(size: isCompact ? 18 : 20)).frame(width: isCompact ? 28 : 32)
+                            Text(item.label).font(.system(size: isCompact ? 18 : 20, weight: .medium))
                                 .foregroundColor(isDarkMode ? .white : .black)
                             Spacer()
                             Image(systemName: "chevron.right").foregroundColor(.gray).font(.system(size: isCompact ? 18 : 24))
@@ -145,11 +145,10 @@ private struct LibraryMenuView: View {
                 
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 12) {
-                        Image(systemName: "chart.bar.fill").foregroundColor(.red).font(.system(size: isCompact ? 18 : 24))
-                        Text("Insights").font(.system(size: isCompact ? 24 : 32, weight: .bold))
+                        Image(systemName: "chart.bar.fill").foregroundColor(.red).font(.system(size: isCompact ? 18 : 20))
+                        Text("Insights").font(.system(size: isCompact ? 22 : 24, weight: .bold))
                     }
                     .padding(.horizontal, hPad)
-                    
                     let stats = [
                         ("Tracks", "\(client.allSongs.count)", "music.note", Color.blue),
                         ("Playlists", "\(client.playlists.count)", "music.note.list", Color.green),
@@ -162,7 +161,7 @@ private struct LibraryMenuView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 Image(systemName: stat.2).foregroundColor(stat.3).font(.system(size: isCompact ? 20 : 24))
                                 Text(stat.0).font(.system(size: isCompact ? 12 : 14, weight: .medium)).foregroundColor(.gray).textCase(.uppercase)
-                                Text(stat.1).font(.system(size: isCompact ? 22 : 28, weight: .bold))
+                                Text(stat.1).font(.system(size: isCompact ? 22 : 24, weight: .bold))
                             }
                             .padding(isCompact ? 16 : 24)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -191,7 +190,7 @@ private struct PlaylistGridView: View {
             sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 180), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 160), spacing: 16)], spacing: 24) {
                 ForEach(sorted) { p in
                     VStack(alignment: .leading, spacing: 8) {
                         Rectangle().fill(Color.gray.opacity(0.1)).aspectRatio(1, contentMode: .fit).cornerRadius(12)
@@ -238,11 +237,11 @@ private struct ArtistGridView: View {
             sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 120 : 180), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 120 : 150), spacing: 16)], spacing: 24) {
                 ForEach(sorted) { a in
                     VStack(spacing: 10) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Circle().fill(Color.gray.opacity(0.1)) }
-                            .frame(width: isCompact ? 120 : 180, height: isCompact ? 120 : 180).clipShape(Circle())
+                            .frame(width: isCompact ? 120 : 150, height: isCompact ? 120 : 150).clipShape(Circle())
                         Text(a.name).font(.system(size: isCompact ? 15 : 20, weight: .bold)).lineLimit(1).multilineTextAlignment(.center)
                     }
                     .onTapGesture { onArtistClick?(a.id, a.name) }
@@ -280,7 +279,7 @@ private struct AlbumGridView: View {
             sortMode == .alphabetical ? a.name < b.name : (a.created ?? "") > (b.created ?? "")
         }
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 180), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 160), spacing: 16)], spacing: 24) {
                 ForEach(sorted) { a in
                     VStack(alignment: .leading, spacing: 8) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
@@ -327,7 +326,7 @@ private struct SongListView: View {
         }
         
         if viewMode == .grid {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 180 : 260), spacing: 16)], spacing: 24) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 180 : 220), spacing: 16)], spacing: 24) {
                 ForEach(sorted) { t in
                     VStack(alignment: .leading, spacing: 8) {
                         AsyncImage(url: t.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }

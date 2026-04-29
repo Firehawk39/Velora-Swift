@@ -56,8 +56,8 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 32.0))
-                .kerning(-1.5)
+                .font(.custom("Stardom-Regular", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 26.0))
+                .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Velora Home")
@@ -65,7 +65,7 @@ struct AppHeader: View {
     }
     
     private var headerActions: some View {
-        HStack(spacing: ScreenTier.isSE ? 16.0 : 24.0) {
+        HStack(spacing: ScreenTier.isSE ? 16.0 : 20.0) {
             themeToggle
             profileButton
         }
@@ -80,23 +80,23 @@ struct AppHeader: View {
             ZStack {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: ScreenTier.isSE ? 56 : 72, height: ScreenTier.isSE ? 28 : 36)
+                    .frame(width: ScreenTier.isSE ? 56 : 64, height: ScreenTier.isSE ? 28 : 32)
                 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: ScreenTier.isSE ? 22 : 28, height: ScreenTier.isSE ? 22 : 28)
-                    .offset(x: isDarkMode ? (ScreenTier.isSE ? 14 : 18) : (ScreenTier.isSE ? -14 : -18))
+                    .frame(width: ScreenTier.isSE ? 22 : 24, height: ScreenTier.isSE ? 22 : 24)
+                    .offset(x: isDarkMode ? (ScreenTier.isSE ? 14 : 16) : (ScreenTier.isSE ? -14 : -16))
                 
                 HStack {
                     Image(systemName: "sun.max.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(isDarkMode ? .gray : .yellow)
                     Spacer()
                     Image(systemName: "moon.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(isDarkMode ? .blue : .gray)
                 }
-                .frame(width: 48)
+                .frame(width: 44)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
@@ -112,7 +112,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: ScreenTier.isPhone ? 24 : 28))
+                .font(.system(size: ScreenTier.isPhone ? 24 : 26))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -126,10 +126,10 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(ScreenTier.isPhone ? 6 : 10)
+        .padding(ScreenTier.isPhone ? 6 : 8)
         .background(.ultraThinMaterial.opacity(0.5))
         .clipShape(Capsule())
-        .scaleEffect(ScreenTier.isPhone ? 0.9 : 1.0) // Slightly smaller on phones
+        .scaleEffect(ScreenTier.isPhone ? 0.9 : 0.95) // Slightly smaller on everything
     }
 }
 
@@ -153,7 +153,7 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: ScreenTier.isPhone ? 15 : 16, weight: isActive ? .bold : .medium))
+                .font(.system(size: ScreenTier.isPhone ? 15 : 14, weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)

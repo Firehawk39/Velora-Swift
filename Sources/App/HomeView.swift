@@ -31,16 +31,16 @@ struct HomeView: View {
 
                 // ── Greeting ─────────────────────────────────────────
                 Text(greeting)
-                    .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 34, weight: .bold))
+                    .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 28, weight: .bold))
                     .foregroundColor(isDark ? .white : Color(hex: "#111827"))
                     .padding(.horizontal, hPad)
-                    .padding(.bottom, ScreenTier.isPhone ? 24 : 48)
+                    .padding(.bottom, ScreenTier.isPhone ? 24 : 32)
 
                 // ── Recent Tracks ─────────────────────────────────────
                 SectionHeader(title: "Recent tracks", isDark: isDark, hPad: hPad)
 
                 if client.recentTracks.isEmpty {
-                    SkeletonRow(count: 4, cardWidth: ScreenTier.isPhone ? 140 : 180, cardHeight: ScreenTier.isPhone ? 140 : 180, isDark: isDark)
+                    SkeletonRow(count: 4, cardWidth: ScreenTier.isPhone ? 140 : 150, cardHeight: ScreenTier.isPhone ? 140 : 150, isDark: isDark)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: ScreenTier.isPhone ? 16 : 32) {
@@ -48,7 +48,7 @@ struct HomeView: View {
                                 TrackCard(
                                     track: track,
                                     isDark: isDark,
-                                    size: ScreenTier.isPhone ? 140 : 180,
+                                    size: ScreenTier.isPhone ? 140 : 150,
                                     onPlay: { playback.playTrack(track, context: Array(client.recentTracks)) }
                                 )
                             }
@@ -64,12 +64,12 @@ struct HomeView: View {
                 SectionHeader(title: "Artists", isDark: isDark, hPad: hPad)
 
                 if client.artists.isEmpty {
-                    SkeletonRow(count: 5, cardWidth: isCompact ? 88 : 110, cardHeight: isCompact ? 88 : 110, isDark: isDark, circular: true)
+                    SkeletonRow(count: 5, cardWidth: isCompact ? 75 : 90, cardHeight: isCompact ? 75 : 90, isDark: isDark, circular: true)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: isCompact ? 16 : 24) {
                             ForEach(client.artists.prefix(isCompact ? 8 : 12)) { artist in
-                                ArtistCircle(artist: artist, isDark: isDark, size: isCompact ? 88 : 120)
+                                ArtistCircle(artist: artist, isDark: isDark, size: isCompact ? 75 : 90)
                                     .onTapGesture {
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                             onArtistClick?(artist.id, artist.name)
@@ -88,12 +88,12 @@ struct HomeView: View {
                 SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad)
 
                 if client.albums.isEmpty {
-                    SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 200 : 280, cardHeight: ScreenTier.isPhone ? 120 : 160, isDark: isDark, rounded: 24)
+                    SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 160 : 200, cardHeight: ScreenTier.isPhone ? 100 : 130, isDark: isDark, rounded: 24)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: ScreenTier.isPhone ? 12 : 24) {
                             ForEach(client.albums.prefix(isCompact ? 6 : 8)) { album in
-                                AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 200 : 280, cardH: ScreenTier.isPhone ? 120 : 160)
+                                AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 180, cardH: ScreenTier.isPhone ? 100 : 120)
                                     .onTapGesture {
                                         client.fetchAlbumTracks(albumId: album.id) { tracks in
                                             if let first = tracks.first {
@@ -126,16 +126,16 @@ private struct SectionHeader: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(.system(size: isCompact ? 18 : 22, weight: .bold))
+                .font(.system(size: isCompact ? 16 : 18, weight: .bold))
                 .foregroundColor(isDark ? .white : Color(hex: "#374151"))
             Spacer()
             if !isCompact {
                 Text("See all")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(isDark ? .white.opacity(0.6) : .blue)
             }
         }
         .padding(.horizontal, hPad)
-        .padding(.bottom, isCompact ? 12 : 16)
+        .padding(.bottom, isCompact ? 12 : 14)
     }
 }

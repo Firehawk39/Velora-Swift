@@ -19,7 +19,7 @@ struct NowPlayingView: View {
 
     var isCompact:     Bool { hSizeClass == .compact }
     var isLandscape:   Bool { vSizeClass == .compact }
-    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
+    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1000 }
     var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
     var isSE:          Bool { ScreenTier.isSE }
@@ -27,22 +27,22 @@ struct NowPlayingView: View {
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas {
-            if ScreenTier.isHuge { return isShortCanvas ? 400.0 : 480.0 }
-            return isShortCanvas ? 320.0 : 400.0
+            if ScreenTier.isHuge { return isShortCanvas ? 300.0 : 340.0 }
+            return isShortCanvas ? 260.0 : 300.0
         }
         if !isCompact { // 10.25" screens / Regular iPad
-            return isShortCanvas ? 280.0 : 340.0
+            return isShortCanvas ? 240.0 : 280.0
         }
         return isSE ? 180.0 : 220.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 40.0 : 52.0 }
-        if !isCompact { return isShortCanvas ? 32.0 : 38.0 }
+        if isLargeCanvas { return isShortCanvas ? 32.0 : 38.0 }
+        if !isCompact { return isShortCanvas ? 28.0 : 32.0 }
         return isSE ? 22.0 : 28.0
     }
     private var tabletArtistSize:  CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 24.0 : 32.0 }
-        if !isCompact { return isShortCanvas ? 18.0 : 22.0 }
+        if isLargeCanvas { return isShortCanvas ? 20.0 : 24.0 }
+        if !isCompact { return isShortCanvas ? 16.0 : 18.0 }
         return isSE ? 14.0 : 18.0
     }
 
@@ -252,7 +252,7 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 20) // Top spacer to allow content to move
             
-            VStack(spacing: isIdle ? 20 : 40) {
+            VStack(spacing: isIdle ? 16 : 24) {
                 // 1. Artwork & Metadata Section
                 HStack(spacing: isLargeCanvas ? 80 : 40) {
                     artworkSection(size: tabletArtworkSize)
@@ -303,7 +303,7 @@ struct NowPlayingView: View {
                     ))
                 }
             }
-            .padding(.bottom, isIdle ? (isShortCanvas ? 20 : 40) : 0) // Hug the bottom edge in Idle
+            .padding(.bottom, isIdle ? (isShortCanvas ? 8 : 12) : 0) // Flush with bottom in Idle
             .animation(.spring(response: animationResponse, dampingFraction: 0.85), value: isIdle)
         }
     }

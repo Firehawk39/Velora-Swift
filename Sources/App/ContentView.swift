@@ -208,9 +208,9 @@ struct ContentView: View {
         } else {
             // --- TESTING LOGIN BYPASS ---
             // Automatically log in with testing credentials to save time
-            let devServer = "http://192.168.1.6:4533" // Update this if your local IP changed
-            let devUser = "admin"
-            let devPass = "password" // USER: Please update this if your password changed
+            let devServer = "http://192.168.1.13:4533" 
+            let devUser = "tony"
+            let devPass = "u4vTyG7BcBxR-9-" 
             
             client.configure(url: devServer, user: devUser, pass: devPass)
             client.fetchEverything()
