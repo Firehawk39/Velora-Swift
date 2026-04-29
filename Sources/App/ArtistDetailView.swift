@@ -19,6 +19,7 @@ struct ArtistDetailView: View {
     @State private var relatedArtists: [Artist] = []
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
+    @State private var artistPortrait: UIImage? = nil
     
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isCompact: Bool { hSizeClass == .compact }
@@ -176,11 +177,19 @@ struct ArtistDetailView: View {
     }
     
     private func artistLogo(size: CGFloat) -> some View {
-        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
-            if let img = phase.image {
-                img.resizable().scaledToFill()
+        Group {
+            if let portrait = artistPortrait {
+                Image(uiImage: portrait)
+                    .resizable()
+                    .scaledToFill()
             } else {
-                Color.gray.opacity(0.1)
+                AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
+                    if let img = phase.image {
+                        img.resizable().scaledToFill()
+                    } else {
+                        Color.gray.opacity(0.1)
+                    }
+                }
             }
         }
         .frame(width: size, height: size)
@@ -394,11 +403,27 @@ struct ArtistDetailView: View {
     
     private func fetchArtistData() {
         isLoading = true
+        
+        // 1. Fetch high-quality portrait and bio from ArtistDataManager
+        ArtistDataManager.shared.getPortrait(for: artistName) { image in
+            self.artistPortrait = image
+        }
+        
+        ArtistDataManager.shared.getBio(for: artistName) { bio in
+            if bio != nil {
+                self.biography = bio
+            }
+        }
+        
+        // 2. Fetch standard data from Navidrome
         client.fetchArtistData(artistId: artistId) { tracks, albums, bio in
             self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
             self.favoriteSongs = tracks.filter { $0.isStarred }
             self.albums = albums
-            self.biography = bio
+            // Only update bio if we don't have a high-quality one yet
+            if self.biography == nil {
+                self.biography = bio
+            }
             self.isLoading = false
             
             client.fetchArtists { artists in
