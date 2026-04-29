@@ -36,14 +36,14 @@ struct NowPlayingView: View {
         return isSE ? 100.0 : 140.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 22.0 : 24.0 }
-        if !isCompact { return isShortCanvas ? 18.0 : 22.0 }
-        return isSE ? 16.0 : 20.0
+        if isLargeCanvas { return isShortCanvas ? 24.0 : 26.0 }
+        if !isCompact { return isShortCanvas ? 20.0 : 24.0 }
+        return isSE ? 18.0 : 22.0
     }
     private var tabletArtistSize:  CGFloat { 
-        if isLargeCanvas { return isShortCanvas ? 14.0 : 16.0 }
-        if !isCompact { return isShortCanvas ? 12.0 : 14.0 }
-        return isSE ? 12.0 : 14.0
+        if isLargeCanvas { return isShortCanvas ? 16.0 : 18.0 }
+        if !isCompact { return isShortCanvas ? 14.0 : 16.0 }
+        return isSE ? 14.0 : 16.0
     }
 
     var displayProgress: Double {
@@ -205,13 +205,13 @@ struct NowPlayingView: View {
             // Centered Metadata
             VStack(alignment: .center, spacing: isSE ? 2 : 8) {
                 Text(playback.currentTrack?.title ?? "Not Playing")
-                    .font(.system(size: ScreenTier.isPhone ? (isSE ? 20 : 26) : (ScreenTier.isHuge ? 48 : 34), weight: .bold))
+                    .font(.system(size: ScreenTier.isPhone ? (isSE ? 22 : 28) : (ScreenTier.isHuge ? 52 : 38), weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                 
                 Text(playback.currentTrack?.artist ?? "Select a track")
-                    .font(.system(size: ScreenTier.isPhone ? (isSE ? 14 : 18) : (ScreenTier.isHuge ? 28 : 22), weight: .medium))
+                    .font(.system(size: ScreenTier.isPhone ? (isSE ? 16 : 20) : (ScreenTier.isHuge ? 32 : 25), weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
                     .lineLimit(1)
                     .multilineTextAlignment(.center)
@@ -659,10 +659,10 @@ struct NowPlayingView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(playback.currentTrack?.title ?? "Lyrics")
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.system(size: 26, weight: .bold))
                             .foregroundColor(.white)
                         Text(playback.currentTrack?.artist ?? "")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                     }
                     Spacer()
