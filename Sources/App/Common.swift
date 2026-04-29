@@ -105,3 +105,13 @@ extension Color {
         )
     }
 }
+extension View {
+    @ViewBuilder
+    func hidePersistentSystemOverlays() -> some View {
+        if #available(iOS 16.0, *) {
+            self.persistentSystemOverlays(.hidden)
+        } else {
+            self
+        }
+    }
+}
