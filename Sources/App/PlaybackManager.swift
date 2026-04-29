@@ -2,12 +2,18 @@ import Foundation
 import AVFoundation
 import MediaPlayer
 
+struct LyricLine: Hashable {
+    let time: Double
+    let text: String
+}
+
 class PlaybackManager: ObservableObject {
     @Published var currentTrack: Track?
     @Published var isPlaying: Bool = false
     @Published var progress: Double = 0
     @Published var duration: Double = 0
     @Published var currentLyrics: String? = nil
+    @Published var currentSyncedLyrics: [LyricLine]? = nil
     @Published var isLyricsMode: Bool = false
     
     // Queue support
@@ -18,6 +24,7 @@ class PlaybackManager: ObservableObject {
     
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var currentArtworkTrackId: String? = nil
     var client: NavidromeClient
     
     init(client: NavidromeClient) {
@@ -77,12 +84,23 @@ class PlaybackManager: ObservableObject {
         self.progress = 0
         self.duration = 0
         self.currentLyrics = nil
+        self.currentSyncedLyrics = nil
         
         // Fetch lyrics
         client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
-                    self.currentLyrics = lyrics
+                    if let lyrics = lyrics {
+                        self.currentLyrics = lyrics
+                        if lyrics.contains("[00:") || lyrics.contains("[01:") || lyrics.contains("[02:") {
+                            self.currentSyncedLyrics = self.parseLRC(lyrics)
+                        } else {
+                            self.currentSyncedLyrics = nil
+                        }
+                    } else {
+                        self.currentLyrics = nil
+                        self.currentSyncedLyrics = nil
+                    }
                 }
             }
         }
@@ -213,7 +231,7 @@ class PlaybackManager: ObservableObject {
     private func updateNowPlayingInfo() {
         guard let track = currentTrack else { return }
         
-        var nowPlayingInfo = [String: Any]()
+        var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
         nowPlayingInfo[MPMediaItemPropertyTitle] = track.title
         nowPlayingInfo[MPMediaItemPropertyArtist] = track.artist ?? ""
         nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = track.album ?? ""
@@ -223,22 +241,42 @@ class PlaybackManager: ObservableObject {
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         
-        // Asynchronously load artwork for the Control Center
-        if let artworkUrl = track.coverArtUrl {
-            URLSession.shared.dataTask(with: artworkUrl) { data, _, _ in
-                if let data = data, let image = UIImage(data: data) {
-                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                    DispatchQueue.main.async {
-                        // Check if we are still playing the same track
-                        if self.currentTrack?.id == track.id {
-                            var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
-                            updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                            MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+        // Asynchronously load artwork for the Control Center only once per track
+        if currentArtworkTrackId != track.id {
+            currentArtworkTrackId = track.id
+            if let artworkUrl = track.coverArtUrl {
+                URLSession.shared.dataTask(with: artworkUrl) { data, _, _ in
+                    if let data = data, let image = UIImage(data: data) {
+                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                        DispatchQueue.main.async {
+                            // Check if we are still playing the same track
+                            if self.currentTrack?.id == track.id {
+                                var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
+                                updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                                MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                            }
                         }
                     }
-                }
-            }.resume()
+                }.resume()
+            }
         }
+    }
+    
+    private func parseLRC(_ lyrics: String) -> [LyricLine] {
+        var result: [LyricLine] = []
+        let lines = lyrics.components(separatedBy: .newlines)
+        for line in lines {
+            guard line.hasPrefix("["), let bracketEnd = line.firstIndex(of: "]") else { continue }
+            let timeString = String(line[line.index(after: line.startIndex)..<bracketEnd])
+            let text = String(line[line.index(after: bracketEnd)...]).trimmingCharacters(in: .whitespaces)
+            let parts = timeString.components(separatedBy: ":")
+            guard parts.count >= 2, let min = Double(parts[0]), let sec = Double(parts[1]) else { continue }
+            let time = min * 60 + sec
+            if !text.isEmpty {
+                result.append(LyricLine(time: time, text: text))
+            }
+        }
+        return result.sorted { $0.time < $1.time }
     }
     
     // MARK: - Offline Downloads Management

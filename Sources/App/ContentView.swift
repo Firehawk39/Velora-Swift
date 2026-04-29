@@ -192,8 +192,11 @@ struct ContentView: View {
     private func autoLogin() {
         let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
+        let isOnline = UserDefaults.standard.bool(forKey: "velora_is_online_mode")
         
-        let finalUrl = savedUrl.isEmpty ? "http://192.168.1.13:4533" : savedUrl
+        let localUrl = savedUrl.isEmpty ? "http://192.168.1.13:4533" : savedUrl
+        let finalUrl = isOnline ? "https://sopranosnavi.share.zrok.io" : localUrl
+        
         let finalUser = savedUser.isEmpty ? "tony" : savedUser
         let finalPass = "u4vTyG7BcBxR-9-"
         

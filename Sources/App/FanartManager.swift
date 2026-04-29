@@ -40,21 +40,44 @@ class FanartManager: ObservableObject {
             return
         }
         
-        // 2. Fetch from Fanart.tv if we have an MBID
-        guard let mbid = mbid, !mbid.isEmpty else {
-            // Fallback placeholder logic if no MBID
-            downloadAndCache(from: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2000",
-                             to: fileUrl) { image in
-                DispatchQueue.main.async { self.currentBackdrop = image }
+        let queryFanart = { (resolvedMBID: String) in
+            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
+            self.fetchFromFanart(urlString: urlString, type: .background) { url in
+                if let url = url {
+                    self.downloadAndCache(from: url, to: fileUrl) { image in
+                        DispatchQueue.main.async { self.currentBackdrop = image }
+                    }
+                } else {
+                    DispatchQueue.main.async { self.currentBackdrop = nil }
+                }
+            }
+        }
+        
+        // 2. Fetch from Fanart.tv
+        guard let validMBID = mbid, !validMBID.isEmpty else {
+            self.getMBID(for: artist) { resolved in
+                if let resolved = resolved {
+                    queryFanart(resolved)
+                } else {
+                    DispatchQueue.main.async { self.currentBackdrop = nil }
+                }
             }
             return
         }
         
-        let urlString = "https://webservice.fanart.tv/v3/music/\(mbid)?api_key=\(fanartApiKey)"
-        fetchFromFanart(urlString: urlString, type: .background) { url in
+        let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
+        self.fetchFromFanart(urlString: originalUrlString, type: .background) { url in
             if let url = url {
                 self.downloadAndCache(from: url, to: fileUrl) { image in
                     DispatchQueue.main.async { self.currentBackdrop = image }
+                }
+            } else {
+                self.getMBID(for: artist) { resolved in
+                    if let resolved = resolved, resolved != validMBID {
+                        queryFanart(resolved)
+                    } else {
+                        DispatchQueue.main.async { self.currentBackdrop = nil }
+                    }
                 }
             }
         }
@@ -73,18 +96,40 @@ class FanartManager: ObservableObject {
             return
         }
         
-        guard let mbid = mbid, !mbid.isEmpty else {
-            let searchUrl = "https://images.unsplash.com/photo-1511735111819-9a3f7709049c?q=80&w=1000"
-            downloadAndCache(from: searchUrl, to: fileUrl, completion: completion)
+        let queryFanartPortrait = { (resolvedMBID: String) in
+            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
+            self.fetchFromFanart(urlString: urlString, type: .portrait) { url in
+                if let url = url {
+                    self.downloadAndCache(from: url, to: fileUrl, completion: completion)
+                } else {
+                    completion(nil)
+                }
+            }
+        }
+        
+        guard let validMBID = mbid, !validMBID.isEmpty else {
+            self.getMBID(for: artist) { resolved in
+                if let resolved = resolved {
+                    queryFanartPortrait(resolved)
+                } else {
+                    completion(nil)
+                }
+            }
             return
         }
         
-        let urlString = "https://webservice.fanart.tv/v3/music/\(mbid)?api_key=\(fanartApiKey)"
-        fetchFromFanart(urlString: urlString, type: .portrait) { url in
+        let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
+        self.fetchFromFanart(urlString: originalUrlString, type: .portrait) { url in
             if let url = url {
                 self.downloadAndCache(from: url, to: fileUrl, completion: completion)
             } else {
-                completion(nil)
+                self.getMBID(for: artist) { resolved in
+                    if let resolved = resolved, resolved != validMBID {
+                        queryFanartPortrait(resolved)
+                    } else {
+                        completion(nil)
+                    }
+                }
             }
         }
     }
@@ -136,5 +181,38 @@ class FanartManager: ObservableObject {
         return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
             .components(separatedBy: .whitespaces).joined(separator: "_")
             .lowercased()
+    }
+    
+    private func extractPrimaryArtist(_ name: String) -> String {
+        let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and "]
+        var primary = name
+        for delimiter in delimiters {
+            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
+                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return primary.isEmpty ? name : primary
+    }
+
+    private func getMBID(for artistName: String, completion: @escaping (String?) -> Void) {
+        let primary = extractPrimaryArtist(artistName)
+        let encodedName = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\(encodedName)&fmt=json"
+        guard let url = URL(string: urlString) else { completion(nil); return }
+        
+        var request = URLRequest(url: url)
+        request.setValue("VeloraApp/1.0", forHTTPHeaderField: "User-Agent")
+        
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            if let data = data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let artists = json["artists"] as? [[String: Any]],
+               let firstArtist = artists.first,
+               let id = firstArtist["id"] as? String {
+                completion(id)
+            } else {
+                completion(nil)
+            }
+        }.resume()
     }
 }

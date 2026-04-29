@@ -335,6 +335,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_server_url") private var serverUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""
     @AppStorage("velora_display_name") private var displayName: String = ""
+    @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
     @State private var cacheCleared = false
     
     // Constants matching web app
@@ -384,9 +385,31 @@ struct AppSettingsView: View {
                                 labelCol: labelCol
                             )
                             
+                            Toggle(isOn: Binding(
+                                get: { isOnlineMode },
+                                set: { newValue in
+                                    isOnlineMode = newValue
+                                    reconnectWithCurrentMode()
+                                }
+                            )) {
+                                VStack(alignment: .leading) {
+                                    Text("Online Mode")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(isDark ? .white : .black)
+                                    Text(isOnlineMode ? "Using remote server (zrok.io)" : "Using local server")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .tint(accentBg)
+                            .padding()
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Server").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
-                                Text(serverUrl).font(.system(size: 14)).foregroundColor(isDark ? .white.opacity(0.6) : .black.opacity(0.6))
+                                Text(isOnlineMode ? "https://sopranosnavi.share.zrok.io" : serverUrl).font(.system(size: 14)).foregroundColor(isDark ? .white.opacity(0.6) : .black.opacity(0.6))
                                 
                                 Text("User").font(.system(size: 12, weight: .medium)).foregroundColor(.gray).padding(.top, 8)
                                 Text(username).font(.system(size: 14)).foregroundColor(isDark ? .white.opacity(0.6) : .black.opacity(0.6))
@@ -459,5 +482,15 @@ struct AppSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
         }
+    }
+
+    private func reconnectWithCurrentMode() {
+        let localUrl = serverUrl.isEmpty ? "http://192.168.1.13:4533" : serverUrl
+        let finalUrl = isOnlineMode ? "https://sopranosnavi.share.zrok.io" : localUrl
+        let finalUser = username.isEmpty ? "tony" : username
+        let finalPass = "u4vTyG7BcBxR-9-"
+        
+        client.configure(url: finalUrl, user: finalUser, pass: finalPass)
+        client.fetchEverything()
     }
 }

@@ -28,7 +28,7 @@ struct NowPlayingView: View {
     private var tabletArtworkSize: CGFloat { 
         if isLargeCanvas { return 220 }
         if !isCompact { return 160 }
-        return isSE ? 100.0 : 120.0
+        return isSE ? 130.0 : 120.0
     }
     private var tabletTitleSize:   CGFloat { 
         if isLargeCanvas { return 32 }
@@ -88,7 +88,6 @@ struct NowPlayingView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: proxy.size.width, height: proxy.size.height)
                                 .opacity(isIdle ? 0.45 : 0.35)
-                                .blur(radius: 60)
                                 .overlay(
                                     ZStack {
                                         RadialGradient(
@@ -111,8 +110,8 @@ struct NowPlayingView: View {
                         Color.black
                     }
                 }
-                .animation(.easeInOut(duration: 1.2), value: isIdle)
-                .animation(.easeInOut(duration: 1.2), value: fanart.currentBackdrop)
+                .animation(.easeInOut(duration: 0.6), value: isIdle)
+                .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
                 .drawingGroup() // Flattens the gradients into a single GPU texture for smoother performance
@@ -147,9 +146,26 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
             .simultaneousGesture(
-                DragGesture(minimumDistance: 30) // Increased threshold to avoid blocking ScrollView gestures
+                DragGesture(minimumDistance: 40)
                     .onChanged { _ in
-                        resetIdleTimer()
+                        if !isIdle { resetIdleTimer() }
+                    }
+                    .onEnded { value in
+                        if isIdle {
+                            let horizontal = value.translation.width
+                            let vertical = value.translation.height
+                            
+                            if abs(horizontal) > abs(vertical) && abs(horizontal) > 50 {
+                                if horizontal < 0 {
+                                    playback.skipForward()
+                                } else {
+                                    playback.skipBackward()
+                                }
+                            }
+                            resetIdleTimer()
+                        } else {
+                            resetIdleTimer()
+                        }
                     }
             )
             .overlay {
@@ -167,12 +183,21 @@ struct NowPlayingView: View {
             isIdle = false // Ensure we don't start in idle state
             startIdleTimer() 
         }
-        .onDisappear { stopIdleTimer() }
+        .onDisappear { 
+            stopIdleTimer() 
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .onChange(of: isIdle) { idle in
+            UIApplication.shared.isIdleTimerDisabled = idle
+        }
         .onChange(of: isQueueOpen) { isOpen in
             if isOpen { stopIdleTimer() } else { resetIdleTimer() }
         }
         .onChange(of: playback.isLyricsMode) { isMode in
             if isMode { stopIdleTimer() } else { resetIdleTimer() }
+        }
+        .onChange(of: playback.currentTrack?.id) { _ in
+            resetIdleTimer()
         }
         .preferredColorScheme(.dark)
     }
@@ -585,26 +610,45 @@ struct NowPlayingView: View {
     }
 
     private var inlineLyricsView: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
-                if let lyrics = playback.currentLyrics {
-                    let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                    
-                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                        Text(line)
-                            .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
-                            .foregroundColor(.white)
-                            .opacity(index == 2 ? 1.0 : 0.4) // Simulated active line logic
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
+        ScrollViewReader { scrollProxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    if let syncedLyrics = playback.currentSyncedLyrics, !syncedLyrics.isEmpty {
+                        let activeIndex = syncedLyrics.lastIndex(where: { playback.progress >= $0.time }) ?? 0
+                        
+                        ForEach(Array(syncedLyrics.enumerated()), id: \.offset) { index, line in
+                            Text(line.text)
+                                .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
+                                .foregroundColor(.white)
+                                .opacity(index == activeIndex ? 1.0 : 0.4)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .id(index)
+                        }
+                        .onChange(of: activeIndex) { newIndex in
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                scrollProxy.scrollTo(newIndex, anchor: .center)
+                            }
+                        }
+                    } else if let lyrics = playback.currentLyrics {
+                        let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                        
+                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                            Text(line)
+                                .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
+                                .foregroundColor(.white)
+                                .opacity(1.0)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        Text("Looking for lyrics...")
+                            .font(.system(size: 32, weight: .black))
+                            .foregroundColor(.white.opacity(0.4))
                     }
-                } else {
-                    Text("Looking for lyrics...")
-                        .font(.system(size: 32, weight: .black))
-                        .foregroundColor(.white.opacity(0.4))
                 }
+                .padding(.vertical, 40)
             }
-            .padding(.vertical, 40)
         }
     }
 
