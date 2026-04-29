@@ -21,10 +21,15 @@ struct SubsonicBody: Codable {
     let playlist: PlaylistWrapper?
     let randomSongs: RandomSongsWrapper?
     let randomSongs2: RandomSongsWrapper?
+    let recentlyPlayed: RecentlyPlayedWrapper?
     let lyrics: SubsonicLyrics?
     let artist: SubsonicArtistDetail?
     let artistInfo: SubsonicArtistInfo?
     let artistInfo2: SubsonicArtistInfo?
+}
+
+struct RecentlyPlayedWrapper: Codable {
+    let song: [SubsonicSong]?
 }
 
 struct SubsonicAlbumDetail: Codable {

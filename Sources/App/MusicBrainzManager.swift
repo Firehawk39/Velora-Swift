@@ -269,4 +269,100 @@ class MusicBrainzManager: ObservableObject {
             }
         }.resume()
     }
+
+    // MARK: - Silent Bulk Fetchers
+
+    func downloadMetadataSilently(for artistName: String) async {
+        let resolved = await resolveMBIDAsync(for: artistName)
+        guard let mbid = resolved else { return }
+        
+        let fileName = "artist_" + (mbid) + ".json"
+        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
+        
+        if self.fileManager.fileExists(atPath: fileUrl.path) { return }
+
+        let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
+        guard let url = URL(string: urlString) else { return }
+        var request = URLRequest(url: url)
+        request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            
+            let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+            json["annotation"] = annotation
+            if let savedData = try? JSONSerialization.data(withJSONObject: json) {
+                try? savedData.write(to: fileUrl)
+            }
+        } catch { }
+    }
+
+    func downloadAlbumMetadataSilently(albumName: String, artistName: String) async {
+        let resolved = await resolveAlbumMBIDAsync(album: albumName, artist: artistName)
+        guard let mbid = resolved else { return }
+        
+        let fileName = "album_" + (mbid) + ".json"
+        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
+        
+        if self.fileManager.fileExists(atPath: fileUrl.path) { return }
+
+        let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=labels+recordings"
+        guard let url = URL(string: urlString) else { return }
+        var request = URLRequest(url: url)
+        request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            
+            let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+            json["annotation"] = annotation
+            if let savedData = try? JSONSerialization.data(withJSONObject: json) {
+                try? savedData.write(to: fileUrl)
+            }
+        } catch { }
+    }
+    
+    private func resolveMBIDAsync(for artist: String) async -> String? {
+        let encoded = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\(encoded)&fmt=json"
+        guard let url = URL(string: urlString) else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let artists = json?["artists"] as? [[String: Any]]
+            return artists?.first?["id"] as? String
+        } catch { return nil }
+    }
+    
+    private func resolveAlbumMBIDAsync(album: String, artist: String) async -> String? {
+        let query = "release:\(album) AND artist:\(artist)"
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://musicbrainz.org/ws/2/release/?query=\(encoded)&fmt=json"
+        guard let url = URL(string: urlString) else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let releases = json?["releases"] as? [[String: Any]]
+            return releases?.first?["id"] as? String
+        } catch { return nil }
+    }
+    
+    private func fetchAnnotationAsync(entityMBID: String) async -> String? {
+        let urlString = "https://musicbrainz.org/ws/2/annotation/?query=entity:\(entityMBID)&fmt=json"
+        guard let url = URL(string: urlString) else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let annotations = json?["annotations"] as? [[String: Any]]
+            return annotations?.first?["text"] as? String
+        } catch { return nil }
+    }
 }

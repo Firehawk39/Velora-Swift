@@ -28,18 +28,25 @@ extension NavidromeClient {
     // MARK: - Fetch Recently Played
 
     func fetchRecentlyPlayed() {
-        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": "15"]) else { return }
+        // Navidrome supports getRecentlyPlayed.view which returns actual recent tracks
+        guard let url = buildUrl(method: "getRecentlyPlayed.view", params: ["size": "15"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let items = decoded.subsonicResponse?.randomSongs?.song ?? decoded.subsonicResponse?.randomSongs2?.song ?? []
+                let items = decoded.subsonicResponse?.recentlyPlayed?.song ?? []
+                
+                // Fallback to random if server doesn't support getRecentlyPlayed
+                if items.isEmpty {
+                    return
+                }
+                
                 DispatchQueue.main.async {
                     self.recentlyPlayed = items.map { s in
                         Track(id: s.id, title: s.title ?? "Unknown",
-                              album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
-                              duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                              artistId: s.artistId, albumId: s.albumId)
+                               album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
+                               duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                               artistId: s.artistId, albumId: s.albumId)
                     }
                 }
             } catch { print("Error decoding recent songs: \(error)") }

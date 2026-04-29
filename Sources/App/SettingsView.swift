@@ -446,23 +446,24 @@ struct AppSettingsView: View {
                                 downloadingAll = true
                                 Task {
                                     // 1. Fetch Artist Media & Metadata
+                                    // We can parallelize image downloads, but MUST throttle MusicBrainz
                                     for artist in client.artists {
-                                        // Image fetchers (they have their own internal caching)
-                                        FanartManager.shared.fetchBackdrop(for: artist.name, mbid: nil)
+                                        // Image fetchers - fire and forget (they handle their own threads)
+                                        FanartManager.shared.downloadBackdropSilently(for: artist.name, mbid: nil)
                                         FanartManager.shared.fetchArtistPortrait(for: artist.name, mbid: nil) { _ in }
                                         
-                                        // Metadata fetch (MBID is preferred)
-                                        MusicBrainzManager.shared.fetchAboutArtist(artistName: artist.name, mbid: nil)
+                                        // Metadata fetch - MUST wait to respect 1 req/sec
+                                        await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
                                         
-                                        // Respect MusicBrainz 1 req/sec limit + avoid hitting Fanart too hard
-                                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                        // Small buffer to ensure we don't hit MBID lookup + Annotation too fast
+                                        try? await Task.sleep(nanoseconds: 1_050_000_000)
                                     }
                                     
-                                    // 2. Fetch Album Metadata (Top 20 albums to avoid massive delay, or all if small)
+                                    // 2. Fetch Album Metadata (Top 50 albums)
                                     let albumsToFetch = client.albums.prefix(50) 
                                     for album in albumsToFetch {
-                                        MusicBrainzManager.shared.fetchAboutAlbum(albumName: album.name, artistName: album.artist ?? "Unknown Artist", mbid: nil)
-                                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                        await MusicBrainzManager.shared.downloadAlbumMetadataSilently(albumName: album.name, artistName: album.artist ?? "Unknown Artist")
+                                        try? await Task.sleep(nanoseconds: 1_050_000_000)
                                     }
 
                                     DispatchQueue.main.async { 
