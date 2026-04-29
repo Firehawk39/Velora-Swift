@@ -365,8 +365,9 @@ extension NavidromeClient {
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         let backdropDir = docs.appendingPathComponent("Backdrops")
         let portraitDir = docs.appendingPathComponent("ArtistPortraits")
+        let metadataDir = docs.appendingPathComponent("Metadata")
         
-        for dir in [backdropDir, portraitDir] {
+        for dir in [backdropDir, portraitDir, metadataDir] {
             if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
                 contents.forEach { try? fileManager.removeItem(at: $0) }
             }
@@ -397,8 +398,9 @@ extension NavidromeClient {
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         let backdropDir = docs.appendingPathComponent("Backdrops")
         let portraitDir = docs.appendingPathComponent("ArtistPortraits")
+        let metadataDir = docs.appendingPathComponent("Metadata")
         
-        for dir in [backdropDir, portraitDir] {
+        for dir in [backdropDir, portraitDir, metadataDir] {
             if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
                 for case let fileURL as URL in enumerator {
                     if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {

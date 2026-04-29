@@ -4,6 +4,7 @@ import Foundation
 struct NowPlayingView: View {
     @EnvironmentObject var playback: PlaybackManager
     @StateObject var fanart = FanartManager.shared
+    @StateObject private var mb = MusicBrainzManager.shared
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass)   var vSizeClass
     @Binding var isQueueOpen: Bool
@@ -174,6 +175,11 @@ struct NowPlayingView: View {
         .onAppear { 
             isIdle = false // Ensure we don't start in idle state
             startIdleTimer() 
+            if let track = playback.currentTrack {
+                mb.fetchAboutArtist(artistName: track.artist, mbid: track.artistId)
+                mb.fetchAboutAlbum(albumName: track.album, artistName: track.artist, mbid: track.albumId)
+                fanart.fetchBackdrop(for: track.artist, mbid: track.artistId)
+            }
         }
         .onDisappear { 
             stopIdleTimer() 
@@ -190,6 +196,11 @@ struct NowPlayingView: View {
         }
         .onChange(of: playback.currentTrack?.id) { _ in
             resetIdleTimer()
+            if let track = playback.currentTrack {
+                mb.fetchAboutArtist(artistName: track.artist, mbid: track.artistId)
+                mb.fetchAboutAlbum(albumName: track.album, artistName: track.artist, mbid: track.albumId)
+                fanart.fetchBackdrop(for: track.artist, mbid: track.artistId)
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -438,36 +449,34 @@ struct NowPlayingView: View {
                     .font(.system(size: isSE ? 28 : 32, weight: .bold))
                     .foregroundColor(.white)
                 
-                Group {
-                    if isSE {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack(spacing: 16) {
-                                artistImage
-                                    .frame(width: 80, height: 80)
-                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                            Text("Playing now on Velora. Discover more tracks and albums from this artist.")
-                                .font(.system(size: 14))
-                                .foregroundColor(.white.opacity(0.6))
-                                .lineLimit(3)
-                        }
-                    } else {
-                        HStack(spacing: 24) {
-                            artistImage
-                                .frame(width: 140, height: 140)
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 24) {
+                        artistImage
+                            .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                .font(.system(size: isSE ? 20 : 28, weight: .bold))
+                                .foregroundColor(.white)
                             
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                    .font(.system(size: 32, weight: .bold))
-                                    .foregroundColor(.white)
-                                Text("Playing now on Velora. Discover more tracks and albums from this artist in your library.")
-                                    .font(.system(size: 22))
-                                    .foregroundColor(.white.opacity(0.6))
-                                    .lineLimit(3)
+                            if let info = mb.currentArtistInfo {
+                                Text([info.type, info.area, info.lifeSpan].compactMap { $0 }.joined(separator: " • "))
+                                    .font(.system(size: isSE ? 12 : 14))
+                                    .foregroundColor(.white.opacity(0.5))
                             }
                         }
+                    }
+                    
+                    if let annotation = mb.currentArtistInfo?.annotation {
+                        Text(annotation)
+                            .font(.system(size: isSE ? 14 : 16))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(6)
+                    } else {
+                        Text("No further information found on MusicBrainz.")
+                            .font(.system(size: isSE ? 14 : 16))
+                            .foregroundColor(.white.opacity(0.4))
+                            .italic()
                     }
                 }
                 .padding(isSE ? 20 : 32)
@@ -481,19 +490,28 @@ struct NowPlayingView: View {
                     .font(.system(size: isSE ? 28 : 32, weight: .bold))
                     .foregroundColor(.white)
                 
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(playback.currentTrack?.album ?? "Unknown Album")
-                            .font(.system(size: isSE ? 24 : 28, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-                        Text("Album • \(playback.currentTrack?.artist ?? "Unknown")")
-                            .font(.system(size: isSE ? 14 : 16))
-                            .foregroundColor(.white.opacity(0.5))
-                            .lineLimit(1)
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(playback.currentTrack?.album ?? "Unknown Album")
+                                .font(.system(size: isSE ? 22 : 26, weight: .bold))
+                                .foregroundColor(.white)
+                            
+                            if let info = mb.currentAlbumInfo {
+                                Text([info.label, info.firstReleaseDate].compactMap { $0 }.joined(separator: " • "))
+                                    .font(.system(size: isSE ? 14 : 16))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                        }
+                        Spacer()
                     }
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.title3).foregroundColor(.white.opacity(0.3))
+                    
+                    if let annotation = mb.currentAlbumInfo?.annotation {
+                        Text(annotation)
+                            .font(.system(size: isSE ? 14 : 16))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(6)
+                    }
                 }
                 .padding(isSE ? 20 : 32)
                 .background(Color.white.opacity(0.05))

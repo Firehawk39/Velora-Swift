@@ -443,11 +443,26 @@ struct AppSettingsView: View {
                             Button(action: {
                                 downloadingAll = true
                                 Task {
+                                    // 1. Fetch Artist Media & Metadata
                                     for artist in client.artists {
+                                        // Image fetchers (they have their own internal caching)
                                         FanartManager.shared.fetchBackdrop(for: artist.name, mbid: artist.mbid)
                                         FanartManager.shared.fetchArtistPortrait(for: artist.name, mbid: artist.mbid) { _ in }
-                                        try? await Task.sleep(nanoseconds: 500_000_000)
+                                        
+                                        // Metadata fetch (MBID is preferred)
+                                        MusicBrainzManager.shared.fetchAboutArtist(artistName: artist.name, mbid: artist.mbid)
+                                        
+                                        // Respect MusicBrainz 1 req/sec limit + avoid hitting Fanart too hard
+                                        try? await Task.sleep(nanoseconds: 1_200_000_000)
                                     }
+                                    
+                                    // 2. Fetch Album Metadata (Top 20 albums to avoid massive delay, or all if small)
+                                    let albumsToFetch = client.albums.prefix(50) 
+                                    for album in albumsToFetch {
+                                        MusicBrainzManager.shared.fetchAboutAlbum(albumName: album.name, artistName: album.artist)
+                                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                    }
+
                                     DispatchQueue.main.async { 
                                         downloadingAll = false 
                                         // Update cache size after download
@@ -460,7 +475,7 @@ struct AppSettingsView: View {
                             }) {
                                 HStack {
                                     Image(systemName: "icloud.and.arrow.down.fill")
-                                    Text(downloadingAll ? "Downloading..." : "Download All Backgrounds & Portraits")
+                                    Text(downloadingAll ? "Downloading..." : "Download All Media & Metadata")
                                     Spacer()
                                     if downloadingAll {
                                         ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .gray))
