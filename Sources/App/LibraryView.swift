@@ -583,6 +583,7 @@ private struct SongListView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.75)
                         }
+                    }
                     .onTapGesture { playback.playTrack(t, context: sorted) }
                     .contextMenu {
                         Menu("Add to Playlist...") {

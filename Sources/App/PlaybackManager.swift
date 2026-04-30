@@ -721,6 +721,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             }
         } else {
             FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
+        }
     }
     
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
