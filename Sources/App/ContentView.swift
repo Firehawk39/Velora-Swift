@@ -26,8 +26,6 @@ struct ContentView: View {
         let playbackInstance = PlaybackManager(client: clientInstance)
         _client = StateObject(wrappedValue: clientInstance)
         _playback = StateObject(wrappedValue: playbackInstance)
-        
-        SyncManager.shared.configure(client: clientInstance, playback: playbackInstance)
     }
 
     var body: some View {
@@ -112,7 +110,10 @@ struct ContentView: View {
         .preferredColorScheme((isDarkMode || activeTab == "now-playing") ? .dark : .light)
         .statusBarHidden(true)
         .hidePersistentSystemOverlays()
-        .onAppear { autoLogin() }
+        .onAppear { 
+            SyncManager.shared.configure(client: client, playback: playback)
+            autoLogin() 
+        }
         .onChange(of: activeTab) { _ in
             withAnimation { 
                 isIdle = false 
