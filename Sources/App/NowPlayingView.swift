@@ -307,8 +307,13 @@ struct NowPlayingView: View {
                 if playback.isLyricsMode {
                     // Inline Lyrics State
                     HStack {
-                        inlineLyricsView
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if mb.isLoading {
+                            CircularProgressView(progress: mb.metadataProgress, size: 30, strokeWidth: 3, accentColor: .red)
+                                .frame(maxWidth: .infinity, minHeight: 100)
+                        } else {
+                            inlineLyricsView
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         Spacer(minLength: 40)
                     }
                     .padding(.horizontal, isLargeCanvas ? 60 : 32)
@@ -489,33 +494,42 @@ struct NowPlayingView: View {
                     .foregroundColor(.white)
                 
                 VStack(alignment: .leading, spacing: 20) {
-                    HStack(spacing: 24) {
-                        artistImage
-                            .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                .font(.system(size: isSE ? 20 : 28, weight: .bold))
-                                .foregroundColor(.white)
+                    if mb.isLoading {
+                        HStack {
+                            Spacer()
+                            CircularProgressView(progress: mb.metadataProgress, size: 40, strokeWidth: 4, accentColor: .red)
+                            Spacer()
+                        }
+                        .padding(.vertical, 40)
+                    } else {
+                        HStack(spacing: 24) {
+                            artistImage
+                                .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
                             
-                            if let info = mb.currentArtistInfo {
-                                Text([info.type, info.area, info.lifeSpan].compactMap { $0 }.joined(separator: " • "))
-                                    .font(.system(size: isSE ? 12 : 14))
-                                    .foregroundColor(.white.opacity(0.5))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                    .font(.system(size: isSE ? 20 : 28, weight: .bold))
+                                    .foregroundColor(.white)
+                                
+                                if let info = mb.currentArtistInfo {
+                                    Text([info.type, info.area, info.lifeSpan].compactMap { $0 }.joined(separator: " • "))
+                                        .font(.system(size: isSE ? 12 : 14))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
                             }
                         }
-                    }
-                    
-                    if let annotation = mb.currentArtistInfo?.annotation {
-                        Text(annotation)
-                            .font(.system(size: isSE ? 14 : 16))
-                            .foregroundColor(.white.opacity(0.8))
-                            .lineLimit(6)
-                    } else {
-                        Text("No further information found on MusicBrainz.")
-                            .font(.system(size: isSE ? 14 : 16))
-                            .foregroundColor(.white.opacity(0.4))
-                            .italic()
+                        
+                        if let annotation = mb.currentArtistInfo?.annotation {
+                            Text(annotation)
+                                .font(.system(size: isSE ? 14 : 16))
+                                .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(6)
+                        } else {
+                            Text("No further information found on MusicBrainz.")
+                                .font(.system(size: isSE ? 14 : 16))
+                                .foregroundColor(.white.opacity(0.4))
+                                .italic()
+                        }
                     }
                 }
                 .padding(isSE ? 20 : 32)
@@ -652,13 +666,19 @@ struct NowPlayingView: View {
             }
         } label: {
             let isDownloaded = playback.downloadedTrackIds.contains(playback.currentTrack?.id ?? "")
-            Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.to.line.compact")
-                .font(.system(size: 16, weight: .bold))
-                .frame(width: 44, height: 44)
-                .background(Color.black.opacity(0.5))
-                .foregroundColor(isDownloaded ? .green : .white)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+            ZStack {
+                if let progress = playback.downloadProgress[playback.currentTrack?.id ?? ""] {
+                    CircularProgressView(progress: progress, size: 24, strokeWidth: 3, accentColor: .red)
+                } else {
+                    Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.to.line.compact")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(isDownloaded ? .green : .white)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .background(Color.black.opacity(0.5))
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
         .accessibilityLabel("Download")
     }

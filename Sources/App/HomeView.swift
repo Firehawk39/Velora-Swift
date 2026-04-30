@@ -112,7 +112,9 @@ struct HomeView: View {
             }
             .padding(.top, 4)
         .onAppear {
-            client.fetchRecentlyPlayed()
+            if client.recentTracks.isEmpty {
+                client.fetchRecentlyPlayed()
+            }
         }
     }
 }

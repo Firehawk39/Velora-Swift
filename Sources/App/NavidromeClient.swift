@@ -28,7 +28,7 @@ class NavidromeClient: ObservableObject {
 
     // MARK: - URL Construction
 
-    func buildUrl(method: String, params: [String: String] = [:]) -> URL? {
+    func buildUrl(method: String, params: [String: String] = [:], extraItems: [URLQueryItem] = []) -> URL? {
         guard !baseUrl.isEmpty else { return nil }
         var components = URLComponents(string: "\(baseUrl)/rest/\(method)")
         var items = [
@@ -40,6 +40,7 @@ class NavidromeClient: ObservableObject {
             URLQueryItem(name: "f", value: "json")
         ]
         params.forEach { items.append(URLQueryItem(name: $0.key, value: $0.value)) }
+        items.append(contentsOf: extraItems)
         components?.queryItems = items
         return components?.url
     }

@@ -25,6 +25,7 @@ class MusicBrainzManager: ObservableObject {
     @Published var currentArtistInfo: MBArtistInfo? = nil
     @Published var currentAlbumInfo: MBAlbumInfo? = nil
     @Published var isLoading = false
+    @Published var metadataProgress: Double = 0.0
     
     private let fileManager = FileManager.default
     private let metadataDir: URL
@@ -40,9 +41,13 @@ class MusicBrainzManager: ObservableObject {
     }
     
     func fetchAboutArtist(artistName: String, mbid: String? = nil) {
-        self.isLoading = true
+        DispatchQueue.main.async { 
+            self.isLoading = true
+            self.metadataProgress = 0.1
+        }
         
         let fetchDetails = { (resolvedMBID: String) in
+            DispatchQueue.main.async { self.metadataProgress = 0.4 }
             let fileName = "artist_" + (resolvedMBID) + ".json"
             let fileUrl = self.metadataDir.appendingPathComponent(fileName)
             
@@ -56,8 +61,6 @@ class MusicBrainzManager: ObservableObject {
                 let end = life?["end"] as? String
                 let lifeStr = begin != nil ? "\(begin!)\(end != nil ? " to \(end!)" : " — Present")" : nil
                 
-                let annotation = json["annotation"] as? String
-                
                 let info = MBArtistInfo(
                     mbid: resolvedMBID,
                     country: json["country"] as? String,
@@ -65,11 +68,14 @@ class MusicBrainzManager: ObservableObject {
                     lifeSpan: lifeStr,
                     area: (json["area"] as? [String: Any])?["name"] as? String,
                     disambiguation: json["disambiguation"] as? String,
-                    annotation: annotation
+                    annotation: json["annotation"] as? String
                 )
                 DispatchQueue.main.async { 
                     self.currentArtistInfo = info
-                    self.isLoading = false
+                    self.metadataProgress = 1.0
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.isLoading = false
+                    }
                 }
                 return
             }
@@ -81,6 +87,7 @@ class MusicBrainzManager: ObservableObject {
             request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
             
             URLSession.shared.dataTask(with: request) { data, _, _ in
+                DispatchQueue.main.async { self.metadataProgress = 0.7 }
                 guard let data = data,
                       var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
                     DispatchQueue.main.async { self.isLoading = false }
@@ -111,7 +118,10 @@ class MusicBrainzManager: ObservableObject {
                     
                     DispatchQueue.main.async { 
                         self.currentArtistInfo = info
-                        self.isLoading = false
+                        self.metadataProgress = 1.0
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            self.isLoading = false
+                        }
                     }
                 }
             }.resume()

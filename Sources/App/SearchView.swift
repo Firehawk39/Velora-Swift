@@ -24,7 +24,12 @@ struct SearchView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 36) {
                     if isLoading {
-                        ProgressView().tint(.red).frame(maxWidth: .infinity, minHeight: 200)
+                        HStack {
+                            Spacer()
+                            LoadingCircle(size: 40, strokeWidth: 4, accentColor: .red)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 200)
                     } else if query.isEmpty {
                         SearchEmptyState(isDarkMode: isDarkMode, icon: "magnifyingglass", text: "Search your Navidrome library")
                     } else if tracks.isEmpty && albums.isEmpty && artists.isEmpty {

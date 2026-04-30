@@ -23,8 +23,11 @@ struct ContentView: View {
 
     init() {
         let clientInstance = NavidromeClient()
+        let playbackInstance = PlaybackManager(client: clientInstance)
         _client = StateObject(wrappedValue: clientInstance)
-        _playback = StateObject(wrappedValue: PlaybackManager(client: clientInstance))
+        _playback = StateObject(wrappedValue: playbackInstance)
+        
+        SyncManager.shared.configure(client: clientInstance, playback: playbackInstance)
     }
 
     var body: some View {
@@ -105,6 +108,7 @@ struct ContentView: View {
         }
         .environmentObject(client)
         .environmentObject(playback)
+        .environmentObject(SyncManager.shared)
         .preferredColorScheme((isDarkMode || activeTab == "now-playing") ? .dark : .light)
         .statusBarHidden(true)
         .hidePersistentSystemOverlays()

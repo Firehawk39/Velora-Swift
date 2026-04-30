@@ -3,6 +3,7 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager
+    @EnvironmentObject var sync: SyncManager
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     @Environment(\.horizontalSizeClass) var hSizeClass
@@ -10,6 +11,10 @@ struct LibraryView: View {
     @State private var viewMode: ViewMode = .grid
     @State private var sortMode: SortMode = .alphabetical
     @State private var showSortDropdown: Bool = false
+    @State private var showOfflineOnly: Bool = false
+    @State private var selectedPlaylist: Playlist? = nil
+    @State private var playlistTracks: [Track] = []
+    @State private var isLoadingPlaylist: Bool = false
     
     enum ViewMode { case grid, list }
     enum SortMode { case alphabetical, recent, topPlayed }
@@ -18,19 +23,28 @@ struct LibraryView: View {
 
     var isCompact: Bool { hSizeClass == .compact }
     var hPad: CGFloat { isCompact ? 24 : 48 }
-
-    let menuItems: [(id: String, label: String, icon: String)] = [
+    private let menuItems = [
         ("playlists", "Playlists", "music.note.list"),
         ("artists",   "Artists",   "person.2"),
         ("albums",    "Albums",    "opticaldisc"),
         ("songs",     "Songs",     "music.note"),
+        ("downloaded", "Downloaded", "checkmark.circle.fill"),
     ]
 
     var body: some View {
         ZStack {
             Group {
-                if let cat = activeCategory {
-                    categoryDetailView(category: cat)
+                if let playlist = selectedPlaylist {
+                    PlaylistDetailView(playlist: playlist, tracks: $playlistTracks, isLoading: $isLoadingPlaylist, isDarkMode: isDarkMode, isCompact: isCompact, hPad: hPad) {
+                        selectedPlaylist = nil
+                        playlistTracks = []
+                    }
+                } else if let cat = activeCategory {
+                    if cat == "downloaded" {
+                        categoryDetailView(category: "songs", forceOffline: true)
+                    } else {
+                        categoryDetailView(category: cat)
+                    }
                 } else {
                     LibraryMenuView(activeCategory: $activeCategory, menuItems: menuItems, isDarkMode: isDarkMode, isCompact: isCompact, hPad: hPad)
                 }
@@ -46,7 +60,7 @@ struct LibraryView: View {
     }
 
     @ViewBuilder
-    private func categoryDetailView(category: String) -> some View {
+    private func categoryDetailView(category: String, forceOffline: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer().frame(height: isCompact ? 80 : 100)
             // Header
@@ -61,7 +75,7 @@ struct LibraryView: View {
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.red.opacity(0.6))
                                 .textCase(.uppercase)
-                            Text(menuItems.first(where: { $0.id == category })?.label ?? "")
+                            Text(forceOffline ? "Downloaded" : (menuItems.first(where: { $0.id == category })?.label ?? ""))
                                 .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
                                 .foregroundColor(.red)
                         }
@@ -92,6 +106,22 @@ struct LibraryView: View {
                         .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
                     .accessibilityLabel("View Options")
+                    
+                    // Offline Only Toggle
+                    Button(action: { showOfflineOnly.toggle() }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
+                            if !isCompact {
+                                Text("Offline")
+                            }
+                        }
+                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                        .foregroundColor(showOfflineOnly ? .red : (isDarkMode ? .white : .black))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
+                    }
+                    .accessibilityLabel("Offline Only Filter")
                     
                     // Sort Mode Menu
                     Menu {
@@ -134,16 +164,26 @@ struct LibraryView: View {
                             .accessibilityLabel("Shuffle Play All")
                             
                             Button(action: {
-                                playback.downloadAll(tracks: client.allSongs)
-                            }) {
-                                Image(systemName: "arrow.down.to.line.compact")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 36, height: 36)
-                                    .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
-                                    .clipShape(Circle())
-                            }
-                            .accessibilityLabel("Download All Songs")
+                                 if sync.isSyncing && sync.syncType == .media {
+                                     sync.stopSync()
+                                 } else {
+                                     sync.startMediaSync()
+                                 }
+                             }) {
+                                 ZStack {
+                                     if sync.isSyncing && sync.syncType == .media {
+                                         CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 2.5, accentColor: .red)
+                                     } else {
+                                         Image(systemName: "icloud.and.arrow.down.fill")
+                                             .font(.system(size: 14, weight: .bold))
+                                             .foregroundColor(.white)
+                                     }
+                                 }
+                                 .frame(width: 36, height: 36)
+                                 .background(sync.isSyncing && sync.syncType == .media ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                                 .clipShape(Circle())
+                             }
+                             .accessibilityLabel("Sync All Library")
                         }
                     }
                 }
@@ -155,14 +195,21 @@ struct LibraryView: View {
             ScrollView(showsIndicators: false) {
                 Group {
                     switch category {
-                    case "playlists": PlaylistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact)
-                    case "artists":   ArtistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, onArtistClick: { id, name in
+                    case "playlists": PlaylistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline) { p in
+                        selectedPlaylist = p
+                        isLoadingPlaylist = true
+                        client.fetchPlaylistTracks(playlistId: p.id) { t in
+                            self.playlistTracks = t
+                            self.isLoadingPlaylist = false
+                        }
+                    }
+                    case "artists":   ArtistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, onArtistClick: { id, name in
                         withAnimation {
                             onArtistClick?(id, name)
                         }
                     })
-                    case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact)
-                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact)
+                    case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
+                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
                     default:          EmptyView()
                     }
                 }
@@ -243,68 +290,143 @@ private struct PlaylistGridView: View {
     let sortMode: LibraryView.SortMode
     let isDarkMode: Bool
     let isCompact: Bool
+    let showOfflineOnly: Bool
+    var onPlaylistClick: (Playlist) -> Void
+    
+    @State private var showCreateAlert = false
+    @State private var newPlaylistName = ""
 
     var body: some View {
-        let sorted = client.playlists.sorted { a, b in
+        let base = client.playlists
+        let filtered = showOfflineOnly ? base.filter { p in
+            // For playlists, we consider it offline if at least one song is downloaded 
+            // (or ideally if the user has flagged the whole playlist for offline, but we don't have that yet)
+            // For now, let's just show all playlists, but we could improve this.
+            return true 
+        } : base
+        
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Playlists don't have play counts
             return (a.created ?? "") > (b.created ?? "")
         }
-        if viewMode == .grid {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
-                ForEach(sorted) { p in
-                    VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
-                        Rectangle().fill(Color.gray.opacity(0.1)).aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
-                            .overlay(Image(systemName: "music.note.list").foregroundColor(.gray).font(.system(size: isCompact ? 20 : 28)))
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(p.name)
+        Group {
+            if viewMode == .grid {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
+                    // Create New Button
+                    Button(action: { showCreateAlert = true }) {
+                        VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
+                            RoundedRectangle(cornerRadius: isCompact ? 8 : 12)
+                                .stroke(Color.red.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
+                                .aspectRatio(1, contentMode: .fit)
+                                .overlay(Image(systemName: "plus").foregroundColor(.red).font(.system(size: isCompact ? 24 : 32)))
+                            
+                            Text("New Playlist")
                                 .font(.system(size: isCompact ? 14 : 16, weight: .bold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                            Text("\(p.songCount ?? 0) tracks")
-                                .font(.system(size: isCompact ? 11 : 13))
-                                .foregroundColor(.gray)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
+                                .foregroundColor(.red)
+                            Spacer().frame(height: 14)
                         }
                     }
-                    .onTapGesture { client.fetchPlaylistTracks(playlistId: p.id) { t in if !t.isEmpty { playback.playTrack(t[0], context: t) } } }
+                    
+                    ForEach(sorted) { p in
+                        VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
+                            Rectangle().fill(Color.gray.opacity(0.1)).aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                                .overlay(Image(systemName: "music.note.list").foregroundColor(.gray).font(.system(size: isCompact ? 20 : 28)))
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(p.name)
+                                    .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
+                                Text("\(p.songCount ?? 0) tracks")
+                                    .font(.system(size: isCompact ? 11 : 13))
+                                    .foregroundColor(.gray)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
+                            }
+                        }
+                        .onTapGesture { onPlaylistClick(p) }
+                        .contextMenu {
+                            Button(role: .destructive, action: {
+                                client.deletePlaylist(id: p.id) { _ in }
+                            }) {
+                                Label("Delete Playlist", systemImage: "trash")
+                            }
+                        }
+                    }
                 }
-            }
-        } else {
-            LazyVStack(spacing: 0) {
-                ForEach(sorted) { p in
-                    HStack(spacing: 16) {
-                        Image(systemName: "music.note.list").padding(10).background(Color.gray.opacity(0.1)).cornerRadius(10)
-                            .font(.system(size: isCompact ? 16 : 20))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(p.name).font(.system(size: isCompact ? 16 : 18, weight: .bold))
-                            Text("\(p.songCount ?? 0) tracks").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
+            } else {
+                LazyVStack(spacing: 0) {
+                    // Create New Row
+                    Button(action: { showCreateAlert = true }) {
+                        HStack(spacing: 16) {
+                            Image(systemName: "plus.circle.fill").foregroundColor(.red).font(.system(size: isCompact ? 24 : 28))
+                            Text("Create New Playlist").font(.system(size: isCompact ? 16 : 18, weight: .bold)).foregroundColor(.red)
+                            Spacer()
                         }
-                        Spacer()
-                        Image(systemName: "chevron.right").foregroundColor(.gray.opacity(0.5))
+                        .padding(.vertical, 12)
                     }
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                    .onTapGesture { client.fetchPlaylistTracks(playlistId: p.id) { t in if !t.isEmpty { playback.playTrack(t[0], context: t) } } }
                     Divider().opacity(0.1)
+
+                    ForEach(sorted) { p in
+                        HStack(spacing: 16) {
+                            Image(systemName: "music.note.list").padding(10).background(Color.gray.opacity(0.1)).cornerRadius(10)
+                                .font(.system(size: isCompact ? 16 : 20))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(p.name).font(.system(size: isCompact ? 16 : 18, weight: .bold))
+                                Text("\(p.songCount ?? 0) tracks").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundColor(.gray.opacity(0.5))
+                        }
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onPlaylistClick(p) }
+                        .contextMenu {
+                            Button(role: .destructive, action: {
+                                client.deletePlaylist(id: p.id) { _ in }
+                            }) {
+                                Label("Delete Playlist", systemImage: "trash")
+                            }
+                        }
+                         Divider().opacity(0.1)
+                    }
                 }
             }
+        }
+        .alert("New Playlist", isPresented: $showCreateAlert) {
+            TextField("Playlist Name", text: $newPlaylistName)
+            Button("Cancel", role: .cancel) { newPlaylistName = "" }
+            Button("Create") {
+                if !newPlaylistName.isEmpty {
+                    client.createPlaylist(name: newPlaylistName, songIds: []) { _ in
+                        newPlaylistName = ""
+                    }
+                }
+            }
+        } message: {
+            Text("Enter a name for your new playlist.")
         }
     }
 }
 
 private struct ArtistGridView: View {
     @EnvironmentObject var client: NavidromeClient
+    @EnvironmentObject var playback: PlaybackManager
     let viewMode: LibraryView.ViewMode
     let sortMode: LibraryView.SortMode
     let isDarkMode: Bool
     let isCompact: Bool
+    let showOfflineOnly: Bool
     var onArtistClick: ((String, String) -> Void)?
 
     var body: some View {
-        let sorted = client.artists.sorted { a, b in
+        let base = client.artists
+        let filtered = showOfflineOnly ? base.filter { artist in
+            client.allSongs.contains(where: { $0.artistId == artist.id && playback.isDownloaded($0.id) })
+        } : base
+        
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Artists don't have direct play counts in this model yet
             return (a.created ?? "") > (b.created ?? "")
@@ -352,9 +474,16 @@ private struct AlbumGridView: View {
     let sortMode: LibraryView.SortMode
     let isDarkMode: Bool
     let isCompact: Bool
+    let showOfflineOnly: Bool
 
     var body: some View {
-        let sorted = client.albums.sorted { a, b in
+        let base = client.albums
+        let filtered = showOfflineOnly ? base.filter { album in
+            // Album is offline if it has at least one downloaded track
+            client.allSongs.contains(where: { $0.albumId == album.id && playback.isDownloaded($0.id) })
+        } : base
+        
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Albums don't have direct play counts in this model yet
             return (a.created ?? "") > (b.created ?? "")
@@ -410,9 +539,13 @@ private struct SongListView: View {
     let sortMode: LibraryView.SortMode
     let isDarkMode: Bool
     let isCompact: Bool
+    let showOfflineOnly: Bool
 
     var body: some View {
-        let sorted = client.allSongs.sorted { a, b in
+        let base = client.allSongs
+        let filtered = showOfflineOnly ? playback.filterOffline(base) : base
+        
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
             return (a.created ?? "") > (b.created ?? "")
@@ -426,18 +559,48 @@ private struct SongListView: View {
                             .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
                         
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t.title)
-                                .font(.system(size: isCompact ? 14 : 16, weight: .bold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
+                            HStack {
+                                Text(t.title)
+                                    .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
+                                
+                                if let progress = playback.downloadProgress[t.id] {
+                                    Spacer()
+                                    HStack(spacing: 4) {
+                                        if let eta = playback.downloadETAs[t.id] {
+                                            Text(eta)
+                                                .font(.system(size: 8, weight: .medium))
+                                                .foregroundColor(.gray)
+                                        }
+                                        CircularProgressView(progress: progress, size: 12, strokeWidth: 1.5, accentColor: .red)
+                                    }
+                                }
+                            }
                             Text(t.artist ?? "")
                                 .font(.system(size: isCompact ? 11 : 13))
                                 .foregroundColor(.gray)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.75)
                         }
-                    }
                     .onTapGesture { playback.playTrack(t, context: sorted) }
+                    .contextMenu {
+                        Menu("Add to Playlist...") {
+                            ForEach(client.playlists) { p in
+                                Button(action: {
+                                    client.updatePlaylist(id: p.id, songIdsToAdd: [t.id]) { _ in }
+                                }) {
+                                    Label(p.name, systemImage: "music.note.list")
+                                }
+                            }
+                        }
+                        Button(action: {
+                            playback.startDownload(track: t)
+                        }) {
+                            Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+                        }
+                        .disabled(playback.isDownloaded(t.id))
+                    }
                 }
             }
         } else {
@@ -451,12 +614,170 @@ private struct SongListView: View {
                             Text(t.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
                         }
                         Spacer()
-                        Text(t.durationFormatted).font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
+                        if let progress = playback.downloadProgress[t.id] {
+                            HStack(spacing: 8) {
+                                if let eta = playback.downloadETAs[t.id] {
+                                    Text(eta)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.gray)
+                                }
+                                CircularProgressView(progress: progress, size: 18, strokeWidth: 2, accentColor: .red)
+                            }
+                        } else {
+                            Text(t.durationFormatted).font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
+                        }
                     }
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
                     .onTapGesture { playback.playTrack(t, context: sorted) }
+                    .contextMenu {
+                        Menu("Add to Playlist...") {
+                            ForEach(client.playlists) { p in
+                                Button(action: {
+                                    client.updatePlaylist(id: p.id, songIdsToAdd: [t.id]) { _ in }
+                                }) {
+                                    Label(p.name, systemImage: "music.note.list")
+                                }
+                            }
+                        }
+                        
+                        Button(action: {
+                            playback.startDownload(track: t)
+                        }) {
+                            Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+                        }
+                        .disabled(playback.isDownloaded(t.id))
+                    }
                     Divider().opacity(0.1)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Playlist Detail View
+
+private struct PlaylistDetailView: View {
+    @EnvironmentObject var client: NavidromeClient
+    @EnvironmentObject var playback: PlaybackManager
+    let playlist: Playlist
+    @Binding var tracks: [Track]
+    @Binding var isLoading: Bool
+    let isDarkMode: Bool
+    let isCompact: Bool
+    let hPad: CGFloat
+    var onBack: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer().frame(height: isCompact ? 80 : 100)
+            
+            // Header
+            HStack(alignment: .center) {
+                Button(action: onBack) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
+                            .foregroundColor(.red)
+                        Text("Playlists")
+                            .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
+                            .foregroundColor(.red)
+                    }
+                }
+                Spacer()
+                
+                Button(action: { playback.shufflePlay(tracks: tracks) }) {
+                    Image(systemName: "shuffle")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.red)
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, hPad)
+            .padding(.bottom, 20)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(playlist.name)
+                    .font(.system(size: isCompact ? 28 : 36, weight: .bold))
+                    .foregroundColor(isDarkMode ? .white : .black)
+                Text("\(playlist.songCount ?? 0) tracks • \(playlist.owner ?? "Unknown")")
+                    .font(.system(size: isCompact ? 14 : 16))
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal, hPad)
+            .padding(.bottom, 30)
+
+            if isLoading {
+                VStack {
+                    Spacer()
+                    LoadingCircle(size: 40, strokeWidth: 4, accentColor: .red)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else if tracks.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "music.note.list").font(.system(size: 40)).foregroundColor(.gray.opacity(0.3))
+                    Text("No tracks in this playlist").foregroundColor(.gray)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
+                            HStack(spacing: 16) {
+                                AsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
+                                    .frame(width: isCompact ? 48 : 56, height: isCompact ? 48 : 56).cornerRadius(8)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(track.title).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
+                                    Text(track.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
+                                }
+                                Spacer()
+                                if let progress = playback.downloadProgress[track.id] {
+                                    HStack(spacing: 8) {
+                                        if let eta = playback.downloadETAs[track.id] {
+                                            Text(eta)
+                                                .font(.system(size: 10, weight: .medium))
+                                                .foregroundColor(.gray)
+                                        }
+                                        CircularProgressView(progress: progress, size: 18, strokeWidth: 2, accentColor: .red)
+                                    }
+                                } else {
+                                    Text(track.durationFormatted).font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
+                                }
+                            }
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                            .onTapGesture { playback.playTrack(track, context: tracks) }
+                            .contextMenu {
+                                Button(role: .destructive, action: {
+                                    client.updatePlaylist(id: playlist.id, songIndicesToRemove: [index]) { success in
+                                        if success {
+                                            client.fetchPlaylistTracks(playlistId: playlist.id) { updated in
+                                                self.tracks = updated
+                                            }
+                                        }
+                                    }
+                                }) {
+                                    Label("Remove from Playlist", systemImage: "minus.circle")
+                                }
+                                
+                                Button(action: {
+                                    playback.startDownload(track: track)
+                                }) {
+                                    Label(playback.isDownloaded(track.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(track.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+                                }
+                                .disabled(playback.isDownloaded(track.id))
+                            }
+                            Divider().opacity(0.1)
+                        }
+                    }
+                    .padding(.horizontal, hPad)
+                    Spacer(minLength: 120)
                 }
             }
         }

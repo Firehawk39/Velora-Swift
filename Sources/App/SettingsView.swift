@@ -162,7 +162,7 @@ struct SettingsView: View {
             Button(action: handleConnect) {
                 HStack(spacing: 8) {
                     if status == .connecting {
-                        ProgressView().tint(accentFg)
+                        LoadingCircle(size: 20, strokeWidth: 2, accentColor: accentFg)
                     } else {
                         Image(systemName: "arrow.right")
                     }
@@ -343,14 +343,16 @@ struct FloatingLabelField: View {
 struct AppSettingsView: View {
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var client: NavidromeClient
+    @EnvironmentObject var sync: SyncManager
     @AppStorage("velora_server_url") private var serverUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""
     @AppStorage("velora_display_name") private var displayName: String = ""
     @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
-    @State private var downloadingAll = false
-    
+    @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
+    @AppStorage("velora_crossfade_enabled") private var isCrossfadeEnabled: Bool = false
+    @AppStorage("velora_crossfade_duration") private var crossfadeDuration: Double = 5.0
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")
     let accentFg   = Color(hex: "#0b1b32")
@@ -381,7 +383,7 @@ struct AppSettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     
                     VStack(spacing: 32) {
-                        // Profile Section
+                        // Account Section
                         VStack(alignment: .leading, spacing: 20) {
                             Text("Account")
                                 .font(.system(size: 14, weight: .bold))
@@ -435,7 +437,7 @@ struct AppSettingsView: View {
                         }
                         
                         // Storage Section
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("App Data")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(labelCol)
@@ -443,56 +445,91 @@ struct AppSettingsView: View {
                                 .padding(.leading, 4)
                             
                             Button(action: {
-                                downloadingAll = true
-                                Task {
-                                    // 1. Fetch Artist Media & Metadata
-                                    // We can parallelize image downloads, but MUST throttle MusicBrainz
-                                    for artist in client.artists {
-                                        // Image fetchers - fire and forget (they handle their own threads)
-                                        FanartManager.shared.downloadBackdropSilently(for: artist.name, mbid: nil)
-                                        FanartManager.shared.fetchArtistPortrait(for: artist.name, mbid: nil) { _ in }
-                                        
-                                        // Metadata fetch - MUST wait to respect 1 req/sec
-                                        await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
-                                        
-                                        // Small buffer to ensure we don't hit MBID lookup + Annotation too fast
-                                        try? await Task.sleep(nanoseconds: 1_050_000_000)
-                                    }
-                                    
-                                    // 2. Fetch Album Metadata (Top 50 albums)
-                                    let albumsToFetch = client.albums.prefix(50) 
-                                    for album in albumsToFetch {
-                                        await MusicBrainzManager.shared.downloadAlbumMetadataSilently(albumName: album.name, artistName: album.artist ?? "Unknown Artist")
-                                        try? await Task.sleep(nanoseconds: 1_050_000_000)
-                                    }
-
-                                    DispatchQueue.main.async { 
-                                        downloadingAll = false 
-                                        // Update cache size after download
-                                        DispatchQueue.global(qos: .background).async {
-                                            let size = client.getMediaCacheSize()
-                                            DispatchQueue.main.async { self.cacheSize = size }
-                                        }
-                                    }
+                                if sync.isSyncing && sync.syncType == .metadata {
+                                    sync.stopSync()
+                                } else {
+                                    sync.startMetadataSync()
                                 }
                             }) {
                                 HStack {
-                                    Image(systemName: "icloud.and.arrow.down.fill")
-                                    Text(downloadingAll ? "Downloading..." : "Download All Media & Metadata")
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncing && sync.syncType == .metadata ? .blue : labelCol)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(sync.isSyncing && sync.syncType == .metadata ? "Syncing Info..." : "Download Library Metadata")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text(sync.isSyncing && sync.syncType == .metadata ? sync.currentStatus : "Artist bios, portraits, and album details")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                            .lineLimit(1)
+                                    }
+                                    
                                     Spacer()
-                                    if downloadingAll {
-                                        ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                                    
+                                    if sync.isSyncing && sync.syncType == .metadata {
+                                        HStack(spacing: 8) {
+                                            if !sync.etaString.isEmpty {
+                                                Text(sync.etaString)
+                                                    .font(.system(size: 12, weight: .medium))
+                                                    .foregroundColor(.gray)
+                                            }
+                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .blue)
+                                        }
                                     } else {
                                         Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
                                     }
                                 }
                                 .padding()
-                                .frame(height: 60)
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                .foregroundColor(isDark ? .white : .black)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
-                            .disabled(downloadingAll)
+
+                            // Media Sync Button
+                            Button(action: {
+                                if sync.isSyncing && sync.syncType == .media {
+                                    sync.stopSync()
+                                } else {
+                                    sync.startMediaSync()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "icloud.and.arrow.down.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncing && sync.syncType == .media ? .red : labelCol)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(sync.isSyncing && sync.syncType == .media ? "Downloading..." : "Download All Music")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text(sync.isSyncing && sync.syncType == .media ? sync.currentStatus : "Save all tracks for offline listening")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if sync.isSyncing && sync.syncType == .media {
+                                        HStack(spacing: 8) {
+                                            if !sync.etaString.isEmpty {
+                                                Text(sync.etaString)
+                                                    .font(.system(size: 12, weight: .medium))
+                                                    .foregroundColor(.gray)
+                                            }
+                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .red)
+                                        }
+                                    } else {
+                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            }
                             
                             Button(action: {
                                 client.clearCache()
@@ -504,7 +541,10 @@ struct AppSettingsView: View {
                             }) {
                                 HStack {
                                     Image(systemName: "trash.fill")
+                                        .foregroundColor(.red)
                                     Text("Clear Media Cache")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(isDark ? .white : .black)
                                     Spacer()
                                     if cacheCleared {
                                         Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)
@@ -514,17 +554,87 @@ struct AppSettingsView: View {
                                     }
                                 }
                                 .padding()
-                                .frame(height: 60)
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                .foregroundColor(isDark ? .white : .black)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
                         }
                         
+                        // Audio Engine
+                        VStack(alignment: .leading, spacing: 20) {
+                            Text("Audio Engine")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+                            
+                            VStack(spacing: 0) {
+                                Toggle(isOn: $isCrossfadeEnabled) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Gapless Crossfade")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text("Smoothly transition between tracks")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                .tint(accentBg)
+                                .padding()
+                                
+                                if isCrossfadeEnabled {
+                                    Divider().background(borderCol.opacity(0.3)).padding(.horizontal)
+                                    
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        HStack {
+                                            Text("Crossfade Duration")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+                                            Spacer()
+                                            Text("\(Int(crossfadeDuration))s")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(accentBg)
+                                        }
+                                        Slider(value: $crossfadeDuration, in: 2...12, step: 1)
+                                            .accentColor(accentBg)
+                                    }
+                                    .padding()
+                                }
+                            }
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                        }
+                        
+                        // Download Concurrency
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Download Concurrency")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(labelCol)
+                                Spacer()
+                                Text("\(downloadConcurrency) tracks")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(isDark ? .white : .black)
+                            }
+                            Slider(value: Binding(
+                                get: { Double(downloadConcurrency) },
+                                set: { downloadConcurrency = Int($0) }
+                            ), in: 1...15, step: 1)
+                            .accentColor(accentBg)
+                            
+                            Text("Higher values speed up downloads but may slow down your server or drain battery.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.gray)
+                        }
+                        .padding()
+                        .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                        .cornerRadius(16)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+
                         // Danger Zone
                         VStack(alignment: .leading, spacing: 20) {
                             Button(action: {
-                                // Clear credentials and state
                                 client.logout()
                             }) {
                                 HStack {
