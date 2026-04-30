@@ -170,6 +170,7 @@ struct ArtistDetailView: View {
     
     private func artistLogo(size: CGFloat) -> some View {
         ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
+            .id("portrait-\(artistId)")
     }
     
     private var artistLabel: some View {
@@ -448,12 +449,12 @@ struct ArtistBackdropView: View {
                 fallbackView
             }
             
-            // Premium Vignette
+            // Premium Vignette (Restored to previous default)
             LinearGradient(
                 gradient: Gradient(colors: [
-                    (isDarkMode ? Color.black : Color.white).opacity(0.4),
+                    .black.opacity(0.8),
                     .clear,
-                    (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+                    isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa")
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
@@ -467,7 +468,7 @@ struct ArtistBackdropView: View {
                 image
                     .resizable()
                     .scaledToFill()
-                    .blur(radius: 40) // Decreased blur intensity as requested
+                    .blur(radius: 30) // Decreased blur intensity as requested
             } else {
                 Color.gray.opacity(0.1)
             }

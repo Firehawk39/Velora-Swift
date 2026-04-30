@@ -25,7 +25,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var queueIndex: Int = 0
     @Published var isShuffle: Bool = false
     @Published var repeatMode: RepeatMode = .off
-    @Published var downloadedTrackIds: Set<String> = []
+    @Published var downloadedTrackIds = Set<String>()
+    @Published var failedDownloadIds = Set<String>()
+    @Published var activeDownloadCount = 0
     
     func isDownloaded(_ trackId: String) -> Bool {
         return downloadedTrackIds.contains(trackId)
@@ -39,9 +41,13 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let flacPath = downloadsDir.appendingPathComponent("\(trackId).flac").path
         let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a").path
         
-        return fileManager.fileExists(atPath: mp3Path) || 
-               fileManager.fileExists(atPath: flacPath) || 
-               fileManager.fileExists(atPath: m4aPath)
+        var isDir: ObjCBool = false
+        for path in [mp3Path, flacPath, m4aPath] {
+            if fileManager.fileExists(atPath: path, isDirectory: &isDir) && !isDir.boolValue {
+                return true
+            }
+        }
+        return false
     }
     
     func filterOffline(_ tracks: [Track]) -> [Track] {
@@ -57,7 +63,6 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     private var downloadQueue: [Track] = []
     private var downloadStartTimes: [String: Date] = [:]
-    private var activeDownloadCount = 0
     private var maxConcurrentDownloads: Int {
         UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0 
             ? 5 : UserDefaults.standard.integer(forKey: "velora_download_concurrency")
@@ -480,11 +485,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     // MARK: - Offline Downloads Management
     
-    func isTrackDownloaded(_ trackId: String) -> Bool {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let fileUrl = documentsDirectory.appendingPathComponent("\(trackId).mp3")
-        return FileManager.default.fileExists(atPath: fileUrl.path)
-    }
+    
+
     
     func loadDownloadedTracks() {
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -635,13 +637,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         print("DEBUG: didCompleteWithError called for task \(task.taskIdentifier)")
-        activeDownloadCount -= 1
-        processQueue()
-        
         if let error = error {
-            print("ERROR: Download task \(task.taskIdentifier) failed with error: \(error.localizedDescription)")
+            print("ERROR: Download task \(task.taskIdentifier) failed: \(error.localizedDescription)")
             if let trackId = downloadTasks[task.taskIdentifier] {
                 DispatchQueue.main.async {
+                    self.failedDownloadIds.insert(trackId)
                     self.downloadProgress.removeValue(forKey: trackId)
                     self.downloadETAs.removeValue(forKey: trackId)
                 }
@@ -650,6 +650,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             print("DEBUG: Download task \(task.taskIdentifier) completed without error.")
         }
         downloadTasks.removeValue(forKey: task.taskIdentifier)
+        activeDownloadCount -= 1
+        processQueue()
     }
     
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {

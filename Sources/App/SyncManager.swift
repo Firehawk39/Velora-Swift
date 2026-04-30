@@ -35,8 +35,33 @@ final class SyncManager: ObservableObject {
         syncProgress = 0.0
         
         Task {
+            // 1. Ensure artists are loaded
+            if client.artists.isEmpty {
+                currentStatus = "Fetching artist list..."
+                client.fetchArtists()
+                for _ in 0..<30 {
+                    if !client.artists.isEmpty { break }
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+            }
+            
+            // 2. Ensure albums are loaded
+            if client.albums.isEmpty {
+                currentStatus = "Fetching album list..."
+                client.fetchAlbums()
+                for _ in 0..<30 {
+                    if !client.albums.isEmpty { break }
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+            }
+            
             let artists = client.artists
             let albums = client.albums
+            
+            if artists.isEmpty && albums.isEmpty {
+                finalizeSync("No artists or albums found.")
+                return
+            }
             
             let totalTasks = Double(artists.count + albums.count)
             var tasksCompleted = 0.0
@@ -116,11 +141,15 @@ final class SyncManager: ObservableObject {
             if client.allSongs.isEmpty {
                 currentStatus = "Fetching song list..."
                 client.fetchAllSongs()
-                // Wait for songs to populate (poll for up to 10s)
-                for _ in 0..<20 {
+                playback?.failedDownloadIds.removeAll()
+                
+                // Wait for songs to populate (poll for up to 15s)
+                for _ in 0..<30 {
                     if !client.allSongs.isEmpty { break }
                     try? await Task.sleep(nanoseconds: 500_000_000)
                 }
+            } else {
+                playback?.failedDownloadIds.removeAll()
             }
             
             let tracks = client.allSongs
@@ -151,29 +180,61 @@ final class SyncManager: ObservableObject {
             var lastDownloadedCount = -1
             var stallCounter = 0
             
+            let startTime = Date()
             while isSyncing {
                 let currentlyDownloaded = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
-                let totalCompleted = Double(alreadyDownloadedCount + currentlyDownloaded)
+                let currentlyFailed = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
+                let totalCompleted = Double(alreadyDownloadedCount + currentlyDownloaded + currentlyFailed)
                 
                 updateProgress(totalCompleted / totalTracks)
-                currentStatus = "Downloading: \(currentlyDownloaded)/\(totalToDownload) (\(alreadyDownloadedCount) skipped)"
+                currentStatus = "Downloading: \(currentlyDownloaded)/\(totalToDownload) (\(alreadyDownloadedCount) skipped, \(currentlyFailed) failed)"
                 
-                if currentlyDownloaded >= totalToDownload {
+                // ETA Calculation
+                let processedInThisBatch = currentlyDownloaded + currentlyFailed
+                if processedInThisBatch > 0 {
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    let tracksPerSecond = Double(processedInThisBatch) / elapsed
+                    let remainingTracks = Double(totalToDownload - processedInThisBatch)
+                    let remainingSeconds = Int(remainingTracks / tracksPerSecond)
+                    
+                    if remainingSeconds > 3600 {
+                        self.etaString = "\(remainingSeconds / 3600)h remaining"
+                    } else if remainingSeconds > 60 {
+                        self.etaString = "\(remainingSeconds / 60)m remaining"
+                    } else {
+                        self.etaString = "\(remainingSeconds)s remaining"
+                    }
+                } else {
+                    self.etaString = "Calculating..."
+                }
+
+                if (currentlyDownloaded + currentlyFailed) >= totalToDownload {
                     break
                 }
                 
-                if currentlyDownloaded == lastDownloadedCount {
+                if (currentlyDownloaded + currentlyFailed) == lastDownloadedCount {
                     stallCounter += 1
+                    if stallCounter > 300 { // 5 minutes stall
+                        finalizeSync("Sync Stalled. Check your connection.")
+                        return
+                    }
                 } else {
                     stallCounter = 0
-                    lastDownloadedCount = currentlyDownloaded
+                    lastDownloadedCount = currentlyDownloaded + currentlyFailed
                 }
                 
-                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second interval
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             
             if isSyncing {
-                finalizeSync("Media Sync Complete (\(alreadyDownloadedCount) skipped, \(totalToDownload) downloaded)")
+                let successCount = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
+                let failCount = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
+                
+                if failCount > 0 {
+                    finalizeSync("Sync Finished with \(failCount) errors. (\(successCount) saved)")
+                } else {
+                    finalizeSync("Media Sync Complete (\(alreadyDownloadedCount) skipped, \(successCount) downloaded)")
+                }
             }
         }
     }

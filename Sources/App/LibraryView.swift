@@ -438,9 +438,8 @@ private struct ArtistGridView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { a in
                     VStack(spacing: isCompact ? 6 : 8) {
-                        AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Circle().fill(Color.gray.opacity(0.1)) }
-                            .aspectRatio(1, contentMode: .fit)
-                            .clipShape(Circle())
+                        ArtistPortraitView(artistId: a.id, size: isCompact ? 100 : 160, client: client, isDarkMode: isDarkMode)
+                            .id("artist-grid-\(a.id)")
                         
                         Text(a.name)
                             .font(.system(size: isCompact ? 14 : 16, weight: .bold))
@@ -455,8 +454,8 @@ private struct ArtistGridView: View {
             LazyVStack(spacing: 0) {
                 ForEach(sorted) { a in
                     HStack(spacing: 16) {
-                        AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Circle().fill(Color.gray.opacity(0.1)) }
-                            .frame(width: isCompact ? 50 : 60, height: isCompact ? 50 : 60).clipShape(Circle())
+                        ArtistPortraitView(artistId: a.id, size: isCompact ? 40 : 50, client: client, isDarkMode: isDarkMode)
+                            .id("artist-list-\(a.id)")
                         Text(a.name).font(.system(size: isCompact ? 16 : 18, weight: .bold))
                         Spacer()
                         Image(systemName: "chevron.right").foregroundColor(.gray.opacity(0.5))
@@ -497,6 +496,7 @@ private struct AlbumGridView: View {
                     VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
                             .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                            .id("album-grid-\(a.id)")
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text(a.name)
@@ -519,6 +519,7 @@ private struct AlbumGridView: View {
                     HStack(spacing: 16) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
                             .frame(width: isCompact ? 50 : 60, height: isCompact ? 50 : 60).cornerRadius(8)
+                            .id("album-list-\(a.id)")
                         VStack(alignment: .leading, spacing: 4) {
                             Text(a.name).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
                             Text(a.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
@@ -558,8 +559,8 @@ private struct SongListView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { t in
                     VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
-                        AsyncImage(url: t.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                            .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                        SongArtworkView(track: t, isDarkMode: isDarkMode)
+                            .id("song-grid-\(t.id)")
                         
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
@@ -611,8 +612,8 @@ private struct SongListView: View {
             LazyVStack(spacing: 0) {
                 ForEach(sorted) { t in
                     HStack(spacing: 16) {
-                        AsyncImage(url: t.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                            .frame(width: isCompact ? 48 : 56, height: isCompact ? 48 : 56).cornerRadius(8)
+                        SongArtworkView(track: t, isDarkMode: isDarkMode, size: isCompact ? 48 : 56)
+                            .id("song-list-\(t.id)")
                         VStack(alignment: .leading, spacing: 4) {
                             Text(t.title).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
                             Text(t.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
@@ -829,8 +830,8 @@ private struct PlaylistDetailView: View {
     @ViewBuilder
     private func playlistTrackRow(track: Track, index: Int, allTracks: [Track]) -> some View {
         HStack(spacing: 16) {
-            AsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                .frame(width: isCompact ? 48 : 56, height: isCompact ? 48 : 56).cornerRadius(8)
+            SongArtworkView(track: track, isDarkMode: isDarkMode, size: isCompact ? 48 : 56)
+                .id("playlist-row-\(track.id)")
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.title).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
@@ -862,8 +863,8 @@ private struct PlaylistDetailView: View {
     private func playlistTrackGridItem(track: Track, index: Int, allTracks: [Track]) -> some View {
         VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
             ZStack(alignment: .topTrailing) {
-                AsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                    .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                SongArtworkView(track: track, isDarkMode: isDarkMode)
+                    .id("playlist-grid-\(track.id)")
                 
                 if let progress = playback.downloadProgress[track.id] {
                     CircularProgressView(progress: progress, size: 16, strokeWidth: 2, accentColor: .red)
