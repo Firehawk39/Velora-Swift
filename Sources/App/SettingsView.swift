@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var cacheCleared: Bool   = false
     @State private var cacheSize: String    = "Calculating..."
     @State private var downloadingAll: Bool = false
+    @State private var showLogs: Bool       = false
 
     enum ConnStatus { case idle, connecting, connected, error }
 
@@ -353,6 +354,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @AppStorage("velora_crossfade_enabled") private var isCrossfadeEnabled: Bool = false
     @AppStorage("velora_crossfade_duration") private var crossfadeDuration: Double = 5.0
+    @State private var showLogs: Bool = false
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")
     let accentFg   = Color(hex: "#0b1b32")
@@ -635,6 +637,23 @@ struct AppSettingsView: View {
                         // Danger Zone
                         VStack(alignment: .leading, spacing: 20) {
                             Button(action: {
+                                showLogs = true
+                            }) {
+                                HStack {
+                                    Image(systemName: "doc.text.magnifyingglass")
+                                    Text("App Logs")
+                                        .fontWeight(.semibold)
+                                    Spacer()
+                                }
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 60)
+                                .background(Color.blue.opacity(0.1))
+                                .foregroundColor(.blue)
+                                .cornerRadius(16)
+                            }
+                            
+                            Button(action: {
                                 client.logout()
                             }) {
                                 HStack {
@@ -665,6 +684,9 @@ struct AppSettingsView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showLogs) {
+            LogsView()
         }
     }
 

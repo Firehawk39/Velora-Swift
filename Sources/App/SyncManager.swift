@@ -129,7 +129,11 @@ final class SyncManager: ObservableObject {
     
     /// Downloads all tracks in the library
     func startMediaSync() {
-        guard let client = client, !isSyncing else { return }
+        AppLogger.shared.log("startMediaSync() triggered. isSyncing: \(isSyncing), client: \(client != nil ? "present" : "nil")", level: .info)
+        guard let client = client, !isSyncing else { 
+            AppLogger.shared.log("startMediaSync() aborted: guard failed.", level: .error)
+            return 
+        }
         
         isSyncing = true
         syncType = .media
@@ -138,25 +142,34 @@ final class SyncManager: ObservableObject {
         
         Task {
             // 1. Ensure we actually have the songs list
+            AppLogger.shared.log("Checking client.allSongs.isEmpty: \(client.allSongs.isEmpty)", level: .debug)
             if client.allSongs.isEmpty {
                 currentStatus = "Fetching song list..."
                 client.fetchAllSongs()
                 playback?.failedDownloadIds.removeAll()
                 
+                AppLogger.shared.log("Polling for songs...", level: .debug)
                 // Wait for songs to populate (poll for up to 15s)
                 for _ in 0..<30 {
-                    if !client.allSongs.isEmpty { break }
+                    if !client.allSongs.isEmpty { 
+                        AppLogger.shared.log("Songs populated: \(client.allSongs.count) tracks.", level: .debug)
+                        break 
+                    }
                     try? await Task.sleep(nanoseconds: 500_000_000)
                 }
             } else {
+                AppLogger.shared.log("Songs already populated: \(client.allSongs.count) tracks.", level: .debug)
                 playback?.failedDownloadIds.removeAll()
             }
             
             let tracks = client.allSongs
             if tracks.isEmpty {
+                AppLogger.shared.log("Songs list still empty after polling. Aborting.", level: .error)
                 finalizeSync("No tracks found in library.")
                 return
             }
+            
+            AppLogger.shared.log("Total tracks in library: \(tracks.count). Checking which need download.", level: .debug)
             
             let tracksToDownload = tracks.filter { !(playback?.checkFileSystemForTrack($0.id) ?? false) }
             let totalTracks = Double(tracks.count)
@@ -169,12 +182,14 @@ final class SyncManager: ObservableObject {
             }
             
             currentStatus = "Queueing \(totalToDownload) tracks..."
+            AppLogger.shared.log("Queueing \(totalToDownload) tracks.", level: .info)
             for track in tracksToDownload {
                 if !isSyncing { break }
                 playback?.downloadTrack(track)
                 // Small yield to keep UI responsive during mass queueing
                 await Task.yield()
             }
+            AppLogger.shared.log("Finished queueing. Starting monitor loop.", level: .debug)
             
             // Phase 2: Monitor progress with a timeout safety
             var lastDownloadedCount = -1
@@ -185,6 +200,10 @@ final class SyncManager: ObservableObject {
                 let currentlyDownloaded = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
                 let currentlyFailed = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
                 let totalCompleted = Double(alreadyDownloadedCount + currentlyDownloaded + currentlyFailed)
+                
+                if currentlyDownloaded + currentlyFailed == 0 {
+                    AppLogger.shared.log("Sync loop heartbeat: 0/\(totalToDownload) processed. isSyncing: \(isSyncing)", level: .debug)
+                }
                 
                 updateProgress(totalCompleted / totalTracks)
                 currentStatus = "Downloading: \(currentlyDownloaded)/\(totalToDownload) (\(alreadyDownloadedCount) skipped, \(currentlyFailed) failed)"

@@ -33,21 +33,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         return downloadedTrackIds.contains(trackId)
     }
     
-    /// Checks the file system directly for the existence of the track file
+    /// Checks if a track is downloaded
     func checkFileSystemForTrack(_ trackId: String) -> Bool {
-        let fileManager = FileManager.default
-        let downloadsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let mp3Path = downloadsDir.appendingPathComponent("\(trackId).mp3").path
-        let flacPath = downloadsDir.appendingPathComponent("\(trackId).flac").path
-        let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a").path
-        
-        var isDir: ObjCBool = false
-        for path in [mp3Path, flacPath, m4aPath] {
-            if fileManager.fileExists(atPath: path, isDirectory: &isDir) && !isDir.boolValue {
-                return true
-            }
-        }
-        return false
+        return isDownloaded(trackId)
     }
     
     func filterOffline(_ tracks: [Track]) -> [Track] {
@@ -86,9 +74,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
-        configuration.sessionSendsLaunchEvents = true
-        configuration.isDiscretionary = false
+        let configuration = URLSessionConfiguration.default
+        // Maximize connections to the same host for faster concurrent downloads
+        configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
         return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
     } ()
     
@@ -509,9 +497,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func downloadTrack(_ track: Track) {
-        print("DEBUG: downloadTrack requested for \(track.id) - \(track.title)")
+        AppLogger.shared.log("downloadTrack requested for \(track.id) - \(track.title)", level: .debug)
         if checkFileSystemForTrack(track.id) {
-            print("DEBUG: Track \(track.id) already exists on disk.")
+            AppLogger.shared.log("Track \(track.id) already exists on disk.", level: .debug)
             // Already there, but maybe the set is stale
             if !downloadedTrackIds.contains(track.id) {
                 DispatchQueue.main.async {
@@ -524,7 +512,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         // Add to queue if not already there or active
         if downloadProgress[track.id] != nil { 
-            print("DEBUG: Track \(track.id) is already in download progress map.")
+            AppLogger.shared.log("Track \(track.id) is already in download progress map.", level: .debug)
             return 
         }
         
@@ -533,13 +521,13 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             self.downloadProgress[track.id] = 0.0
         }
         
-        print("DEBUG: Appending \(track.id) to downloadQueue. Current queue size: \(downloadQueue.count)")
+        AppLogger.shared.log("Appending \(track.id) to downloadQueue. Current queue size: \(downloadQueue.count)", level: .debug)
         downloadQueue.append(track)
         processQueue()
     }
     
     private func processQueue() {
-        print("DEBUG: processQueue() called. Active: \(activeDownloadCount)/\(maxConcurrentDownloads), Queue: \(downloadQueue.count)")
+        AppLogger.shared.log("processQueue() - active: \(activeDownloadCount)/\(maxConcurrentDownloads), queue: \(downloadQueue.count)", level: .debug)
         guard activeDownloadCount < maxConcurrentDownloads, !downloadQueue.isEmpty else { return }
         
         let track = downloadQueue.removeFirst()
@@ -548,13 +536,17 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let streamUrl = client.getStreamUrl(id: track.id)
         
         guard let url = streamUrl else { 
-            print("ERROR: Could not get stream URL for track \(track.id)")
-            activeDownloadCount -= 1
-            processQueue() // Try next
+            AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
+            DispatchQueue.main.async {
+                self.failedDownloadIds.insert(track.id)
+                self.downloadProgress.removeValue(forKey: track.id)
+                self.activeDownloadCount -= 1
+                self.processQueue()
+            }
             return 
         }
         
-        print("DEBUG: Starting download task for \(track.id) from \(url.absoluteString)")
+        AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
         let task = downloadSession.downloadTask(with: url)
         downloadTasks[task.taskIdentifier] = track.id
         downloadStartTimes[track.id] = Date()
@@ -594,10 +586,10 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        print("DEBUG: didFinishDownloadingTo called for task \(downloadTask.taskIdentifier)")
+        AppLogger.shared.log("didFinishDownloadingTo called for task \(downloadTask.taskIdentifier)", level: .debug)
         
         guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { 
-            print("DEBUG: No trackId found for task \(downloadTask.taskIdentifier)")
+            AppLogger.shared.log("No trackId found for task \(downloadTask.taskIdentifier)", level: .warning)
             return 
         }
         
@@ -625,20 +617,21 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 self.downloadStartTimes.removeValue(forKey: trackId)
                 self.objectWillChange.send()
             }
-            print("SUCCESS: Saved track \(trackId) to \(destinationUrl.path)")
+            AppLogger.shared.log("SUCCESS: Saved track \(trackId) to \(destinationUrl.path)", level: .info)
         } catch {
-            print("ERROR: Failed to save track \(trackId): \(error.localizedDescription)")
+            AppLogger.shared.log("Failed to save track \(trackId): \(error.localizedDescription)", level: .error)
             DispatchQueue.main.async {
                 self.downloadProgress.removeValue(forKey: trackId)
             }
         }
-        downloadTasks.removeValue(forKey: downloadTask.taskIdentifier)
+        // Removed: downloadTasks.removeValue(forKey: downloadTask.taskIdentifier) 
+        // We now only remove in didCompleteWithError to ensure the ID is available there.
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        print("DEBUG: didCompleteWithError called for task \(task.taskIdentifier)")
+        AppLogger.shared.log("didCompleteWithError called for task \(task.taskIdentifier)", level: .debug)
         if let error = error {
-            print("ERROR: Download task \(task.taskIdentifier) failed: \(error.localizedDescription)")
+            AppLogger.shared.log("Download task \(task.taskIdentifier) failed: \(error.localizedDescription)", level: .error)
             if let trackId = downloadTasks[task.taskIdentifier] {
                 DispatchQueue.main.async {
                     self.failedDownloadIds.insert(trackId)
@@ -647,7 +640,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 }
             }
         } else {
-            print("DEBUG: Download task \(task.taskIdentifier) completed without error.")
+            AppLogger.shared.log("Download task \(task.taskIdentifier) completed without error.", level: .debug)
         }
         downloadTasks.removeValue(forKey: task.taskIdentifier)
         activeDownloadCount -= 1
