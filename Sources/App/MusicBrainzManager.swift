@@ -30,10 +30,11 @@ class MusicBrainzManager: ObservableObject {
     
     private var nameToMBIDCache: [String: String] = [:]
     private let cacheFile: URL
+    private let metadataDir: URL
+    private let fileManager = FileManager.default
     private let userAgent = "VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )"
     
     init() {
-        let fileManager = FileManager.default
         let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         metadataDir = docs.appendingPathComponent("Metadata", isDirectory: true)
         cacheFile = docs.appendingPathComponent("name_to_mbid.json")
