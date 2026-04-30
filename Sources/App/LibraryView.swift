@@ -16,16 +16,6 @@ struct LibraryView: View {
     @State private var playlistTracks: [Track] = []
     @State private var isLoadingPlaylist: Bool = false
     
-    private var categories: [(String, String, String)] {
-        [
-            ("playlists", "Playlists", "music.note.list"),
-            ("artists",   "Artists",   "person.2"),
-            ("albums",    "Albums",    "opticaldisc"),
-            ("songs",     "Songs",     "music.note"),
-            ("lossless",  "Lossless",  "wave.and.mic")
-        ]
-    }
-    
     enum ViewMode { case grid, list }
     enum SortMode { case alphabetical, recent, topPlayed }
     
@@ -38,7 +28,6 @@ struct LibraryView: View {
         ("artists",   "Artists",   "person.2"),
         ("albums",    "Albums",    "opticaldisc"),
         ("songs",     "Songs",     "music.note"),
-        ("lossless",  "Lossless",  "wave.and.mic"),
         ("downloaded", "Downloaded", "checkmark.circle.fill"),
     ]
 
@@ -158,40 +147,9 @@ struct LibraryView: View {
                         .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
                     .accessibilityLabel("Sort Options")
-                }
-            }
-            .padding(.horizontal, hPad)
-            .padding(.top, 8)
-            .padding(.bottom, 8)
-
-            // Category Selection Bar
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(categories, id: \.0) { item in
-                        CategoryPill(
-                            title: item.1,
-                            icon: item.2,
-                            isSelected: category == item.0,
-                            isDarkMode: isDarkMode
-                        )
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                // Update current category
-                                // Since 'category' is a parameter in categoryDetailView, we need to update activeCategory
-                                activeCategory = item.0
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, hPad)
-                .padding(.vertical, 8)
-            }
-            
-            // Actions Row (Shuffle/Download)
-            HStack {
-                Spacer()
-                // Shuffle & Download All for Songs
-                if category == "songs" {
+                    
+                    // Shuffle & Download All for Songs
+                    if category == "songs" {
                         HStack(spacing: 8) {
                             Button(action: {
                                 playback.shufflePlay(tracks: client.allSongs)
@@ -259,13 +217,13 @@ struct LibraryView: View {
                         }
                     })
                     case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
-                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, showLosslessOnly: false)
-                    case "lossless":  SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, showLosslessOnly: true)
+                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
                     default:          EmptyView()
                     }
                 }
                 .padding(.horizontal, hPad)
                 Spacer(minLength: 120)
+            }
         }
     }
 }
@@ -279,15 +237,6 @@ private struct LibraryMenuView: View {
     let isDarkMode: Bool
     let isCompact: Bool
     let hPad: CGFloat
-
-    private var stats: [(String, String, String, Color)] {
-        [
-            ("Tracks", "\(client.allSongs.count)", "music.note", Color.blue),
-            ("Playlists", "\(client.playlists.count)", "music.note.list", Color.green),
-            ("Albums", "\(client.albums.count)", "opticaldisc", Color.orange),
-            ("Artists", "\(client.artists.count)", "person.2", Color.teal)
-        ]
-    }
 
     var body: some View {
         ScrollView {
@@ -314,6 +263,12 @@ private struct LibraryMenuView: View {
                         Text("Insights").font(.system(size: isCompact ? 22 : 24, weight: .bold))
                     }
                     .padding(.horizontal, hPad)
+                    let stats = [
+                        ("Tracks", "\(client.allSongs.count)", "music.note", Color.blue),
+                        ("Playlists", "\(client.playlists.count)", "music.note.list", Color.green),
+                        ("Albums", "\(client.albums.count)", "opticaldisc", Color.orange),
+                        ("Artists", "\(client.artists.count)", "person.2", Color.teal)
+                    ]
                     
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 200), spacing: 16)], spacing: 16) {
                         ForEach(stats, id: \.0) { stat in
@@ -349,7 +304,7 @@ private struct PlaylistGridView: View {
     @State private var showCreateAlert = false
     @State private var newPlaylistName = ""
 
-    private var sortedPlaylists: [Playlist] {
+    var body: some View {
         let base = client.playlists
         let filtered = showOfflineOnly ? base.filter { p in
             // For playlists, we consider it offline if at least one song is downloaded 
@@ -358,14 +313,11 @@ private struct PlaylistGridView: View {
             return true 
         } : base
         
-        return filtered.sorted { a, b in
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Playlists don't have play counts
             return (a.created ?? "") > (b.created ?? "")
         }
-    }
-
-    var body: some View {
         Group {
             if viewMode == .grid {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
@@ -384,7 +336,7 @@ private struct PlaylistGridView: View {
                         }
                     }
                     
-                    ForEach(sortedPlaylists) { p in
+                    ForEach(sorted) { p in
                         VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                             Rectangle().fill(Color.gray.opacity(0.1)).aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
                                 .overlay(Image(systemName: "music.note.list").foregroundColor(.gray).font(.system(size: isCompact ? 20 : 28)))
@@ -424,7 +376,7 @@ private struct PlaylistGridView: View {
                     }
                     Divider().opacity(0.1)
 
-                    ForEach(sortedPlaylists) { p in
+                    ForEach(sorted) { p in
                         HStack(spacing: 16) {
                             Image(systemName: "music.note.list").padding(10).background(Color.gray.opacity(0.1)).cornerRadius(10)
                                 .font(.system(size: isCompact ? 16 : 20))
@@ -476,23 +428,20 @@ private struct ArtistGridView: View {
     let showOfflineOnly: Bool
     var onArtistClick: ((String, String) -> Void)?
 
-    private var sortedArtists: [Artist] {
+    var body: some View {
         let base = client.artists
         let filtered = showOfflineOnly ? base.filter { artist in
             client.allSongs.contains(where: { $0.artistId == artist.id && playback.isDownloaded($0.id) })
         } : base
         
-        return filtered.sorted { a, b in
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Artists don't have direct play counts in this model yet
             return (a.created ?? "") > (b.created ?? "")
         }
-    }
-
-    var body: some View {
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
-                ForEach(sortedArtists) { a in
+                ForEach(sorted) { a in
                     VStack(spacing: isCompact ? 6 : 8) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Circle().fill(Color.gray.opacity(0.1)) }
                             .aspectRatio(1, contentMode: .fit)
@@ -509,7 +458,7 @@ private struct ArtistGridView: View {
             }
         } else {
             LazyVStack(spacing: 0) {
-                ForEach(sortedArtists) { a in
+                ForEach(sorted) { a in
                     HStack(spacing: 16) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Circle().fill(Color.gray.opacity(0.1)) }
                             .frame(width: isCompact ? 50 : 60, height: isCompact ? 50 : 60).clipShape(Circle())
@@ -535,24 +484,21 @@ private struct AlbumGridView: View {
     let isCompact: Bool
     let showOfflineOnly: Bool
 
-    private var sortedAlbums: [Album] {
+    var body: some View {
         let base = client.albums
         let filtered = showOfflineOnly ? base.filter { album in
             // Album is offline if it has at least one downloaded track
             client.allSongs.contains(where: { $0.albumId == album.id && playback.isDownloaded($0.id) })
         } : base
         
-        return filtered.sorted { a, b in
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Albums don't have direct play counts in this model yet
             return (a.created ?? "") > (b.created ?? "")
         }
-    }
-
-    var body: some View {
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
-                ForEach(sortedAlbums) { a in
+                ForEach(sorted) { a in
                     VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
                             .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
@@ -574,7 +520,7 @@ private struct AlbumGridView: View {
             }
         } else {
             LazyVStack(spacing: 0) {
-                ForEach(sortedAlbums) { a in
+                ForEach(sorted) { a in
                     HStack(spacing: 16) {
                         AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
                             .frame(width: isCompact ? 50 : 60, height: isCompact ? 50 : 60).cornerRadius(8)
@@ -602,99 +548,73 @@ private struct SongListView: View {
     let isDarkMode: Bool
     let isCompact: Bool
     let showOfflineOnly: Bool
-    let showLosslessOnly: Bool
 
-    private var sortedSongs: [Track] {
-        var base = client.allSongs
-        if showLosslessOnly {
-            base = base.filter { $0.suffix?.lowercased() == "flac" }
-        }
+    var body: some View {
+        let base = client.allSongs
         let filtered = showOfflineOnly ? playback.filterOffline(base) : base
         
-        return filtered.sorted { a, b in
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
             return (a.created ?? "") > (b.created ?? "")
         }
-    }
-
-    var body: some View {
+        
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
-                ForEach(sortedSongs) { t in
+                ForEach(sorted) { t in
                     VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                         AsyncImage(url: t.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
                             .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
                         
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(t.title)
-                                .font(.system(size: isCompact ? 14 : 16, weight: .bold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                            
-                            Text(t.artist ?? "")
-                                .font(.system(size: isCompact ? 10 : 12))
-                                .foregroundColor(.gray)
-                                .lineLimit(1)
-
-                            if let progress = playback.downloadProgress[t.id] {
-                                Spacer()
-                                HStack(spacing: 4) {
-                                    if let eta = playback.downloadETAs[t.id] {
-                                        Text(eta)
-                                            .font(.system(size: 8, weight: .medium))
-                                            .foregroundColor(.gray)
-                                    }
-                                    CircularProgressView(progress: progress, size: 12, strokeWidth: 1.5, accentColor: .red)
-                                }
-                            } else if playback.isDownloaded(t.id) {
-                                Spacer()
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.red)
-                            }
-                        }
-                            HStack(spacing: 4) {
-                                Text(t.artist ?? "")
-                                    .font(.system(size: isCompact ? 11 : 13))
-                                    .foregroundColor(.gray)
+                            HStack {
+                                Text(t.title)
+                                    .font(.system(size: isCompact ? 14 : 16, weight: .bold))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.75)
                                 
-                                if t.suffix?.lowercased() == "flac" {
-                                    Text("FLAC")
-                                        .font(.system(size: 8, weight: .black))
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 1)
-                                        .background(Color.red.opacity(0.1))
-                                        .foregroundColor(.red)
-                                        .cornerRadius(3)
-                                }
-                            }
-                        }
-                        .onTapGesture { playback.playTrack(t, context: sortedSongs) }
-                        .contextMenu {
-                            Menu("Add to Playlist...") {
-                                ForEach(client.playlists) { p in
-                                    Button(action: {
-                                        client.updatePlaylist(id: p.id, songIdsToAdd: [t.id]) { _ in }
-                                    }) {
-                                        Label(p.name, systemImage: "music.note.list")
+                                if let progress = playback.downloadProgress[t.id] {
+                                    Spacer()
+                                    HStack(spacing: 4) {
+                                        if let eta = playback.downloadETAs[t.id] {
+                                            Text(eta)
+                                                .font(.system(size: 8, weight: .medium))
+                                                .foregroundColor(.gray)
+                                        }
+                                        CircularProgressView(progress: progress, size: 12, strokeWidth: 1.5, accentColor: .red)
                                     }
                                 }
                             }
-                            Button(action: {
-                                playback.downloadTrack(t)
-                            }) {
-                                Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
-                            }
-                            .disabled(playback.isDownloaded(t.id))
+                            Text(t.artist ?? "")
+                                .font(.system(size: isCompact ? 11 : 13))
+                                .foregroundColor(.gray)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
                         }
                     }
+                    .onTapGesture { playback.playTrack(t, context: sorted) }
+                    .contextMenu {
+                        Menu("Add to Playlist...") {
+                            ForEach(client.playlists) { p in
+                                Button(action: {
+                                    client.updatePlaylist(id: p.id, songIdsToAdd: [t.id]) { _ in }
+                                }) {
+                                    Label(p.name, systemImage: "music.note.list")
+                                }
+                            }
+                        }
+                        Button(action: {
+                            playback.downloadTrack(t)
+                        }) {
+                            Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+                        }
+                        .disabled(playback.isDownloaded(t.id))
+                    }
                 }
-            } else {
+            }
+        } else {
             LazyVStack(spacing: 0) {
-                ForEach(sortedSongs) { t in
+                ForEach(sorted) { t in
                     HStack(spacing: 16) {
                         AsyncImage(url: t.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
                             .frame(width: isCompact ? 48 : 56, height: isCompact ? 48 : 56).cornerRadius(8)
@@ -713,32 +633,12 @@ private struct SongListView: View {
                                 CircularProgressView(progress: progress, size: 18, strokeWidth: 2, accentColor: .red)
                             }
                         } else {
-                            HStack(spacing: 8) {
-                                if t.suffix?.lowercased() == "flac" {
-                                    Text("FLAC")
-                                        .font(.system(size: 9, weight: .black))
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 2)
-                                        .background(Color.red.opacity(0.1))
-                                        .foregroundColor(.red)
-                                        .cornerRadius(4)
-                                }
-                                
-                                if playback.isDownloaded(t.id) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.red)
-                                }
-                                
-                                Text(t.durationFormatted)
-                                    .font(.system(size: isCompact ? 12 : 14))
-                                    .foregroundColor(.gray)
-                            }
+                            Text(t.durationFormatted).font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
                         }
                     }
                     .padding(.vertical, 12)
                     .contentShape(Rectangle())
-                    .onTapGesture { playback.playTrack(t, context: sortedSongs) }
+                    .onTapGesture { playback.playTrack(t, context: sorted) }
                     .contextMenu {
                         Menu("Add to Playlist...") {
                             ForEach(client.playlists) { p in
@@ -811,7 +711,7 @@ private struct PlaylistDetailView: View {
                 Text(playlist.name)
                     .font(.system(size: isCompact ? 28 : 36, weight: .bold))
                     .foregroundColor(isDarkMode ? .white : .black)
-                Text("\(playlist.songCount ?? 0) tracks â€¢ \(playlist.owner ?? "Unknown")")
+                Text("\(playlist.songCount ?? 0) tracks • \(playlist.owner ?? "Unknown")")
                     .font(.system(size: isCompact ? 14 : 16))
                     .foregroundColor(.gray)
             }
@@ -856,27 +756,7 @@ private struct PlaylistDetailView: View {
                                         CircularProgressView(progress: progress, size: 18, strokeWidth: 2, accentColor: .red)
                                     }
                                 } else {
-                                    HStack(spacing: 8) {
-                                        if track.suffix?.lowercased() == "flac" {
-                                            Text("FLAC")
-                                                .font(.system(size: 9, weight: .black))
-                                                .padding(.horizontal, 4)
-                                                .padding(.vertical, 2)
-                                                .background(Color.red.opacity(0.1))
-                                                .foregroundColor(.red)
-                                                .cornerRadius(4)
-                                        }
-                                        
-                                        if playback.isDownloaded(track.id) {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.red)
-                                        }
-                                        
-                                        Text(track.durationFormatted)
-                                            .font(.system(size: isCompact ? 12 : 14))
-                                            .foregroundColor(.gray)
-                                    }
+                                    Text(track.durationFormatted).font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
                                 }
                             }
                             .padding(.vertical, 12)
@@ -910,24 +790,5 @@ private struct PlaylistDetailView: View {
                 }
             }
         }
-    }
-}
-
-struct CategoryPill: View {
-    let title: String
-    let icon: String
-    let isSelected: Bool
-    let isDarkMode: Bool
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-            Text(title)
-        }
-        .font(.system(size: 14, weight: isSelected ? .bold : .medium))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(isSelected ? Color.red : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
-        .foregroundColor(isSelected ? .white : (isDarkMode ? .white : .black))
     }
 }
