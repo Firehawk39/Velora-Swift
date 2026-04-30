@@ -266,7 +266,6 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, hPad)
                 Spacer(minLength: 120)
-            }
         }
     }
 }
@@ -628,23 +627,33 @@ private struct SongListView: View {
                             .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
                         
                         VStack(alignment: .leading, spacing: 2) {
-                                if let progress = playback.downloadProgress[t.id] {
-                                    Spacer()
-                                    HStack(spacing: 4) {
-                                        if let eta = playback.downloadETAs[t.id] {
-                                            Text(eta)
-                                                .font(.system(size: 8, weight: .medium))
-                                                .foregroundColor(.gray)
-                                        }
-                                        CircularProgressView(progress: progress, size: 12, strokeWidth: 1.5, accentColor: .red)
+                            Text(t.title)
+                                .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                            
+                            Text(t.artist ?? "")
+                                .font(.system(size: isCompact ? 10 : 12))
+                                .foregroundColor(.gray)
+                                .lineLimit(1)
+
+                            if let progress = playback.downloadProgress[t.id] {
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    if let eta = playback.downloadETAs[t.id] {
+                                        Text(eta)
+                                            .font(.system(size: 8, weight: .medium))
+                                            .foregroundColor(.gray)
                                     }
-                                } else if playback.isDownloaded(t.id) {
-                                    Spacer()
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.red)
+                                    CircularProgressView(progress: progress, size: 12, strokeWidth: 1.5, accentColor: .red)
                                 }
+                            } else if playback.isDownloaded(t.id) {
+                                Spacer()
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.red)
                             }
+                        }
                             HStack(spacing: 4) {
                                 Text(t.artist ?? "")
                                     .font(.system(size: isCompact ? 11 : 13))
@@ -663,28 +672,28 @@ private struct SongListView: View {
                                 }
                             }
                         }
-                    }
-                    .onTapGesture { playback.playTrack(t, context: sortedSongs) }
-                    .contextMenu {
-                        Menu("Add to Playlist...") {
-                            ForEach(client.playlists) { p in
-                                Button(action: {
-                                    client.updatePlaylist(id: p.id, songIdsToAdd: [t.id]) { _ in }
-                                }) {
-                                    Label(p.name, systemImage: "music.note.list")
+                        }
+                        .onTapGesture { playback.playTrack(t, context: sortedSongs) }
+                        .contextMenu {
+                            Menu("Add to Playlist...") {
+                                ForEach(client.playlists) { p in
+                                    Button(action: {
+                                        client.updatePlaylist(id: p.id, songIdsToAdd: [t.id]) { _ in }
+                                    }) {
+                                        Label(p.name, systemImage: "music.note.list")
+                                    }
                                 }
                             }
+                            Button(action: {
+                                playback.downloadTrack(t)
+                            }) {
+                                Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+                            }
+                            .disabled(playback.isDownloaded(t.id))
                         }
-                        Button(action: {
-                            playback.downloadTrack(t)
-                        }) {
-                            Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
-                        }
-                        .disabled(playback.isDownloaded(t.id))
                     }
                 }
-            }
-        } else {
+            } else {
             LazyVStack(spacing: 0) {
                 ForEach(sortedSongs) { t in
                     HStack(spacing: 16) {
@@ -803,7 +812,7 @@ private struct PlaylistDetailView: View {
                 Text(playlist.name)
                     .font(.system(size: isCompact ? 28 : 36, weight: .bold))
                     .foregroundColor(isDarkMode ? .white : .black)
-                Text("\(playlist.songCount ?? 0) tracks • \(playlist.owner ?? "Unknown")")
+                Text("\(playlist.songCount ?? 0) tracks â€¢ \(playlist.owner ?? "Unknown")")
                     .font(.system(size: isCompact ? 14 : 16))
                     .foregroundColor(.gray)
             }
