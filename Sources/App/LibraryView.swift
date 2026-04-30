@@ -802,17 +802,19 @@ private struct PlaylistDetailView: View {
                 .frame(maxWidth: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
-                    if viewMode == .list {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, track in
-                                playlistTrackRow(track: track, index: index, allTracks: sorted)
-                                Divider().opacity(0.1)
+                    Group {
+                        if viewMode == .list {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(sorted.enumerated()), id: \.element.id) { index, track in
+                                    playlistTrackRow(track: track, index: index, allTracks: sorted)
+                                    Divider().opacity(0.1)
+                                }
                             }
-                        }
-                    } else {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
-                            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, track in
-                                playlistTrackGridItem(track: track, index: index, allTracks: sorted)
+                        } else {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
+                                ForEach(Array(sorted.enumerated()), id: \.element.id) { index, track in
+                                    playlistTrackGridItem(track: track, index: index, allTracks: sorted)
+                                }
                             }
                         }
                     }
