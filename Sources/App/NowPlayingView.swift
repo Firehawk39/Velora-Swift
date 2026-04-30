@@ -177,12 +177,7 @@ struct NowPlayingView: View {
         .onAppear { 
             isIdle = false // Ensure we don't start in idle state
             startIdleTimer() 
-            if let track = playback.currentTrack {
-                // Pass nil for mbid to let managers resolve via name
-                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: nil)
-                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: nil)
-                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: nil)
-            }
+            refreshMetadata()
         }
         .onDisappear { 
             stopIdleTimer() 
@@ -199,12 +194,7 @@ struct NowPlayingView: View {
         }
         .onChange(of: playback.currentTrack?.id) { _ in
             resetIdleTimer()
-            if let track = playback.currentTrack {
-                // Pass nil for mbid to let managers resolve via name
-                mb.fetchAboutArtist(artistName: track.artist ?? "Unknown Artist", mbid: nil)
-                mb.fetchAboutAlbum(albumName: track.album ?? "Unknown Album", artistName: track.artist ?? "Unknown Artist", mbid: nil)
-                fanart.fetchBackdrop(for: track.artist ?? "Unknown Artist", mbid: nil)
-            }
+            refreshMetadata()
         }
         .preferredColorScheme(.dark)
     }
@@ -519,13 +509,18 @@ struct NowPlayingView: View {
                             }
                         }
                         
-                        if let annotation = mb.currentArtistInfo?.annotation {
+                        if let bio = mb.currentArtistInfo?.biography {
+                            Text(bio)
+                                .font(.system(size: isSE ? 14 : 16))
+                                .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(10)
+                        } else if let annotation = mb.currentArtistInfo?.annotation {
                             Text(annotation)
                                 .font(.system(size: isSE ? 14 : 16))
                                 .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(6)
+                                .lineLimit(10)
                         } else {
-                            Text("No further information found on MusicBrainz.")
+                            Text("No further information found.")
                                 .font(.system(size: isSE ? 14 : 16))
                                 .foregroundColor(.white.opacity(0.4))
                                 .italic()
@@ -753,5 +748,38 @@ struct NowPlayingView: View {
             
             return concatenatedText.font(baseFont)
         }
+    }
+    private func refreshMetadata() {
+        guard let track = playback.currentTrack else { return }
+        
+        // 1. Reset states if artist changed
+        let artistName = track.artist ?? "Unknown Artist"
+        let albumName = track.album ?? "Unknown Album"
+        
+        // 2. Fetch extended info from Navidrome first (most reliable source for MBID/Bio)
+        if let artistId = track.artistId {
+            playback.client.fetchArtistInfo(artistId: artistId) { bio, mbid in
+                DispatchQueue.main.async {
+                    // Update MB manager with Navidrome's bio if available
+                    mb.fetchAboutArtist(artistName: artistName, mbid: mbid)
+                    // If we got a bio from Navidrome, inject it into the manager's state
+                    if let bio = bio {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            mb.currentArtistInfo?.biography = bio
+                        }
+                    }
+                    
+                    // Fetch backdrop with resolved MBID
+                    fanart.fetchBackdrop(for: artistName, mbid: mbid)
+                }
+            }
+        } else {
+            // Fallback to name-based resolution
+            mb.fetchAboutArtist(artistName: artistName, mbid: nil)
+            fanart.fetchBackdrop(for: artistName, mbid: nil)
+        }
+        
+        // 3. Album info always stays name-based unless we add album MBID to Track model
+        mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: nil)
     }
 }

@@ -290,11 +290,12 @@ class FanartManager: ObservableObject {
     private func getMBID(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (String?) -> Void) {
         let primary = extractPrimaryArtist(artistName)
         let encodedName = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\(encodedName)&fmt=json"
+        // Use exact name query to improve accuracy
+        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encodedName)\"&fmt=json"
         guard let url = URL(string: urlString) else { completion(nil); return }
         
         var request = URLRequest(url: url)
-        request.setValue("VeloraApp/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
         
         let task = URLSession.shared.dataTask(with: request) { data, _, _ in
             if let data = data,

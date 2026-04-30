@@ -9,6 +9,7 @@ struct MBArtistInfo {
     let area: String?
     let disambiguation: String?
     let annotation: String?
+    var biography: String? = nil
 }
 
 struct MBAlbumInfo {
@@ -80,7 +81,7 @@ class MusicBrainzManager: ObservableObject {
                 return
             }
 
-            let urlString = "https://musicbrainz.org/ws/2/artist/\(resolvedMBID)?fmt=json&inc=aliases+tags"
+            let urlString = "https://musicbrainz.org/ws/2/artist/\(resolvedMBID)?fmt=json&inc=aliases+tags+annotation"
             guard let url = URL(string: urlString) else { return }
             
             var request = URLRequest(url: url)
@@ -99,13 +100,6 @@ class MusicBrainzManager: ObservableObject {
                 let end = life?["end"] as? String
                 let lifeStr = begin != nil ? "\(begin!)\(end != nil ? " to \(end!)" : " — Present")" : nil
                 
-                self.fetchAnnotation(entityMBID: resolvedMBID) { annotation in
-                    json["annotation"] = annotation
-                    // Save to disk
-                    if let savedData = try? JSONSerialization.data(withJSONObject: json) {
-                        try? savedData.write(to: fileUrl)
-                    }
-
                     let info = MBArtistInfo(
                         mbid: resolvedMBID,
                         country: json["country"] as? String,
@@ -113,7 +107,7 @@ class MusicBrainzManager: ObservableObject {
                         lifeSpan: lifeStr,
                         area: (json["area"] as? [String: Any])?["name"] as? String,
                         disambiguation: json["disambiguation"] as? String,
-                        annotation: annotation
+                        annotation: json["annotation"] as? String ?? (json["annotation"] as? [String: Any])?["text"] as? String
                     )
                     
                     DispatchQueue.main.async { 
@@ -123,7 +117,6 @@ class MusicBrainzManager: ObservableObject {
                             self.isLoading = false
                         }
                     }
-                }
             }.resume()
         }
         
@@ -221,8 +214,10 @@ class MusicBrainzManager: ObservableObject {
     }
     
     private func resolveMBID(for artist: String, completion: @escaping (String?) -> Void) {
-        let encoded = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\(encoded)&fmt=json"
+        let primary = extractPrimaryArtist(artist)
+        let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        // Use exact name query to improve accuracy
+        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encoded)\"&fmt=json"
         guard let url = URL(string: urlString) else { completion(nil); return }
         
         var request = URLRequest(url: url)
@@ -238,6 +233,17 @@ class MusicBrainzManager: ObservableObject {
                 completion(nil)
             }
         }.resume()
+    }
+
+    private func extractPrimaryArtist(_ name: String) -> String {
+        let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and "]
+        var primary = name
+        for delimiter in delimiters {
+            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
+                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return primary.isEmpty ? name : primary
     }
     
     private func resolveAlbumMBID(album: String, artist: String, completion: @escaping (String?) -> Void) {
