@@ -510,7 +510,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         let streamUrl = client.getStreamUrl(id: track.id)
         
-        let task = downloadSession.downloadTask(with: streamUrl)
+        guard let url = streamUrl else { return }
+        let task = downloadSession.downloadTask(with: url)
         downloadTasks[task.taskIdentifier] = track.id
         downloadStartTimes[track.id] = Date()
         task.resume()
@@ -739,7 +740,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 self.player?.seek(to: .zero)
                 self.player?.play()
             case .all, .off:
-                self.playNext()
+                self.skipForward()
             }
         }
     }
@@ -772,12 +773,4 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
     
-    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-        DispatchQueue.main.async {
-            if let identifier = session.configuration.identifier,
-               let handler = PlaybackManager.backgroundCompletionHandlers.removeValue(forKey: identifier) {
-                handler()
-            }
-        }
-    }
 }

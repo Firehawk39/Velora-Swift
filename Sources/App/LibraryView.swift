@@ -75,7 +75,7 @@ struct LibraryView: View {
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.red.opacity(0.6))
                                 .textCase(.uppercase)
-                            Text(forceOffline ? "Downloaded" : (menuItems.first(where: { $0.id == category })?.label ?? ""))
+                            Text(forceOffline ? "Downloaded" : (menuItems.first(where: { $0.0 == category })?.1 ?? ""))
                                 .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
                                 .foregroundColor(.red)
                         }

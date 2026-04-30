@@ -1,7 +1,8 @@
 import SwiftUI
 import Foundation
 
-class SyncManager: ObservableObject {
+@MainActor
+final class SyncManager: ObservableObject {
     static let shared = SyncManager()
     
     @Published var isSyncing: Bool = false
@@ -53,13 +54,10 @@ class SyncManager: ObservableObject {
                 let remaining = totalTasks - tasksCompleted
                 let remainingSeconds = Int(remaining * 1.1) // 1.1s per item including overhead
                 
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    if remainingSeconds > 60 {
-                        self.etaString = "\(remainingSeconds / 60)m remaining"
-                    } else {
-                        self.etaString = "\(remainingSeconds)s remaining"
-                    }
+                if remainingSeconds > 60 {
+                    self.etaString = "\(remainingSeconds / 60)m remaining"
+                } else {
+                    self.etaString = "\(remainingSeconds)s remaining"
                 }
                 
                 updateProgress(tasksCompleted / totalTasks)
@@ -121,18 +119,14 @@ class SyncManager: ObservableObject {
     }
     
     private func updateProgress(_ value: Double) {
-        DispatchQueue.main.async {
-            self.syncProgress = value
-        }
+        self.syncProgress = value
     }
     
     private func finalizeSync(_ status: String) {
-        DispatchQueue.main.async {
-            self.isSyncing = false
-            self.syncType = .none
-            self.currentStatus = status
-            self.syncProgress = 1.0
-            self.etaString = ""
-        }
+        self.isSyncing = false
+        self.syncType = .none
+        self.currentStatus = status
+        self.syncProgress = 1.0
+        self.etaString = ""
     }
 }
