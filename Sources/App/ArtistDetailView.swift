@@ -28,16 +28,9 @@ struct ArtistDetailView: View {
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
             
-            // Radiated background glow behind the artist image
-            RadialGradient(
-                gradient: Gradient(colors: [Color(hex: "#FFCCD5").opacity(isDarkMode ? 0.12 : 0.22), .clear]),
-                center: .top,
-                startRadius: 0,
-                endRadius: isCompact ? 250 : 450
-            )
-            .frame(height: isCompact ? 400 : 600)
-            .allowsHitTesting(false)
-            .ignoresSafeArea()
+            ArtistBackdropView(artistId: artistId, artistName: artistName, isDarkMode: isDarkMode, client: client)
+                .frame(height: isCompact ? 400 : 600)
+                .ignoresSafeArea()
             
             ScrollView {
                 VStack(spacing: 0) {
@@ -176,17 +169,7 @@ struct ArtistDetailView: View {
     }
     
     private func artistLogo(size: CGFloat) -> some View {
-        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
-            if let img = phase.image {
-                img.resizable().scaledToFill()
-            } else {
-                Color.gray.opacity(0.1)
-            }
-        }
-        .id(artistId) // Stable ID prevents flickering during parent re-renders
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .shadow(color: .black.opacity(isDarkMode ? 0.3 : 0.15), radius: 30, x: 0, y: 15)
+        ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
     }
     
     private var artistLabel: some View {
@@ -232,19 +215,8 @@ struct ArtistDetailView: View {
             if let track = favoriteSongs.first ?? topSongs.first {
                 Button(action: { onPlay(track, topSongs) }) {
                     VStack(alignment: .leading, spacing: 12) {
-                        AsyncImage(url: track.coverArtUrl) { phase in
-                            if let img = phase.image {
-                                img.resizable().scaledToFill()
-                            } else {
-                                Color.gray.opacity(0.1)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: isCompact ? 200 : 240)
-                        .cornerRadius(16)
-                        .id(track.id)
-                        .clipped()
-                        .shadow(color: .black.opacity(isDarkMode ? 0.25 : 0.1), radius: 15, x: 0, y: 8)
+                        SongArtworkView(track: track, isDarkMode: isDarkMode, height: isCompact ? 200 : 240)
+                            .shadow(color: .black.opacity(isDarkMode ? 0.25 : 0.1), radius: 15, x: 0, y: 8)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title)
@@ -289,16 +261,7 @@ struct ArtistDetailView: View {
     private func trackRow(_ track: Track) -> some View {
         Button(action: { onPlay(track, topSongs) }) {
             HStack(spacing: 16) {
-                AsyncImage(url: track.coverArtUrl) { phase in
-                    if let img = phase.image {
-                        img.resizable().scaledToFill()
-                    } else {
-                        Color.gray.opacity(0.1)
-                    }
-                }
-                .frame(width: 56, height: 56)
-                .cornerRadius(8)
-                .id(track.id)
+                SongArtworkView(track: track, isDarkMode: isDarkMode, size: 56)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)
@@ -412,6 +375,105 @@ struct ArtistDetailView: View {
 }
 
 
+
+// MARK: - Dedicated Subviews to prevent flickering
+
+struct ArtistPortraitView: View {
+    let artistId: String
+    let size: CGFloat
+    let client: NavidromeClient
+    let isDarkMode: Bool
+    
+    var body: some View {
+        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
+            if let img = phase.image {
+                img.resizable()
+                    .scaledToFill()
+            } else {
+                Color.gray.opacity(0.1)
+            }
+        }
+        .id(artistId)
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+}
+
+struct SongArtworkView: View {
+    let track: Track
+    let isDarkMode: Bool
+    var size: CGFloat? = nil
+    var height: CGFloat? = nil
+    
+    var body: some View {
+        AsyncImage(url: track.coverArtUrl) { phase in
+            if let img = phase.image {
+                img.resizable()
+                    .scaledToFill()
+            } else {
+                Color.gray.opacity(0.1)
+            }
+        }
+        .id(track.id)
+        .frame(width: size, height: height ?? size)
+        .cornerRadius(size == 56 ? 8 : 16)
+        .clipped()
+    }
+}
+
+struct ArtistBackdropView: View {
+    let artistId: String
+    let artistName: String
+    let isDarkMode: Bool
+    let client: NavidromeClient
+    
+    var backdropPath: URL {
+        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return documentsDir.appendingPathComponent("Backdrops").appendingPathComponent("\(artistId).jpg")
+    }
+    
+    var body: some View {
+        ZStack {
+            if FileManager.default.fileExists(atPath: backdropPath.path) {
+                AsyncImage(url: backdropPath) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        fallbackView
+                    }
+                }
+            } else {
+                fallbackView
+            }
+            
+            // Premium Vignette
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    (isDarkMode ? Color.black : Color.white).opacity(0.4),
+                    .clear,
+                    (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+    
+    private var fallbackView: some View {
+        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
+            if let image = phase.image {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .blur(radius: 40) // Decreased blur intensity as requested
+            } else {
+                Color.gray.opacity(0.1)
+            }
+        }
+    }
+}
 
 // MARK: - Preference Keys
 struct ScrollOffsetKey: PreferenceKey {

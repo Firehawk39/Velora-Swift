@@ -109,34 +109,72 @@ final class SyncManager: ObservableObject {
         isSyncing = true
         syncType = .media
         syncProgress = 0.0
-        currentStatus = "Queueing tracks..."
+        currentStatus = "Analyzing library..."
         
         Task {
-            let tracks = client.allSongs
-            let total = Double(tracks.count)
-            var current = 0.0
-            var skippedCount = 0
-            
-            for track in tracks {
-                if !isSyncing { break }
-                
-                let alreadyDownloaded = playback?.checkFileSystemForTrack(track.id) ?? false
-                
-                if alreadyDownloaded {
-                    skippedCount += 1
-                } else {
-                    currentStatus = "Queueing \(Int(current + 1))/\(Int(total)): \(track.title)"
-                    playback?.downloadTrack(track)
+            // 1. Ensure we actually have the songs list
+            if client.allSongs.isEmpty {
+                currentStatus = "Fetching song list..."
+                client.fetchAllSongs()
+                // Wait for songs to populate (poll for up to 10s)
+                for _ in 0..<20 {
+                    if !client.allSongs.isEmpty { break }
+                    try? await Task.sleep(nanoseconds: 500_000_000)
                 }
-                
-                current += 1
-                updateProgress(current / total)
-                
-                // Yield to keep UI smooth, but no sleep needed here
+            }
+            
+            let tracks = client.allSongs
+            if tracks.isEmpty {
+                finalizeSync("No tracks found in library.")
+                return
+            }
+            
+            let tracksToDownload = tracks.filter { !(playback?.checkFileSystemForTrack($0.id) ?? false) }
+            let totalTracks = Double(tracks.count)
+            let totalToDownload = tracksToDownload.count
+            let alreadyDownloadedCount = Int(totalTracks) - totalToDownload
+            
+            if totalToDownload == 0 {
+                finalizeSync("All \(Int(totalTracks)) tracks already offline.")
+                return
+            }
+            
+            currentStatus = "Queueing \(totalToDownload) tracks..."
+            for track in tracksToDownload {
+                if !isSyncing { break }
+                playback?.downloadTrack(track)
+                // Small yield to keep UI responsive during mass queueing
                 await Task.yield()
             }
             
-            finalizeSync("Media Sync Complete (\(skippedCount) items skipped)")
+            // Phase 2: Monitor progress with a timeout safety
+            var lastDownloadedCount = -1
+            var stallCounter = 0
+            
+            while isSyncing {
+                let currentlyDownloaded = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
+                let totalCompleted = Double(alreadyDownloadedCount + currentlyDownloaded)
+                
+                updateProgress(totalCompleted / totalTracks)
+                currentStatus = "Downloading: \(currentlyDownloaded)/\(totalToDownload) (\(alreadyDownloadedCount) skipped)"
+                
+                if currentlyDownloaded >= totalToDownload {
+                    break
+                }
+                
+                if currentlyDownloaded == lastDownloadedCount {
+                    stallCounter += 1
+                } else {
+                    stallCounter = 0
+                    lastDownloadedCount = currentlyDownloaded
+                }
+                
+                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second interval
+            }
+            
+            if isSyncing {
+                finalizeSync("Media Sync Complete (\(alreadyDownloadedCount) skipped, \(totalToDownload) downloaded)")
+            }
         }
     }
     

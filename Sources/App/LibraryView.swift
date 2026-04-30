@@ -681,7 +681,8 @@ private struct PlaylistDetailView: View {
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-            return (a.created ?? "") > (b.created ?? "")
+            if sortMode == .recent { return (a.created ?? "") > (b.created ?? "") }
+            return a.title < b.title
         }
 
         VStack(alignment: .leading, spacing: 0) {
