@@ -19,7 +19,6 @@ struct ArtistDetailView: View {
     @State private var relatedArtists: [Artist] = []
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
-    @State private var artistPortrait: UIImage? = nil
     
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isCompact: Bool { hSizeClass == .compact }
@@ -91,14 +90,6 @@ struct ArtistDetailView: View {
         }
         .onAppear {
             fetchArtistData()
-            // Try cache by name first
-            FanartManager.shared.fetchArtistPortrait(for: artistName) { img in
-                if self.artistPortrait == nil {
-                    withAnimation(.easeInOut(duration: 0.6)) {
-                        self.artistPortrait = img
-                    }
-                }
-            }
         }
     }
     
@@ -185,11 +176,15 @@ struct ArtistDetailView: View {
     }
     
     private func artistLogo(size: CGFloat) -> some View {
-        SmartPortraitView(
-            lowResUrl: URL(string: client.getCoverArtUrl(id: artistId)),
-            highResImage: artistPortrait,
-            size: size
-        )
+        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
+            if let img = phase.image {
+                img.resizable().scaledToFill()
+            } else {
+                Color.gray.opacity(0.1)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
         .shadow(color: .black.opacity(isDarkMode ? 0.3 : 0.15), radius: 30, x: 0, y: 15)
     }
     
@@ -405,13 +400,6 @@ struct ArtistDetailView: View {
             self.albums = albums
             self.biography = bio
             self.isLoading = false
-            
-            // High-quality portrait fetch
-            FanartManager.shared.fetchArtistPortrait(for: artistName, mbid: mbid) { img in
-                withAnimation(.easeInOut(duration: 0.6)) {
-                    self.artistPortrait = img
-                }
-            }
             
             client.fetchArtists { artists in
                 self.relatedArtists = Array(artists.shuffled().prefix(6)).filter { $0.id != artistId }
