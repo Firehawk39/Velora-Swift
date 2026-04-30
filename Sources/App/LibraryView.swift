@@ -672,7 +672,6 @@ private struct SongListView: View {
                                 }
                             }
                         }
-                        }
                         .onTapGesture { playback.playTrack(t, context: sortedSongs) }
                         .contextMenu {
                             Menu("Add to Playlist...") {
