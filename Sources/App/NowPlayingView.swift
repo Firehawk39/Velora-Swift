@@ -62,38 +62,56 @@ struct NowPlayingView: View {
             ZStack {
                 // Dynamic Ambient Background
                 ZStack {
-                    // Base Layer: Blurred Album Art (Always present for continuity)
-                    if let track = playback.currentTrack, let url = track.coverArtUrl {
+                    // Base Layer: Blurred Album Art (Fallback when no backdrop is found)
+                    if let track = playback.currentTrack, let url = track.coverArtUrl, fanart.currentBackdrop == nil {
                         AsyncImage(url: url) { image in
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: proxy.size.width, height: proxy.size.height)
-                                .blur(radius: 60) // Softer ambient feel
-                                .opacity(isIdle ? 0.25 : 0.15)
+                                .blur(radius: 25) // Reduced intensity for fallback
+                                .opacity(isIdle ? 0.5 : 0.4)
                         } placeholder: {
                             Color.black
                         }
-                    } else {
-                        Color.black
                     }
                     
-                    // Top Layer: High-Quality Artist Backdrop (Fades in over album art)
+                    // Top Layer: High-Quality Artist Backdrop
                     if let backdrop = fanart.currentBackdrop {
                         Image(uiImage: backdrop)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                            .opacity(1.0)
+                            .opacity(isIdle ? 0.8 : 0.6) // Higher opacity to show backdrop "as is"
                     }
                 }
+                .overlay(
+                    // Vignette: Only show for fallback to maintain text readability
+                    Group {
+                        if fanart.currentBackdrop == nil {
+                            ZStack {
+                                RadialGradient(
+                                    gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                    center: .center,
+                                    startRadius: 200,
+                                    endRadius: proxy.size.width * 0.8
+                                )
+                                LinearGradient(
+                                    gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            }
+                        }
+                    }
+                )
                 .ignoresSafeArea()
                 .animation(.easeInOut(duration: 0.6), value: isIdle)
                 .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
-                .drawingGroup() // Flattens the gradients into a single GPU texture for smoother performance
+                .drawingGroup() 
 
 
 
