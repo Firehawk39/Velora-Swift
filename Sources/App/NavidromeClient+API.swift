@@ -52,7 +52,7 @@ extension NavidromeClient {
                         Track(id: s.id, title: s.title ?? "Unknown",
                                album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
                                duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                               artistId: s.artistId, albumId: s.albumId)
+                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     }
                 }
             } catch { 
@@ -79,7 +79,7 @@ extension NavidromeClient {
                         Track(id: s.id, title: s.title ?? "Unknown",
                                album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
                                duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                               artistId: s.artistId, albumId: s.albumId)
+                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     }
                 }
             } catch { print("Error decoding random songs as fallback: \(error)") }
@@ -150,7 +150,7 @@ extension NavidromeClient {
                     var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                           artist: s.artist ?? "", duration: s.duration ?? 0,
                           coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId)
+                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     t.isStarred = s.starred != nil
                     t.playCount = s.playCount
                     return t
@@ -241,7 +241,7 @@ extension NavidromeClient {
                     var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                           artist: s.artist ?? "", duration: s.duration ?? 0,
                           coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId)
+                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     t.isStarred = s.starred != nil
                     t.playCount = s.playCount
                     return t
@@ -287,7 +287,7 @@ extension NavidromeClient {
                     var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                           artist: s.artist ?? "", duration: s.duration ?? 0,
                           coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId)
+                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     t.isStarred = s.starred != nil
                     t.playCount = s.playCount
                     return t
@@ -340,6 +340,26 @@ extension NavidromeClient {
             DispatchQueue.main.async { completion(success) }
         }.resume()
     }
+    
+    func syncLosslessPlaylist() {
+        let flacIds = allSongs.filter { $0.suffix?.lowercased() == "flac" }.map { $0.id }
+        guard !flacIds.isEmpty else { return }
+        
+        // 1. Check if "Lossless" playlist exists
+        if let existing = playlists.first(where: { $0.name == "Lossless" }) {
+            // Update it with missing tracks
+            // For simplicity, we just "Add" all. Subsonic createPlaylist with existing name usually overwrites or we can just create a new one.
+            // Better: updatePlaylist with all flacIds
+            updatePlaylist(id: existing.id, songIdsToAdd: flacIds) { _ in
+                print("Synced \(flacIds.count) tracks to existing Lossless playlist.")
+            }
+        } else {
+            // Create it
+            createPlaylist(name: "Lossless", songIds: flacIds) { success in
+                if success { print("Created new Lossless playlist with \(flacIds.count) tracks.") }
+            }
+        }
+    }
 
     // MARK: - All Songs
 
@@ -353,14 +373,17 @@ extension NavidromeClient {
                     var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                           artist: s.artist ?? "", duration: s.duration ?? 0,
                           coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId)
+                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     t.isStarred = s.starred != nil
                     t.playCount = s.playCount
                     return t
                 }
                 
                 if !songs.isEmpty {
-                    DispatchQueue.main.async { self.allSongs = songs }
+                    DispatchQueue.main.async { 
+                        self.allSongs = songs 
+                        self.syncLosslessPlaylist()
+                    }
                 } else {
                     self.fetchAlphabeticalSongs()
                 }
@@ -381,9 +404,12 @@ extension NavidromeClient {
                     Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                           artist: s.artist ?? "", duration: s.duration ?? 0,
                           coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId)
+                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                 }
-                DispatchQueue.main.async { self.allSongs = songs }
+                DispatchQueue.main.async { 
+                    self.allSongs = songs 
+                    self.syncLosslessPlaylist()
+                }
             } catch { print("Search fallback failed: \(error)") }
         }.resume()
     }

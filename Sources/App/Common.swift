@@ -39,6 +39,7 @@ struct Track: Identifiable, Codable, Equatable {
     var created: String?
     var isStarred: Bool = false
     var playCount: Int? = 0
+    let suffix: String?
     
     var coverArtUrl: URL? { coverArt.flatMap { URL(string: $0) } }
     

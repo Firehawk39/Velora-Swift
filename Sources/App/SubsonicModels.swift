@@ -50,6 +50,7 @@ struct SubsonicSong: Codable {
     let albumId: String?
     let starred: String?
     let playCount: Int?
+    let suffix: String?
 }
 
 struct SubsonicError: Codable {

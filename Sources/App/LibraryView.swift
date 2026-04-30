@@ -28,6 +28,7 @@ struct LibraryView: View {
         ("artists",   "Artists",   "person.2"),
         ("albums",    "Albums",    "opticaldisc"),
         ("songs",     "Songs",     "music.note"),
+        ("lossless",  "Lossless",  "wave.and.mic"),
         ("downloaded", "Downloaded", "checkmark.circle.fill"),
     ]
 
@@ -217,7 +218,8 @@ struct LibraryView: View {
                         }
                     })
                     case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
-                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
+                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, showLosslessOnly: false)
+                    case "lossless":  SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, showLosslessOnly: true)
                     default:          EmptyView()
                     }
                 }
@@ -548,9 +550,13 @@ private struct SongListView: View {
     let isDarkMode: Bool
     let isCompact: Bool
     let showOfflineOnly: Bool
+    let showLosslessOnly: Bool
 
     var body: some View {
-        let base = client.allSongs
+        var base = client.allSongs
+        if showLosslessOnly {
+            base = base.filter { $0.suffix?.lowercased() == "flac" }
+        }
         let filtered = showOfflineOnly ? playback.filterOffline(base) : base
         
         let sorted = filtered.sorted { a, b in
