@@ -163,27 +163,35 @@ struct LibraryView: View {
                             }
                             .accessibilityLabel("Shuffle Play All")
                             
-                            Button(action: {
-                                 if sync.isSyncing && sync.syncType == .media {
-                                     sync.stopSync()
-                                 } else {
-                                     sync.startMediaSync()
-                                 }
-                             }) {
-                                 ZStack {
+                            HStack(spacing: 6) {
+                                if sync.isSyncing && sync.syncType == .media && !sync.etaString.isEmpty {
+                                    Text(sync.etaString)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.red)
+                                }
+                                
+                                Button(action: {
                                      if sync.isSyncing && sync.syncType == .media {
-                                         CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 2.5, accentColor: .red)
+                                         sync.stopSync()
                                      } else {
-                                         Image(systemName: "icloud.and.arrow.down.fill")
-                                             .font(.system(size: 14, weight: .bold))
-                                             .foregroundColor(.white)
+                                         sync.startMediaSync()
                                      }
+                                 }) {
+                                     ZStack {
+                                         if sync.isSyncing && sync.syncType == .media {
+                                             CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 2.5, accentColor: .red)
+                                         } else {
+                                             Image(systemName: "icloud.and.arrow.down.fill")
+                                                 .font(.system(size: 14, weight: .bold))
+                                                 .foregroundColor(.white)
+                                         }
+                                     }
+                                     .frame(width: 36, height: 36)
+                                     .background(sync.isSyncing && sync.syncType == .media ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                                     .clipShape(Circle())
                                  }
-                                 .frame(width: 36, height: 36)
-                                 .background(sync.isSyncing && sync.syncType == .media ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
-                                 .clipShape(Circle())
+                                 .accessibilityLabel("Sync All Library")
                              }
-                             .accessibilityLabel("Sync All Library")
                         }
                     }
                 }

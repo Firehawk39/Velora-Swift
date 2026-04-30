@@ -10,7 +10,7 @@ struct LyricLine: Hashable {
 
 class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     static var shared: PlaybackManager?
-    static var backgroundCompletionHandlers: [String: () -> Void] = [:]
+    static var sharedBackgroundCompletion: (() -> Void)?
     
     @Published var currentTrack: Track?
     @Published var isPlaying: Bool = false
@@ -567,9 +567,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { return }
         
-        // Find the track to get the correct suffix
-        // If we don't have it, default to mp3
-        let suffix = client.allSongs.first(where: { $0.id == trackId })?.suffix ?? "mp3"
+        // Default to mp3 or determine from URL if possible
+        let suffix = "mp3"
         let downloadsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
         
@@ -605,6 +604,13 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             }
         }
         downloadTasks.removeValue(forKey: task.taskIdentifier)
+    }
+    
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        DispatchQueue.main.async {
+            PlaybackManager.sharedBackgroundCompletion?()
+            PlaybackManager.sharedBackgroundCompletion = nil
+        }
     }
     
     func downloadAll(tracks: [Track]) {

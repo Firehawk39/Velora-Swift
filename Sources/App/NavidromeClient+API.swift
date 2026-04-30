@@ -438,7 +438,7 @@ extension NavidromeClient {
                 let items = decoded.subsonicResponse?.playlists?.playlist ?? []
                 DispatchQueue.main.async {
                     self.playlists = items.map { p in
-                        Playlist(id: p.id, name: p.name ?? "Unknown", songCount: p.songCount, duration: p.duration, created: p.created, owner: p.owner)
+                        Playlist(id: p.id, name: p.name ?? "Unknown", owner: p.owner, songCount: p.songCount, duration: p.duration, created: nil)
                     }
                 }
             } catch { print("Error decoding playlists: \(error)") }

@@ -2,8 +2,18 @@ import SwiftUI
 import CoreText
 import Foundation
 
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        if identifier == "com.velora.downloads" {
+            PlaybackManager.sharedBackgroundCompletion = completionHandler
+        }
+    }
+}
+
 @main
 struct VeloraApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
     init() {
         registerCustomFonts()
         setupURLCache()
