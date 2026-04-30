@@ -58,11 +58,29 @@ class FanartManager: ObservableObject {
     }
     
     func fetchBackdrop(for artist: String, mbid: String? = nil) {
-        // 1. Update state synchronously to prevent race conditions during rapid skips
         let isNewArtist = self.currentArtistName != artist
-        self.currentArtistName = artist
+        let sanitized = sanitizeFileName(artist)
+        let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
         
+        // 1. Check Cache Synchronously BEFORE nilling anything
+        if let cached = getCachedBackdrop(for: artist) {
+            DispatchQueue.main.async {
+                self.currentArtistName = artist
+                // Use animation if it's a new artist, otherwise just set it
+                if isNewArtist {
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        self.currentBackdrop = cached
+                    }
+                } else {
+                    self.currentBackdrop = cached
+                }
+            }
+            return
+        }
+        
+        // 2. Only if NOT in cache and it's a new artist, nil it
         if isNewArtist {
+            self.currentArtistName = artist
             DispatchQueue.main.async {
                 withAnimation(.easeInOut(duration: 0.4)) {
                     self.currentBackdrop = nil
@@ -70,18 +88,7 @@ class FanartManager: ObservableObject {
             }
         }
         
-        // 2. Check Cache Synchronously
-        if let cached = getCachedBackdrop(for: artist) {
-            DispatchQueue.main.async {
-                self.currentBackdrop = cached
-            }
-            return
-        }
-        
-        let sanitized = sanitizeFileName(artist)
-        let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
-        
-        // 2. Prevent duplicate active fetches safely
+        // 3. Prevent duplicate active fetches safely
         var alreadyFetching = false
         fetchQueue.sync {
             alreadyFetching = activeBackdropFetches.contains(sanitized)

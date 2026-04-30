@@ -752,34 +752,37 @@ struct NowPlayingView: View {
     private func refreshMetadata() {
         guard let track = playback.currentTrack else { return }
         
-        // 1. Reset states if artist changed
         let artistName = track.artist ?? "Unknown Artist"
         let albumName = track.album ?? "Unknown Album"
         
-        // 2. Fetch extended info from Navidrome first (most reliable source for MBID/Bio)
+        // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
+        // This prevents the "waiting for Navidrome response" flicker
+        fanart.fetchBackdrop(for: artistName, mbid: nil)
+        
+        // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
             playback.client.fetchArtistInfo(artistId: artistId) { bio, mbid in
                 DispatchQueue.main.async {
-                    // Update MB manager with Navidrome's bio if available
+                    // Update MB manager
                     mb.fetchAboutArtist(artistName: artistName, mbid: mbid)
-                    // If we got a bio from Navidrome, inject it into the manager's state
+                    
                     if let bio = bio {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             mb.currentArtistInfo?.biography = bio
                         }
                     }
                     
-                    // Fetch backdrop with resolved MBID
-                    fanart.fetchBackdrop(for: artistName, mbid: mbid)
+                    // If we got a fresh MBID, update fanart too (though usually it's already there)
+                    if let mbid = mbid {
+                        fanart.fetchBackdrop(for: artistName, mbid: mbid)
+                    }
                 }
             }
         } else {
-            // Fallback to name-based resolution
             mb.fetchAboutArtist(artistName: artistName, mbid: nil)
-            fanart.fetchBackdrop(for: artistName, mbid: nil)
         }
         
-        // 3. Album info always stays name-based unless we add album MBID to Track model
+        // 3. Album info
         mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: nil)
     }
 }
