@@ -313,14 +313,15 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         for i in start..<end {
             let track = queue[i]
             let artist = track.artist ?? ""
+            let delay = Double(i - start) * 1.5 // Stagger by 1.5s per track to respect MB rate limits (1 req/s)
             
-            // 1. Prefetch Backdrop Silently
-            FanartManager.shared.downloadBackdropSilently(for: artist)
-            
-            // 2. Prefetch Metadata Silently
             Task {
-                // Ensure we don't spam the API during rapid skips
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                
+                // 1. Prefetch Backdrop Silently
+                FanartManager.shared.downloadBackdropSilently(for: artist)
+                
+                // 2. Prefetch Metadata Silently
                 await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
             }
         }

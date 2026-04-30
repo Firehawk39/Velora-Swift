@@ -16,13 +16,13 @@ class FanartManager: ObservableObject {
     private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80" 
     
     init() {
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        backdropDir = docs.appendingPathComponent("Backdrops", isDirectory: true)
-        portraitDir = docs.appendingPathComponent("ArtistPortraits", isDirectory: true)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.backdropDir = docs.appendingPathComponent("Backdrops", isDirectory: true)
+        self.portraitDir = docs.appendingPathComponent("ArtistPortraits", isDirectory: true)
         
-        [backdropDir, portraitDir].forEach { dir in
-            if !fileManager.fileExists(atPath: dir.path) {
-                try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        [self.backdropDir, self.portraitDir].forEach { dir in
+            if !FileManager.default.fileExists(atPath: dir.path) {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
             }
         }
     }
@@ -36,9 +36,9 @@ class FanartManager: ObservableObject {
     func getCachedBackdrop(for artist: String) -> UIImage? {
         let sanitized = sanitizeFileName(artist)
         let fileName = sanitized + ".jpg"
-        let fileUrl = backdropDir.appendingPathComponent(fileName)
+        let fileUrl = self.backdropDir.appendingPathComponent(fileName)
         
-        if fileManager.fileExists(atPath: fileUrl.path),
+        if FileManager.default.fileExists(atPath: fileUrl.path),
            let data = try? Data(contentsOf: fileUrl) {
             return UIImage(data: data)
         }
@@ -47,20 +47,20 @@ class FanartManager: ObservableObject {
 
     func hasBackdrop(for artist: String) -> Bool {
         let sanitized = sanitizeFileName(artist)
-        let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
-        return fileManager.fileExists(atPath: fileUrl.path)
+        let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
+        return FileManager.default.fileExists(atPath: fileUrl.path)
     }
     
     func hasPortrait(for artist: String) -> Bool {
         let sanitized = sanitizeFileName(artist)
-        let fileUrl = docsDir.appendingPathComponent("Portraits").appendingPathComponent(sanitized + ".jpg")
-        return fileManager.fileExists(atPath: fileUrl.path)
+        let fileUrl = self.portraitDir.appendingPathComponent(sanitized + ".jpg")
+        return FileManager.default.fileExists(atPath: fileUrl.path)
     }
     
     func fetchBackdrop(for artist: String, mbid: String? = nil) {
         let isNewArtist = self.currentArtistName != artist
         let sanitized = sanitizeFileName(artist)
-        let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
+        let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
         
         // 1. Check Cache Synchronously BEFORE nilling anything
         if let cached = getCachedBackdrop(for: artist) {
@@ -78,25 +78,32 @@ class FanartManager: ObservableObject {
             return
         }
         
-        // 2. Only if NOT in cache and it's a new artist, nil it
+        // 2. Check if we are ALREADY fetching it (e.g. from prefetch)
+        var alreadyFetching = false
+        fetchQueue.sync {
+            alreadyFetching = activeBackdropFetches.contains(sanitized)
+        }
+        
+        // 3. Only if NOT in cache and it's a new artist, nil it
+        // BUT if it's already fetching, we might want to wait a split second instead of flashing to black
         if isNewArtist {
             self.currentArtistName = artist
             DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    self.currentBackdrop = nil
+                // If it's already fetching, we don't nil it immediately to allow a possible smooth transition
+                // unless we want to clear the old artist's face.
+                if !alreadyFetching {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        self.currentBackdrop = nil
+                    }
                 }
             }
         }
         
-        // 3. Prevent duplicate active fetches safely
-        var alreadyFetching = false
-        fetchQueue.sync {
-            alreadyFetching = activeBackdropFetches.contains(sanitized)
-            if !alreadyFetching {
-                activeBackdropFetches.insert(sanitized)
-            }
-        }
         if alreadyFetching { return }
+        
+        fetchQueue.sync {
+            activeBackdropFetches.insert(sanitized)
+        }
         
         let queryFanart = { (resolvedMBID: String) in
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"

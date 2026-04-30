@@ -35,16 +35,16 @@ class MusicBrainzManager: ObservableObject {
     private let userAgent = "VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )"
     
     init() {
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        metadataDir = docs.appendingPathComponent("Metadata", isDirectory: true)
-        cacheFile = docs.appendingPathComponent("name_to_mbid.json")
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.metadataDir = docs.appendingPathComponent("Metadata", isDirectory: true)
+        self.cacheFile = docs.appendingPathComponent("name_to_mbid.json")
         
-        if !fileManager.fileExists(atPath: metadataDir.path) {
-            try? fileManager.createDirectory(at: metadataDir, withIntermediateDirectories: true, attributes: nil)
+        if !FileManager.default.fileExists(atPath: self.metadataDir.path) {
+            try? FileManager.default.createDirectory(at: self.metadataDir, withIntermediateDirectories: true, attributes: nil)
         }
         
         // Load cache
-        if let data = try? Data(contentsOf: cacheFile),
+        if let data = try? Data(contentsOf: self.cacheFile),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
             self.nameToMBIDCache = json
         }
@@ -119,7 +119,7 @@ class MusicBrainzManager: ObservableObject {
             URLSession.shared.dataTask(with: request) { data, _, _ in
                 DispatchQueue.main.async { self.metadataProgress = 0.7 }
                 guard let data = data,
-                      var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
                     DispatchQueue.main.async { self.isLoading = false }
                     return 
                 }
