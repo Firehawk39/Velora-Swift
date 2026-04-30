@@ -45,6 +45,18 @@ class FanartManager: ObservableObject {
         return nil
     }
 
+    func hasBackdrop(for artist: String) -> Bool {
+        let sanitized = sanitizeFileName(artist)
+        let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
+        return fileManager.fileExists(atPath: fileUrl.path)
+    }
+    
+    func hasPortrait(for artist: String) -> Bool {
+        let sanitized = sanitizeFileName(artist)
+        let fileUrl = docsDir.appendingPathComponent("Portraits").appendingPathComponent(sanitized + ".jpg")
+        return fileManager.fileExists(atPath: fileUrl.path)
+    }
+    
     func fetchBackdrop(for artist: String, mbid: String? = nil) {
         // 1. Update state synchronously to prevent race conditions during rapid skips
         let isNewArtist = self.currentArtistName != artist

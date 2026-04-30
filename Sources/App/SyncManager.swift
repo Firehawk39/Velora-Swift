@@ -40,19 +40,34 @@ final class SyncManager: ObservableObject {
             
             let totalTasks = Double(artists.count + albums.count)
             var tasksCompleted = 0.0
+            var skippedCount = 0
             
             // Phase 1: Artist Metadata & Images
             for artist in artists {
                 if !isSyncing { break }
-                currentStatus = "Artist Info: \(artist.name)"
                 
-                FanartManager.shared.downloadBackdropSilently(for: artist.name)
-                FanartManager.shared.fetchArtistPortrait(for: artist.name) { _ in }
-                await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
+                let mb = MusicBrainzManager.shared
+                let fa = FanartManager.shared
+                
+                let hasAll = mb.hasArtistMetadata(for: artist.name) && 
+                             fa.hasBackdrop(for: artist.name) && 
+                             fa.hasPortrait(for: artist.name)
+                
+                if hasAll {
+                    skippedCount += 1
+                } else {
+                    currentStatus = "Syncing: \(artist.name)"
+                    FanartManager.shared.downloadBackdropSilently(for: artist.name)
+                    FanartManager.shared.fetchArtistPortrait(for: artist.name) { _ in }
+                    await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
+                    
+                    // Only sleep if we actually hit the API
+                    try? await Task.sleep(nanoseconds: 1_050_000_000)
+                }
                 
                 tasksCompleted += 1
                 let remaining = totalTasks - tasksCompleted
-                let remainingSeconds = Int(remaining * 1.1) // 1.1s per item including overhead
+                let remainingSeconds = Int(remaining * (hasAll ? 0.01 : 1.1)) // Near instant for skipped items
                 
                 if remainingSeconds > 60 {
                     self.etaString = "\(remainingSeconds / 60)m remaining"
@@ -61,25 +76,29 @@ final class SyncManager: ObservableObject {
                 }
                 
                 updateProgress(tasksCompleted / totalTasks)
-                try? await Task.sleep(nanoseconds: 1_050_000_000) // MB Rate Limit
             }
             
             // Phase 2: Album Metadata
             for album in albums {
                 if !isSyncing { break }
-                currentStatus = "Album Info: \(album.name)"
                 
-                await MusicBrainzManager.shared.downloadAlbumMetadataSilently(
-                    albumName: album.name, 
-                    artistName: album.artist ?? "Unknown Artist"
-                )
+                let artistName = album.artist ?? "Unknown Artist"
+                if MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+                    skippedCount += 1
+                } else {
+                    currentStatus = "Syncing: \(album.name)"
+                    await MusicBrainzManager.shared.downloadAlbumMetadataSilently(
+                        albumName: album.name, 
+                        artistName: artistName
+                    )
+                    try? await Task.sleep(nanoseconds: 1_050_000_000)
+                }
                 
                 tasksCompleted += 1
                 updateProgress(tasksCompleted / totalTasks)
-                try? await Task.sleep(nanoseconds: 1_050_000_000)
             }
             
-            finalizeSync("Metadata Updated")
+            finalizeSync("Sync Complete (\(skippedCount) items skipped)")
         }
     }
     
@@ -96,20 +115,28 @@ final class SyncManager: ObservableObject {
             let tracks = client.allSongs
             let total = Double(tracks.count)
             var current = 0.0
+            var skippedCount = 0
             
             for track in tracks {
                 if !isSyncing { break }
-                currentStatus = "Queueing \(Int(current + 1))/\(Int(total)): \(track.title)"
-                playback?.downloadTrack(track)
+                
+                let alreadyDownloaded = playback?.isDownloaded(trackId: track.id) ?? false
+                
+                if alreadyDownloaded {
+                    skippedCount += 1
+                } else {
+                    currentStatus = "Queueing \(Int(current + 1))/\(Int(total)): \(track.title)"
+                    playback?.downloadTrack(track)
+                }
                 
                 current += 1
                 updateProgress(current / total)
                 
-                // Rapid-fire queueing is fine, but we yield to keep UI smooth
+                // Yield to keep UI smooth, but no sleep needed here
                 await Task.yield()
             }
             
-            finalizeSync("Media Queued")
+            finalizeSync("Media Sync Complete (\(skippedCount) items skipped)")
         }
     }
     
