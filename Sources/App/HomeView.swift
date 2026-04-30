@@ -116,6 +116,7 @@ struct HomeView: View {
         }
     }
 }
+}
 
 private struct SectionHeader: View {
     let title: String
