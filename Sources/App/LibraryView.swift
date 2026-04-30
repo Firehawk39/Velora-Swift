@@ -604,7 +604,7 @@ private struct SongListView: View {
                             }
                         }
                         Button(action: {
-                            playback.startDownload(track: t)
+                            playback.downloadTrack(t)
                         }) {
                             Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
                         }
@@ -651,7 +651,7 @@ private struct SongListView: View {
                         }
                         
                         Button(action: {
-                            playback.startDownload(track: t)
+                            playback.downloadTrack(t)
                         }) {
                             Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
                         }
@@ -776,7 +776,7 @@ private struct PlaylistDetailView: View {
                                 }
                                 
                                 Button(action: {
-                                    playback.startDownload(track: track)
+                                    playback.downloadTrack(track)
                                 }) {
                                     Label(playback.isDownloaded(track.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(track.id) ? "checkmark.circle.fill" : "arrow.down.circle")
                                 }
