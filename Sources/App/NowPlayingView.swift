@@ -69,8 +69,8 @@ struct NowPlayingView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: proxy.size.width, height: proxy.size.height)
-                                .blur(radius: 40) // Strong blur for ambient feel
-                                .opacity(isIdle ? 0.4 : 0.3)
+                                .blur(radius: 60) // Softer ambient feel
+                                .opacity(isIdle ? 0.25 : 0.15)
                         } placeholder: {
                             Color.black
                         }
@@ -85,25 +85,9 @@ struct NowPlayingView: View {
                             .aspectRatio(contentMode: .fill)
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                            .opacity(isIdle ? 0.45 : 0.35)
+                            .opacity(1.0)
                     }
                 }
-                .overlay(
-                    // Combined Vignette: Dark edges + Vertical fade
-                    ZStack {
-                        RadialGradient(
-                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
-                            center: .center,
-                            startRadius: 200,
-                            endRadius: proxy.size.width * 0.8
-                        )
-                        LinearGradient(
-                            gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-                )
                 .ignoresSafeArea()
                 .animation(.easeInOut(duration: 0.6), value: isIdle)
                 .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
