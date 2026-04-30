@@ -53,7 +53,8 @@ class SyncManager: ObservableObject {
                 let remaining = totalTasks - tasksCompleted
                 let remainingSeconds = Int(remaining * 1.1) // 1.1s per item including overhead
                 
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
                     if remainingSeconds > 60 {
                         self.etaString = "\(remainingSeconds / 60)m remaining"
                     } else {
@@ -94,7 +95,7 @@ class SyncManager: ObservableObject {
         currentStatus = "Queueing tracks..."
         
         Task {
-            let tracks = client.songs
+            let tracks = client.allSongs
             let total = Double(tracks.count)
             var current = 0.0
             

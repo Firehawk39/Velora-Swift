@@ -520,6 +520,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         // We need to check all common suffixes if suffix is unknown, 
         // but usually we have it.
         let fileManager = FileManager.default
+        let downloadsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         let mp3Path = downloadsDir.appendingPathComponent("\(trackId).mp3").path
         let flacPath = downloadsDir.appendingPathComponent("\(trackId).flac").path
         let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a").path
@@ -568,7 +569,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         // Find the track to get the correct suffix
         // If we don't have it, default to mp3
-        let suffix = client.songs.first(where: { $0.id == trackId })?.suffix ?? "mp3"
+        let suffix = client.allSongs.first(where: { $0.id == trackId })?.suffix ?? "mp3"
+        let downloadsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
         
         do {
@@ -620,7 +622,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
 
     private func startCrossfade() {
-        guard !isCrossfading, let current = currentTrack, queue.count > 0 else { return }
+        guard !isCrossfading, currentTrack != nil, queue.count > 0 else { return }
         
         let nextIndex = (queueIndex + 1) % queue.count
         if nextIndex == queueIndex && repeatMode == .off { return }
@@ -694,6 +696,46 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         // Fetch new lyrics/backdrop
         fetchMetadata(for: nextTrack)
+    }
+    
+    private func setupObservers(for item: AVPlayerItem, track: Track) {
+        timeObserver = player?.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            guard let self = self,
+                  let currentItem = self.player?.currentItem,
+                  currentItem.duration.isNumeric else { return }
+            
+            self.progress = time.seconds
+            self.duration = currentItem.duration.seconds
+            self.updateNowPlayingInfo()
+            
+            if self.isCrossfadeEnabled && !self.isCrossfading && self.duration > 0 && time.seconds > (self.duration - self.crossfadeDuration) {
+                self.startCrossfade()
+            }
+        }
+        
+        playerItemObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            if self.isCrossfading { return }
+            
+            if let t = self.currentTrack {
+                self.client.scrobble(id: t.id, submission: true)
+            }
+            
+            switch self.repeatMode {
+            case .one:
+                self.player?.seek(to: .zero)
+                self.player?.play()
+            case .all, .off:
+                self.playNext()
+            }
+        }
     }
     
     private func fetchMetadata(for track: Track) {
