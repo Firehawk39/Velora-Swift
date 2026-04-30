@@ -120,7 +120,7 @@ final class SyncManager: ObservableObject {
             for track in tracks {
                 if !isSyncing { break }
                 
-                let alreadyDownloaded = playback?.isDownloaded(trackId: track.id) ?? false
+                let alreadyDownloaded = playback?.checkFileSystemForTrack(track.id) ?? false
                 
                 if alreadyDownloaded {
                     skippedCount += 1
@@ -155,5 +155,8 @@ final class SyncManager: ObservableObject {
         self.currentStatus = status
         self.syncProgress = 1.0
         self.etaString = ""
+        
+        // Ensure UI is updated with new offline tracks
+        self.playback?.refreshDownloadedTracks()
     }
 }

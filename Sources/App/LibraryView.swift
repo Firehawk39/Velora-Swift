@@ -28,7 +28,6 @@ struct LibraryView: View {
         ("artists",   "Artists",   "person.2"),
         ("albums",    "Albums",    "opticaldisc"),
         ("songs",     "Songs",     "music.note"),
-        ("downloaded", "Downloaded", "checkmark.circle.fill"),
     ]
 
     var body: some View {
@@ -40,11 +39,7 @@ struct LibraryView: View {
                         playlistTracks = []
                     }
                 } else if let cat = activeCategory {
-                    if cat == "downloaded" {
-                        categoryDetailView(category: "songs", forceOffline: true)
-                    } else {
-                        categoryDetailView(category: cat)
-                    }
+                    categoryDetailView(category: cat)
                 } else {
                     LibraryMenuView(activeCategory: $activeCategory, menuItems: menuItems, isDarkMode: isDarkMode, isCompact: isCompact, hPad: hPad)
                 }
@@ -676,26 +671,97 @@ private struct PlaylistDetailView: View {
     let isCompact: Bool
     let hPad: CGFloat
     var onBack: () -> Void
+    
+    @State private var viewMode: LibraryView.ViewMode = .list
+    @State private var sortMode: LibraryView.SortMode = .alphabetical
+    @State private var showOfflineOnly: Bool = false
 
     var body: some View {
+        let filtered = showOfflineOnly ? playback.filterOffline(tracks) : tracks
+        let sorted = filtered.sorted { a, b in
+            if sortMode == .alphabetical { return a.title < b.title }
+            if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
+            return (a.created ?? "") > (b.created ?? "")
+        }
+
         VStack(alignment: .leading, spacing: 0) {
             Spacer().frame(height: isCompact ? 80 : 100)
             
-            // Header
-            HStack(alignment: .center) {
+            // Header with Filters & Toggles
+            HStack(alignment: .center, spacing: 12) {
                 Button(action: onBack) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
-                            .foregroundColor(.red)
-                        Text("Playlists")
+                        Text("Back")
                             .font(.system(size: isCompact ? 16 : 20, weight: .semibold))
-                            .foregroundColor(.red)
                     }
+                    .foregroundColor(.red)
                 }
+                
                 Spacer()
                 
-                Button(action: { playback.shufflePlay(tracks: tracks) }) {
+                // View Mode Menu (Matching Songs style)
+                Menu {
+                    Button(action: { viewMode = .grid }) {
+                        Label("Grid", systemImage: "square.grid.2x2.fill")
+                    }
+                    Button(action: { viewMode = .list }) {
+                        Label("List", systemImage: "list.bullet")
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: viewMode == .grid ? "square.grid.2x2.fill" : "list.bullet")
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                    .foregroundColor(isDarkMode ? .white : .black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                }
+                
+                // Offline Only Toggle (Matching Songs style)
+                Button(action: { showOfflineOnly.toggle() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
+                        if !isCompact {
+                            Text("Offline")
+                        }
+                    }
+                    .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                    .foregroundColor(showOfflineOnly ? .red : (isDarkMode ? .white : .black))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
+                }
+                
+                // Sort Mode Menu (Matching Songs style)
+                Menu {
+                    Button(action: { sortMode = .alphabetical }) {
+                        Label("Alphabetical", systemImage: "textformat")
+                    }
+                    Button(action: { sortMode = .recent }) {
+                        Label("Recently Added", systemImage: "clock.fill")
+                    }
+                    Button(action: { sortMode = .topPlayed }) {
+                        Label("Top Played", systemImage: "play.circle.fill")
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: sortMode == .alphabetical ? "textformat" : (sortMode == .recent ? "clock.fill" : "play.circle.fill"))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                    .foregroundColor(isDarkMode ? .white : .black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                }
+
+                Button(action: { playback.shufflePlay(tracks: sorted) }) {
                     Image(systemName: "shuffle")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
@@ -703,6 +769,7 @@ private struct PlaylistDetailView: View {
                         .background(Color.red)
                         .clipShape(Circle())
                 }
+                .disabled(sorted.isEmpty)
             }
             .padding(.horizontal, hPad)
             .padding(.bottom, 20)
@@ -711,7 +778,7 @@ private struct PlaylistDetailView: View {
                 Text(playlist.name)
                     .font(.system(size: isCompact ? 28 : 36, weight: .bold))
                     .foregroundColor(isDarkMode ? .white : .black)
-                Text("\(playlist.songCount ?? 0) tracks • \(playlist.owner ?? "Unknown")")
+                Text("\(sorted.count) tracks • \(playlist.owner ?? "Unknown")")
                     .font(.system(size: isCompact ? 14 : 16))
                     .foregroundColor(.gray)
             }
@@ -725,64 +792,28 @@ private struct PlaylistDetailView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
-            } else if tracks.isEmpty {
+            } else if sorted.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "music.note.list").font(.system(size: 40)).foregroundColor(.gray.opacity(0.3))
-                    Text("No tracks in this playlist").foregroundColor(.gray)
+                    Text(showOfflineOnly ? "No offline tracks in this playlist" : "No tracks in this playlist").foregroundColor(.gray)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(tracks.enumerated()), id: \.element.id) { index, track in
-                            HStack(spacing: 16) {
-                                AsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                                    .frame(width: isCompact ? 48 : 56, height: isCompact ? 48 : 56).cornerRadius(8)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(track.title).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
-                                    Text(track.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
-                                }
-                                Spacer()
-                                if let progress = playback.downloadProgress[track.id] {
-                                    HStack(spacing: 8) {
-                                        if let eta = playback.downloadETAs[track.id] {
-                                            Text(eta)
-                                                .font(.system(size: 10, weight: .medium))
-                                                .foregroundColor(.gray)
-                                        }
-                                        CircularProgressView(progress: progress, size: 18, strokeWidth: 2, accentColor: .red)
-                                    }
-                                } else {
-                                    Text(track.durationFormatted).font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
-                                }
+                    if viewMode == .list {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, track in
+                                playlistTrackRow(track: track, index: index, allTracks: sorted)
+                                Divider().opacity(0.1)
                             }
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
-                            .onTapGesture { playback.playTrack(track, context: tracks) }
-                            .contextMenu {
-                                Button(role: .destructive, action: {
-                                    client.updatePlaylist(id: playlist.id, songIndicesToRemove: [index]) { success in
-                                        if success {
-                                            client.fetchPlaylistTracks(playlistId: playlist.id) { updated in
-                                                self.tracks = updated
-                                            }
-                                        }
-                                    }
-                                }) {
-                                    Label("Remove from Playlist", systemImage: "minus.circle")
-                                }
-                                
-                                Button(action: {
-                                    playback.downloadTrack(track)
-                                }) {
-                                    Label(playback.isDownloaded(track.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(track.id) ? "checkmark.circle.fill" : "arrow.down.circle")
-                                }
-                                .disabled(playback.isDownloaded(track.id))
+                        }
+                    } else {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
+                            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, track in
+                                playlistTrackGridItem(track: track, index: index, allTracks: sorted)
                             }
-                            Divider().opacity(0.1)
                         }
                     }
                     .padding(.horizontal, hPad)
@@ -790,5 +821,96 @@ private struct PlaylistDetailView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func playlistTrackRow(track: Track, index: Int, allTracks: [Track]) -> some View {
+        HStack(spacing: 16) {
+            AsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
+                .frame(width: isCompact ? 48 : 56, height: isCompact ? 48 : 56).cornerRadius(8)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(track.title).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
+                Text(track.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
+            }
+            Spacer()
+            if let progress = playback.downloadProgress[track.id] {
+                HStack(spacing: 8) {
+                    if let eta = playback.downloadETAs[track.id] {
+                        Text(eta)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.gray)
+                    }
+                    CircularProgressView(progress: progress, size: 18, strokeWidth: 2, accentColor: .red)
+                }
+            } else {
+                Text(track.durationFormatted).font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray)
+            }
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onTapGesture { playback.playTrack(track, context: allTracks) }
+        .contextMenu {
+            playlistContextMenu(track: track, index: index)
+        }
+    }
+
+    @ViewBuilder
+    private func playlistTrackGridItem(track: Track, index: Int, allTracks: [Track]) -> some View {
+        VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
+            ZStack(alignment: .topTrailing) {
+                AsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
+                    .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                
+                if let progress = playback.downloadProgress[track.id] {
+                    CircularProgressView(progress: progress, size: 16, strokeWidth: 2, accentColor: .red)
+                        .padding(6)
+                        .background(Circle().fill(Color.black.opacity(0.5)))
+                        .padding(4)
+                } else if playback.isDownloaded(track.id) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .padding(4)
+                        .background(Circle().fill(Color.black.opacity(0.3)))
+                        .padding(4)
+                }
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title)
+                    .font(.system(size: isCompact ? 14 : 16, weight: .bold))
+                    .lineLimit(1)
+                Text(track.artist ?? "")
+                    .font(.system(size: isCompact ? 11 : 13))
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+            }
+        }
+        .onTapGesture { playback.playTrack(track, context: allTracks) }
+        .contextMenu {
+            playlistContextMenu(track: track, index: index)
+        }
+    }
+
+    @ViewBuilder
+    private func playlistContextMenu(track: Track, index: Int) -> some View {
+        Button(role: .destructive, action: {
+            client.updatePlaylist(id: playlist.id, songIndicesToRemove: [index]) { success in
+                if success {
+                    client.fetchPlaylistTracks(playlistId: playlist.id) { updated in
+                        self.tracks = updated
+                    }
+                }
+            }
+        }) {
+            Label("Remove from Playlist", systemImage: "minus.circle")
+        }
+        
+        Button(action: {
+            playback.downloadTrack(track)
+        }) {
+            Label(playback.isDownloaded(track.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(track.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+        }
+        .disabled(playback.isDownloaded(track.id))
     }
 }

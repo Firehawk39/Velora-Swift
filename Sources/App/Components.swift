@@ -190,6 +190,7 @@ struct TrackCard: View {
                 }
                 .frame(width: size, height: size)
                 .cornerRadius(12)
+                .id(track.id)
                 .clipped()
                 
                 VStack(alignment: .leading, spacing: 2) {
@@ -223,6 +224,7 @@ struct ArtistCircle: View {
                 Circle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
             }
             .frame(width: size, height: size)
+            .id(artist.id)
             .clipShape(Circle())
             .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
             
@@ -251,6 +253,7 @@ struct AlbumCard: View {
             }
             .frame(width: cardW ?? 160, height: cardH ?? 160)
             .cornerRadius(16)
+            .id(album.id)
             .clipped()
             .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
             

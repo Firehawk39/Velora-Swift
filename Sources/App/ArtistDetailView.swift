@@ -183,6 +183,7 @@ struct ArtistDetailView: View {
                 Color.gray.opacity(0.1)
             }
         }
+        .id(artistId) // Stable ID prevents flickering during parent re-renders
         .frame(width: size, height: size)
         .clipShape(Circle())
         .shadow(color: .black.opacity(isDarkMode ? 0.3 : 0.15), radius: 30, x: 0, y: 15)
@@ -241,6 +242,7 @@ struct ArtistDetailView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: isCompact ? 200 : 240)
                         .cornerRadius(16)
+                        .id(track.id)
                         .clipped()
                         .shadow(color: .black.opacity(isDarkMode ? 0.25 : 0.1), radius: 15, x: 0, y: 8)
                         
@@ -296,6 +298,7 @@ struct ArtistDetailView: View {
                 }
                 .frame(width: 56, height: 56)
                 .cornerRadius(8)
+                .id(track.id)
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)

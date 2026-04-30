@@ -31,6 +31,19 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         return downloadedTrackIds.contains(trackId)
     }
     
+    /// Checks the file system directly for the existence of the track file
+    func checkFileSystemForTrack(_ trackId: String) -> Bool {
+        let fileManager = FileManager.default
+        let downloadsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let mp3Path = downloadsDir.appendingPathComponent("\(trackId).mp3").path
+        let flacPath = downloadsDir.appendingPathComponent("\(trackId).flac").path
+        let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a").path
+        
+        return fileManager.fileExists(atPath: mp3Path) || 
+               fileManager.fileExists(atPath: flacPath) || 
+               fileManager.fileExists(atPath: m4aPath)
+    }
+    
     func filterOffline(_ tracks: [Track]) -> [Track] {
         return tracks.filter { isDownloaded($0.id) }
     }
@@ -478,18 +491,32 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         do {
             let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
             let ids = fileURLs
-                .filter { $0.pathExtension == "mp3" }
+                .filter { ["mp3", "flac", "m4a"].contains($0.pathExtension.lowercased()) }
                 .map { $0.deletingPathExtension().lastPathComponent }
             DispatchQueue.main.async {
                 self.downloadedTrackIds = Set(ids)
+                self.objectWillChange.send()
             }
         } catch {
             print("Error loading downloaded tracks: \(error)")
         }
     }
     
+    func refreshDownloadedTracks() {
+        loadDownloadedTracks()
+    }
+    
     func downloadTrack(_ track: Track) {
-        if isDownloaded(trackId: track.id) { return }
+        if checkFileSystemForTrack(track.id) {
+            // Already there, but maybe the set is stale
+            if !downloadedTrackIds.contains(track.id) {
+                DispatchQueue.main.async {
+                    self.downloadedTrackIds.insert(track.id)
+                    self.objectWillChange.send()
+                }
+            }
+            return 
+        }
         
         // Add to queue if not already there or active
         if downloadProgress[track.id] != nil { return }
@@ -518,19 +545,6 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         task.resume()
     }
 
-    func isDownloaded(trackId: String) -> Bool {
-        // We need to check all common suffixes if suffix is unknown, 
-        // but usually we have it.
-        let fileManager = FileManager.default
-        let downloadsDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let mp3Path = downloadsDir.appendingPathComponent("\(trackId).mp3").path
-        let flacPath = downloadsDir.appendingPathComponent("\(trackId).flac").path
-        let m4aPath = downloadsDir.appendingPathComponent("\(trackId).m4a").path
-        
-        return fileManager.fileExists(atPath: mp3Path) || 
-               fileManager.fileExists(atPath: flacPath) || 
-               fileManager.fileExists(atPath: m4aPath)
-    }
     
     // MARK: - URLSessionDownloadDelegate
     
@@ -581,6 +595,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             try FileManager.default.moveItem(at: location, to: destinationUrl)
             
             DispatchQueue.main.async {
+                self.downloadedTrackIds.insert(trackId)
                 self.downloadProgress.removeValue(forKey: trackId)
                 self.downloadETAs.removeValue(forKey: trackId)
                 self.downloadStartTimes.removeValue(forKey: trackId)
@@ -597,6 +612,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        activeDownloadCount -= 1
+        processQueue()
+        
         if let error = error {
             print("Download task completed with error: \(error)")
             if let trackId = downloadTasks[task.taskIdentifier] {

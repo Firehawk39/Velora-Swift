@@ -363,7 +363,7 @@ extension NavidromeClient {
 
     // MARK: - All Songs
 
-    func fetchAllSongs(size: Int = 500) {
+    func fetchAllSongs(size: Int = 2000) {
         guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": String(size)]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
