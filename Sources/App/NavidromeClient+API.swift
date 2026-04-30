@@ -429,32 +429,7 @@ extension NavidromeClient {
         fetchAllSongs()
     }
 
-    func fetchPlaylists() {
-        guard let url = buildUrl(method: "getPlaylists.view") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
-            do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let items = decoded.subsonicResponse?.playlists?.playlist ?? []
-                DispatchQueue.main.async {
-                    self.playlists = items.map { p in
-                        Playlist(id: p.id, name: p.name ?? "Unknown", owner: p.owner, songCount: p.songCount, duration: p.duration, created: nil)
-                    }
-                }
-            } catch { print("Error decoding playlists: \(error)") }
-        }.resume()
-    }
 
-    func fetchPlaylistTracks(playlistId: String, completion: @escaping ([Track]) -> Void) {
-        guard let url = buildUrl(method: "getPlaylist.view", params: ["id": playlistId]) else { completion([]); return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion([]); return }
-            do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let items = decoded.subsonicResponse?.playlist?.entry ?? []
-                let tracks = items.map { s in
-                    Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
     // MARK: - Cache Management
 
     func clearCache() {
