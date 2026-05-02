@@ -16,6 +16,10 @@ class NavidromeClient: ObservableObject {
     private var salt: String = ""
     private let clientName = "VeloraSwift"
     private let apiVersion = "1.16.1"
+    
+    init() {
+        loadMetadataFromDisk()
+    }
 
     // MARK: - Configuration
 

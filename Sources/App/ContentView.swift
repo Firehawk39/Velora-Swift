@@ -113,9 +113,12 @@ struct ContentView: View {
         .hidePersistentSystemOverlays()
         .onAppear { 
             SyncManager.shared.configure(client: client, playback: playback)
-            autoLogin() 
-            // Ping server immediately to trigger iOS Local Network permission dialog
-            client.ping { _, _ in }
+            
+            // Immediately load from disk if available for offline speed
+            client.loadMetadataFromDisk()
+            
+            // Then attempt to connect to server
+            autoLogin()
         }
         .onChange(of: activeTab) { tab in
             withAnimation { 
