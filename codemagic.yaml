@@ -151,8 +151,8 @@ workflows:
                       <array>
                           <string>AppIcon</string>
                       </array>
-                      <key>UIPrerenderedIcon</key>
-                      <false/>
+                      <key>CFBundleIconName</key>
+                      <string>AppIcon</string>
                   </dict>
               </dict>
               <key>CFBundleIcons~ipad</key>
@@ -163,8 +163,8 @@ workflows:
                       <array>
                           <string>AppIcon</string>
                       </array>
-                      <key>UIPrerenderedIcon</key>
-                      <false/>
+                      <key>CFBundleIconName</key>
+                      <string>AppIcon</string>
                   </dict>
               </dict>
               <key>NSLocalNetworkUsageDescription</key>
@@ -177,6 +177,20 @@ workflows:
           </dict>
           </plist>
           EOF
+          
+          echo "Verifying Assets.car existence..."
+          if [ -f "$PAYLOAD_APP/Assets.car" ]; then
+             echo "SUCCESS: Assets.car found."
+          else
+             echo "WARNING: Assets.car NOT FOUND in bundle root. Checking subdirectories..."
+             find "$PAYLOAD_APP" -name "Assets.car"
+             # If found elsewhere, copy to root
+             CAR_PATH=$(find "$PAYLOAD_APP" -name "Assets.car" | head -n 1)
+             if [ ! -z "$CAR_PATH" ] && [ "$CAR_PATH" != "$PAYLOAD_APP/Assets.car" ]; then
+                echo "Copying Assets.car from $CAR_PATH to bundle root..."
+                cp "$CAR_PATH" "$PAYLOAD_APP/Assets.car"
+             fi
+          fi
           
           echo "Final bundle contents for $(basename "$APP_PATH"):"
           ls -F "$PAYLOAD_APP"

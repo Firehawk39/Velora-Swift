@@ -36,8 +36,18 @@ struct LogsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Clear") {
-                        logger.logs.removeAll()
+                    HStack {
+                        Button(action: {
+                            let allLogs = logger.logs.map { "[\($0.timestamp)] [\($0.level)] \($0.message)" }.joined(separator: "\n")
+                            UIPasteboard.general.string = allLogs
+                        }) {
+                            Image(systemName: "doc.on.doc")
+                            Text("Copy")
+                        }
+                        
+                        Button("Clear") {
+                            logger.logs.removeAll()
+                        }
                     }
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
