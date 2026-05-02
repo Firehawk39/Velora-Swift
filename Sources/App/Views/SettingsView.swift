@@ -560,6 +560,50 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
+
+                            // Deep Audit Button
+                            Button(action: {
+                                if sync.isSyncing && sync.syncType == .audit {
+                                    sync.stopSync()
+                                } else {
+                                    sync.startDeepAudit()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "shield.checkerboard")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncing && sync.syncType == .audit ? .green : labelCol)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(sync.isSyncing && sync.syncType == .audit ? "Auditing..." : "Deep Integrity Audit")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text(sync.isSyncing && sync.syncType == .audit ? sync.currentStatus : "Scan & fix corrupted or partial files")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if sync.isSyncing && sync.syncType == .audit {
+                                        HStack(spacing: 8) {
+                                            if !sync.etaString.isEmpty {
+                                                Text(sync.etaString)
+                                                    .font(.system(size: 12, weight: .medium))
+                                                    .foregroundColor(.gray)
+                                            }
+                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .green)
+                                        }
+                                    } else {
+                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            }
                         }
                         
                         // Audio Engine

@@ -9,7 +9,7 @@ struct LogsView: View {
             ScrollView {
                 ScrollViewReader { proxy in
                     LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(logger.logs.reversed()) { entry in
+                        ForEach(logger.logs) { entry in
                             HStack(alignment: .top) {
                                 Text(entry.timestamp, style: .time)
                                     .font(.system(.caption2, design: .monospaced))

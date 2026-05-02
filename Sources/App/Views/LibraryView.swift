@@ -438,7 +438,7 @@ private struct ArtistGridView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { a in
                     VStack(spacing: isCompact ? 6 : 8) {
-                        ArtistPortraitView(artistId: a.id, size: isCompact ? 100 : 160, client: client, isDarkMode: isDarkMode)
+                        ArtistPortraitView(artistId: a.id, artistName: a.name, size: isCompact ? 100 : 160, client: client, isDarkMode: isDarkMode)
                             .id("artist-grid-\(a.id)")
                         
                         Text(a.name)
@@ -454,7 +454,7 @@ private struct ArtistGridView: View {
             LazyVStack(spacing: 0) {
                 ForEach(sorted) { a in
                     HStack(spacing: 16) {
-                        ArtistPortraitView(artistId: a.id, size: isCompact ? 40 : 50, client: client, isDarkMode: isDarkMode)
+                    ArtistPortraitView(artistId: a.id, artistName: a.name, size: isCompact ? 40 : 50, client: client, isDarkMode: isDarkMode)
                             .id("artist-list-\(a.id)")
                         Text(a.name).font(.system(size: isCompact ? 16 : 18, weight: .bold))
                         Spacer()

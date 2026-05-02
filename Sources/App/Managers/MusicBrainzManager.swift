@@ -486,7 +486,7 @@ class MusicBrainzManager: ObservableObject {
                             continuation.resume(); return 
                         }
                         
-                        let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+                        let annotation = await self.fetchAnnotationAsync(entityMBID: mbid)
                         json["annotation"] = annotation
                         if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                             try? savedData.write(to: fileUrl)

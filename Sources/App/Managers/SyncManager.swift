@@ -16,6 +16,7 @@ final class SyncManager: ObservableObject {
         case metadata
         case media
         case full
+        case audit
     }
     
     private var client: NavidromeClient?
@@ -24,6 +25,88 @@ final class SyncManager: ObservableObject {
     func configure(client: NavidromeClient, playback: PlaybackManager) {
         self.client = client
         self.playback = playback
+    }
+    
+    /// Comprehensive scan of all local files to ensure integrity
+    func startDeepAudit() {
+        guard !isSyncing else { return }
+        
+        isSyncing = true
+        syncType = .audit
+        syncProgress = 0.0
+        currentStatus = "Initializing Deep Audit..."
+        etaString = "Checking files..."
+        
+        Task {
+            let fileManager = FileManager.default
+            let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+            
+            // Collect all directories to scan
+            let metadataDir = docs.appendingPathComponent("Metadata")
+            let backdropDir = docs.appendingPathComponent("Backdrops")
+            let portraitDir = docs.appendingPathComponent("ArtistPortraits")
+            
+            var totalFiles = 0
+            var filesToAudit: [URL] = []
+            
+            // 1. Gather all files
+            currentStatus = "Gathering files..."
+            let dirs = [docs, metadataDir, backdropDir, portraitDir]
+            for dir in dirs {
+                if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                    let filtered = contents.filter { !$0.hasDirectoryPath && !($0.lastPathComponent == ".DS_Store") }
+                    filesToAudit.append(contentsOf: filtered)
+                }
+            }
+            
+            totalFiles = filesToAudit.count
+            if totalFiles == 0 {
+                finalizeSync("Audit Complete: No files found.")
+                return
+            }
+            
+            var deletedCount = 0
+            var validCount = 0
+            var processed = 0
+            
+            for fileUrl in filesToAudit {
+                if !isSyncing { break }
+                
+                let fileName = fileUrl.lastPathComponent
+                currentStatus = "Auditing: \(fileName)"
+                
+                let isValid: Bool
+                if fileName.hasPrefix("artist_") || fileName.hasPrefix("album_") {
+                    isValid = IntegrityManager.shared.isMetadataValid(at: fileUrl)
+                } else if fileName.hasSuffix(".jpg") || fileName.hasSuffix(".png") {
+                    isValid = IntegrityManager.shared.isImageValid(at: fileUrl)
+                } else if fileName.hasSuffix(".mp3") || fileName.hasSuffix(".flac") || fileName.hasSuffix(".m4a") {
+                    let trackId = fileUrl.deletingPathExtension().lastPathComponent
+                    isValid = IntegrityManager.shared.isTrackValid(id: trackId)
+                } else {
+                    // Unknown file type, skip or assume valid for now
+                    isValid = true
+                }
+                
+                if !isValid {
+                    deletedCount += 1
+                } else {
+                    validCount += 1
+                }
+                
+                processed += 1
+                updateProgress(Double(processed) / Double(totalFiles))
+                self.etaString = "\(totalFiles - processed) remaining"
+                
+                // Yield occasionally
+                if processed % 50 == 0 {
+                    await Task.yield()
+                }
+            }
+            
+            finalizeSync("Audit Finished: \(validCount) valid, \(deletedCount) deleted.")
+            self.playback?.refreshDownloadedTracks()
+        }
     }
     
     /// Syncs Artist/Album info and images, but NO media files
@@ -71,9 +154,6 @@ final class SyncManager: ObservableObject {
             for artist in artists {
                 if !isSyncing { break }
                 
-                let mb = MusicBrainzManager.shared
-                let fa = FanartManager.shared
-                
                 // Check if artist metadata and images are valid on disk
                 let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
                 let backdropUrl = FanartManager.shared.getBackdropUrl(for: artist.name)
@@ -97,6 +177,7 @@ final class SyncManager: ObservableObject {
                 
                 tasksCompleted += 1
                 let remaining = totalTasks - tasksCompleted
+                let hasAll = hasValidMetadata && hasValidBackdrop && hasValidPortrait
                 let remainingSeconds = Int(remaining * (hasAll ? 0.01 : 1.1)) // Near instant for skipped items
                 
                 if remainingSeconds > 60 {
@@ -231,7 +312,7 @@ final class SyncManager: ObservableObject {
                 } else {
                     self.etaString = "Calculating..."
                 }
-
+ 
                 if (currentlyDownloaded + currentlyFailed) >= totalToDownload {
                     break
                 }

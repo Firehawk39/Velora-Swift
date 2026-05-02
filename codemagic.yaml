@@ -22,6 +22,8 @@ workflows:
             -sdk iphoneos \
             ARCHS=arm64 \
             TARGETED_DEVICE_FAMILY="1,2" \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
             INSTALL_PATH=/Applications \
             PRODUCT_NAME=Velora \
             WRAPPER_EXTENSION=app \
@@ -149,8 +151,7 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon@2x</string>
-                          <string>AppIcon@3x</string>
+                          <string>AppIcon60x60</string>
                       </array>
                       <key>CFBundleIconName</key>
                       <string>AppIcon</string>
@@ -162,9 +163,9 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon~ipad</string>
-                          <string>AppIcon@2x~ipad</string>
-                          <string>AppIcon-83.5@2x~ipad</string>
+                          <string>AppIcon60x60</string>
+                          <string>AppIcon76x76</string>
+                          <string>AppIcon83.5x83.5</string>
                       </array>
                       <key>CFBundleIconName</key>
                       <string>AppIcon</string>
@@ -181,35 +182,31 @@ workflows:
           </plist>
           EOF
           
-          # 4.5. Fail-safe: Copy loose icons from source to bundle root
-          # This is critical for TrollStore/Jailbreak IPAs to show icons reliably
+          # 4.5. Robust Icon Preparation
+          # We copy and rename to standard names that TrollStore/iOS expects
           ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
           if [ -d "$ICON_SOURCE" ]; then
-              echo "Found icon source at $ICON_SOURCE. Copying PNGs to bundle root..."
+              echo "Preparing icons from $ICON_SOURCE..."
+              cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
+              cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
+              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
+              # Fallback broad copy
               cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
-          else
-              echo "WARNING: Icon source not found at $ICON_SOURCE"
           fi
 
           echo "Verifying Assets.car existence..."
           if [ -f "$PAYLOAD_APP/Assets.car" ]; then
-             echo "SUCCESS: Assets.car found."
+              echo "SUCCESS: Assets.car found."
           else
-             echo "WARNING: Assets.car NOT FOUND in bundle root. Checking subdirectories..."
-             find "$PAYLOAD_APP" -name "Assets.car"
-             # If found elsewhere, copy to root
-             CAR_PATH=$(find "$PAYLOAD_APP" -name "Assets.car" | head -n 1)
-             if [ ! -z "$CAR_PATH" ] && [ "$CAR_PATH" != "$PAYLOAD_APP/Assets.car" ]; then
-                echo "Copying Assets.car from $CAR_PATH to bundle root..."
-                cp "$CAR_PATH" "$PAYLOAD_APP/Assets.car"
-             fi
+              echo "WARNING: Assets.car NOT FOUND in bundle root. Checking subdirectories..."
+              find "$PAYLOAD_APP" -name "Assets.car"
+              CAR_PATH=$(find "$PAYLOAD_APP" -name "Assets.car" | head -n 1)
+              if [ ! -z "$CAR_PATH" ] && [ "$CAR_PATH" != "$PAYLOAD_APP/Assets.car" ]; then
+                  cp "$CAR_PATH" "$PAYLOAD_APP/Assets.car"
+              fi
           fi
-          
-          echo "Final bundle contents for $(basename "$APP_PATH"):"
-          ls -F "$PAYLOAD_APP"
-          
-          echo "Verifying Info.plist keys:"
-          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen|CFBundleIcon" "$PAYLOAD_APP/Info.plist"
           
           # 5. Create IPA
           zip -r Velora-Jailbreak.ipa Payload
