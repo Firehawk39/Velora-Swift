@@ -198,10 +198,21 @@ struct NowPlayingView: View {
     private func startIdleTimer() {
         stopIdleTimer()
         guard !isQueueOpen && !playback.isLyricsMode else { return }
+        guard isActive else { return } // Don't start timer if view isn't the active tab
         
-        idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 2.5)) {
-                isIdle = true
+        // MUST schedule on main RunLoop otherwise the timer never fires
+        DispatchQueue.main.async {
+            self.idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 2.5)) {
+                        self.isIdle = true
+                    }
+                    AppLogger.shared.log("NowPlaying: Entered idle state", level: .debug)
+                }
+            }
+            // Ensure the timer is added to the common run loop mode
+            if let timer = self.idleTimer {
+                RunLoop.main.add(timer, forMode: .common)
             }
         }
     }

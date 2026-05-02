@@ -26,7 +26,7 @@ class NavidromeClient: ObservableObject {
     func loadCredentials() {
         let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
-        let isOnline = UserDefaults.standard.bool(forKey: "velora_online_mode")
+        let isOnline = UserDefaults.standard.bool(forKey: "velora_is_online_mode")
         
         AppLogger.shared.log("Client: loadCredentials - URL='\(savedUrl)' user='\(savedUser)' online=\(isOnline)", level: .debug)
         
