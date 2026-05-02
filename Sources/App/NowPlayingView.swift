@@ -139,6 +139,11 @@ struct NowPlayingView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in resetIdleTimer() }
+            )
             .highPriorityGesture(
                 DragGesture(minimumDistance: 40)
                     .onChanged { _ in
@@ -163,18 +168,20 @@ struct NowPlayingView: View {
         }
         .onAppear { 
             if isActive {
-                isIdle = false
-                startIdleTimer() 
+                AppLogger.shared.log("NowPlaying: View Appeared (Active)", level: .debug)
+                resetIdleTimer() 
                 refreshMetadata()
             }
         }
         .onChange(of: isActive) { active in
             if active {
-                isIdle = false
-                startIdleTimer()
+                AppLogger.shared.log("NowPlaying: Tab Switched (Active)", level: .debug)
+                resetIdleTimer()
                 refreshMetadata()
             } else {
+                AppLogger.shared.log("NowPlaying: Tab Switched (Inactive)", level: .debug)
                 stopIdleTimer()
+                withAnimation { isIdle = false }
             }
         }
         .onDisappear { 
