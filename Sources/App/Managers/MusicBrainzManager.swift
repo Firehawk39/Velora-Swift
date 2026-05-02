@@ -28,6 +28,13 @@ class MusicBrainzManager: ObservableObject {
     private var mbidCache: [String: String] = [:]
     private let mbidCacheLock = NSLock()
     
+    // Throttling Queue for MusicBrainz (1 request per second limit)
+    private var requestQueue: [(URL, (Data?) -> Void)] = []
+    private let queueLock = NSLock()
+    private var isProcessingQueue = false
+    private let minRequestInterval: TimeInterval = 1.1
+    private var lastRequestTime: Date = .distantPast
+    
     // Persistent storage for name-to-MBID mappings
     private var nameToMBIDCache: [String: String] = [:]
     
@@ -281,41 +288,62 @@ class MusicBrainzManager: ObservableObject {
             }
         }
     }
+     @discardableResult
+    private func performMusicBrainzRequest(url: URL, retryCount: Int = 0, completion: @escaping (Data?) -> Void) -> URLSessionDataTask? {
+        queueLock.lock()
+        requestQueue.append((url, completion))
+        queueLock.unlock()
+        
+        processRequestQueue()
+        return nil // Return nil as we are now async queued
+    }
     
-    @discardableResult
-    private func performMusicBrainzRequest(url: URL, retryCount: Int = 0, completion: @escaping (Data?) -> Void) -> URLSessionDataTask {
+    private func processRequestQueue() {
+        queueLock.lock()
+        guard !isProcessingQueue, !requestQueue.isEmpty else {
+            queueLock.unlock()
+            return
+        }
+        
+        isProcessingQueue = true
+        let (url, completion) = requestQueue.removeFirst()
+        queueLock.unlock()
+        
+        // Ensure at least 1.1s between requests
+        let now = Date()
+        let timeSinceLast = now.timeIntervalSince(lastRequestTime)
+        let waitTime = max(0, minRequestInterval - timeSinceLast)
+        
+        DispatchQueue.global().asyncAfter(deadline: .now() + waitTime) {
+            self.lastRequestTime = Date()
+            self.executeActualRequest(url: url, retryCount: 0, completion: completion)
+        }
+    }
+    
+    private func executeActualRequest(url: URL, retryCount: Int, completion: @escaping (Data?) -> Void) {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error as NSError?, error.code == NSURLErrorCancelled { return }
-
-            if let http = response as? HTTPURLResponse {
-                if http.statusCode == 503 && retryCount < 3 {
-                    let delay = pow(2.0, Double(retryCount))
-                    AppLogger.shared.log("[MBID] 503 Rate Limited. Retrying in \(delay)s...", level: .warning)
-                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
-                        _ = self.performMusicBrainzRequest(url: url, retryCount: retryCount + 1, completion: completion)
-                    }
-                    return
-                }
-                
-                if http.statusCode != 200 {
-                    AppLogger.shared.log("[MBID] Request failed with status \(http.statusCode)", level: .error)
-                    completion(nil)
-                    return
-                }
-            }
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
             
-            if error != nil {
-                completion(nil)
+            if let http = response as? HTTPURLResponse, http.statusCode == 503 && retryCount < 3 {
+                let backoff = pow(2.0, Double(retryCount))
+                AppLogger.shared.log("[MBID] 503 Rate Limited. Retrying in \(backoff)s...", level: .warning)
+                DispatchQueue.global().asyncAfter(deadline: .now() + backoff) {
+                    self.executeActualRequest(url: url, retryCount: retryCount + 1, completion: completion)
+                }
                 return
             }
             
             completion(data)
-        }
-        task.resume()
-        return task
+            
+            // Move to next in queue
+            self.queueLock.lock()
+            self.isProcessingQueue = false
+            self.queueLock.unlock()
+            self.processRequestQueue()
+        }.resume()
     }
 
     private func extractPrimaryArtist(_ name: String) -> String {

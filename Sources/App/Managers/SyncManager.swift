@@ -5,11 +5,29 @@ import Foundation
 final class SyncManager: ObservableObject {
     static let shared = SyncManager()
     
+    // Global and Specific Flags
     @Published var isSyncing: Bool = false
-    @Published var syncProgress: Double = 0.0
-    @Published var currentStatus: String = ""
+    @Published var isMetadataSyncing: Bool = false
+    @Published var isMediaSyncing: Bool = false
+    @Published var isAuditing: Bool = false
+    
+    // Progress Tracking
+    @Published var syncProgress: Double = 0.0 // Global legacy
+    @Published var metadataProgress: Double = 0.0
+    @Published var mediaProgress: Double = 0.0
+    @Published var auditProgress: Double = 0.0
+    
+    // Status Tracking
+    @Published var currentStatus: String = "" // Global legacy
+    @Published var metadataStatus: String = ""
+    @Published var mediaStatus: String = ""
+    @Published var auditStatus: String = ""
+    
+    // ETA Tracking
     @Published var syncType: SyncType = .none
     @Published var etaString: String = ""
+    @Published var mediaEtaString: String = ""
+    @Published var metadataEtaString: String = ""
     
     enum SyncType {
         case none
@@ -27,30 +45,26 @@ final class SyncManager: ObservableObject {
         self.playback = playback
     }
     
-    /// Comprehensive scan of all local files to ensure integrity
+    // MARK: - Deep Audit
+    
     func startDeepAudit() {
-        guard !isSyncing else { return }
+        guard !isAuditing else { return }
         
+        isAuditing = true
         isSyncing = true
-        syncType = .audit
-        syncProgress = 0.0
-        currentStatus = "Initializing Deep Audit..."
-        etaString = "Checking files..."
+        auditProgress = 0.0
+        auditStatus = "Initializing Deep Audit..."
         
         Task {
             let fileManager = FileManager.default
             let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
             
-            // Collect all directories to scan
             let metadataDir = docs.appendingPathComponent("Metadata")
             let backdropDir = docs.appendingPathComponent("Backdrops")
             let portraitDir = docs.appendingPathComponent("ArtistPortraits")
             
-            var totalFiles = 0
             var filesToAudit: [URL] = []
             
-            // 1. Gather all files
-            currentStatus = "Gathering files..."
             let dirs = [docs, metadataDir, backdropDir, portraitDir]
             for dir in dirs {
                 if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
@@ -59,22 +73,22 @@ final class SyncManager: ObservableObject {
                 }
             }
             
-            totalFiles = filesToAudit.count
+            let totalFiles = filesToAudit.count
             if totalFiles == 0 {
-                finalizeSync("Audit Complete: No files found.")
+                isAuditing = false
+                if !isMetadataSyncing && !isMediaSyncing { isSyncing = false }
+                auditStatus = "Audit Complete: No files found."
                 return
             }
             
-            var deletedCount = 0
-            var validCount = 0
             var processed = 0
-            
             for fileUrl in filesToAudit {
-                if !isSyncing { break }
+                if !isAuditing { break }
                 
                 let fileName = fileUrl.lastPathComponent
-                currentStatus = "Auditing: \(fileName)"
+                auditStatus = "Auditing: \(fileName)"
                 
+                // Integrity check logic
                 let isValid: Bool
                 if fileName.hasPrefix("artist_") || fileName.hasPrefix("album_") {
                     isValid = IntegrityManager.shared.isMetadataValid(at: fileUrl)
@@ -84,283 +98,177 @@ final class SyncManager: ObservableObject {
                     let trackId = fileUrl.deletingPathExtension().lastPathComponent
                     isValid = IntegrityManager.shared.isTrackValid(id: trackId)
                 } else {
-                    // Unknown file type, skip or assume valid for now
                     isValid = true
                 }
                 
-                if !isValid {
-                    deletedCount += 1
-                } else {
-                    validCount += 1
-                }
-                
                 processed += 1
-                updateProgress(Double(processed) / Double(totalFiles))
-                self.etaString = "\(totalFiles - processed) remaining"
+                auditProgress = Double(processed) / Double(totalFiles)
                 
-                // Yield occasionally
-                if processed % 50 == 0 {
-                    await Task.yield()
-                }
+                if processed % 50 == 0 { await Task.yield() }
             }
             
-            finalizeSync("Audit Finished: \(validCount) valid, \(deletedCount) deleted.")
+            isAuditing = false
+            if !isMetadataSyncing && !isMediaSyncing { isSyncing = false }
+            auditStatus = "Audit Finished."
             self.playback?.refreshDownloadedTracks()
         }
     }
     
-    /// Syncs Artist/Album info and images, but NO media files
+    // MARK: - Metadata Sync
+    
     func startMetadataSync() {
-        guard let client = client, !isSyncing else { return }
+        guard let client = client, !isMetadataSyncing else { return }
         
+        isMetadataSyncing = true
         isSyncing = true
-        syncType = .metadata
-        syncProgress = 0.0
+        metadataProgress = 0.0
+        metadataStatus = "Fetching library list..."
         
         Task {
-            // 1. Ensure artists are loaded
-            if client.artists.isEmpty {
-                currentStatus = "Fetching artist list..."
-                client.fetchArtists()
-                for _ in 0..<30 {
-                    if !client.artists.isEmpty { break }
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                }
-            }
+            // Load data if needed
+            if client.artists.isEmpty { client.fetchArtists() }
+            if client.albums.isEmpty { client.fetchAlbums() }
             
-            // 2. Ensure albums are loaded
-            if client.albums.isEmpty {
-                currentStatus = "Fetching album list..."
-                client.fetchAlbums()
-                for _ in 0..<30 {
-                    if !client.albums.isEmpty { break }
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                }
+            // Poll for data briefly
+            for _ in 0..<10 {
+                if !client.artists.isEmpty && !client.albums.isEmpty { break }
+                try? await Task.sleep(nanoseconds: 500_000_000)
             }
             
             let artists = client.artists
             let albums = client.albums
-            
-            if artists.isEmpty && albums.isEmpty {
-                finalizeSync("No artists or albums found.")
-                return
-            }
-            
             let totalTasks = Double(artists.count + albums.count)
             var tasksCompleted = 0.0
-            var skippedCount = 0
             
-            // Phase 1: Artist Metadata & Images
+            // Artist Phase
             for artist in artists {
-                if !isSyncing { break }
+                if !isMetadataSyncing { break }
                 
-                // Check if artist metadata and images are valid on disk
                 let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
                 let backdropUrl = FanartManager.shared.getBackdropUrl(for: artist.name)
                 let portraitUrl = FanartManager.shared.getPortraitUrl(for: artist.name)
 
-                let hasValidMetadata = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
-                let hasValidBackdrop = IntegrityManager.shared.isImageValid(at: backdropUrl)
-                let hasValidPortrait = IntegrityManager.shared.isImageValid(at: portraitUrl)
+                let hasValid = IntegrityManager.shared.isMetadataValid(at: metadataUrl) &&
+                               IntegrityManager.shared.isImageValid(at: backdropUrl) &&
+                               IntegrityManager.shared.isImageValid(at: portraitUrl)
                 
-                if hasValidMetadata && hasValidBackdrop && hasValidPortrait {
-                    skippedCount += 1
-                } else {
-                    currentStatus = "Syncing: \(artist.name)"
+                if !hasValid {
+                    metadataStatus = "Syncing Info: \(artist.name)"
                     FanartManager.shared.downloadBackdropSilently(for: artist.name)
                     FanartManager.shared.fetchArtistPortrait(for: artist.name) { _ in }
                     await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
-                    
-                    // Only sleep if we actually hit the API
-                    try? await Task.sleep(nanoseconds: 1_050_000_000)
                 }
                 
                 tasksCompleted += 1
+                metadataProgress = tasksCompleted / totalTasks
+                
+                // ETA Update
                 let remaining = totalTasks - tasksCompleted
-                let hasAll = hasValidMetadata && hasValidBackdrop && hasValidPortrait
-                let remainingSeconds = Int(remaining * (hasAll ? 0.01 : 1.1)) // Near instant for skipped items
-                
-                if remainingSeconds > 60 {
-                    self.etaString = "\(remainingSeconds / 60)m remaining"
-                } else {
-                    self.etaString = "\(remainingSeconds)s remaining"
-                }
-                
-                updateProgress(tasksCompleted / totalTasks)
+                let remainingSec = Int(remaining * (hasValid ? 0.01 : 1.1))
+                metadataEtaString = remainingSec > 60 ? "\(remainingSec/60)m remaining" : "\(remainingSec)s remaining"
             }
             
-            // Phase 2: Album Metadata
+            // Album Phase
             for album in albums {
-                if !isSyncing { break }
-                
+                if !isMetadataSyncing { break }
                 let artistName = album.artist ?? "Unknown Artist"
-                if MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
-                    skippedCount += 1
-                } else {
-                    currentStatus = "Syncing: \(album.name)"
-                    await MusicBrainzManager.shared.downloadAlbumMetadataSilently(
-                        albumName: album.name, 
-                        artistName: artistName
-                    )
-                    try? await Task.sleep(nanoseconds: 1_050_000_000)
+                if !MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+                    metadataStatus = "Syncing Info: \(album.name)"
+                    await MusicBrainzManager.shared.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
                 }
-                
                 tasksCompleted += 1
-                updateProgress(tasksCompleted / totalTasks)
+                metadataProgress = tasksCompleted / totalTasks
             }
             
-            finalizeSync("Sync Complete (\(skippedCount) items skipped)")
+            isMetadataSyncing = false
+            if !isMediaSyncing && !isAuditing { isSyncing = false }
+            metadataStatus = "Metadata Sync Complete"
         }
     }
     
-    /// Downloads all tracks in the library
+    // MARK: - Media Sync
+    
     func startMediaSync() {
-        AppLogger.shared.log("startMediaSync() triggered. isSyncing: \(isSyncing), client: \(client != nil ? "present" : "nil")", level: .info)
-        guard let client = client, !isSyncing else { 
-            AppLogger.shared.log("startMediaSync() aborted: guard failed.", level: .error)
-            return 
-        }
+        guard let client = client, !isMediaSyncing else { return }
         
+        isMediaSyncing = true
         isSyncing = true
-        syncType = .media
-        syncProgress = 0.0
-        currentStatus = "Analyzing library..."
+        mediaProgress = 0.0
+        mediaStatus = "Analyzing library..."
         
         Task {
-            // 1. Ensure we actually have the songs list
-            AppLogger.shared.log("Checking client.allSongs.isEmpty: \(client.allSongs.isEmpty)", level: .debug)
             if client.allSongs.isEmpty {
-                currentStatus = "Fetching song list..."
                 client.fetchAllSongs()
-                playback?.failedDownloadIds.removeAll()
-                
-                AppLogger.shared.log("Polling for songs...", level: .debug)
-                // Wait for songs to populate (poll for up to 15s)
-                for _ in 0..<30 {
-                    if !client.allSongs.isEmpty { 
-                        AppLogger.shared.log("Songs populated: \(client.allSongs.count) tracks.", level: .debug)
-                        break 
-                    }
+                for _ in 0..<20 {
+                    if !client.allSongs.isEmpty { break }
                     try? await Task.sleep(nanoseconds: 500_000_000)
                 }
-            } else {
-                AppLogger.shared.log("Songs already populated: \(client.allSongs.count) tracks.", level: .debug)
-                playback?.failedDownloadIds.removeAll()
             }
             
             let tracks = client.allSongs
-            if tracks.isEmpty {
-                AppLogger.shared.log("Songs list still empty after polling. Aborting.", level: .error)
-                finalizeSync("No tracks found in library.")
-                return
-            }
-            
-            AppLogger.shared.log("Total tracks in library: \(tracks.count). Checking which need download.", level: .debug)
-            
             let tracksToDownload = tracks.filter { !(playback?.checkFileSystemForTrack($0.id) ?? false) }
             let totalTracks = Double(tracks.count)
             let totalToDownload = tracksToDownload.count
-            let alreadyDownloadedCount = Int(totalTracks) - totalToDownload
+            let alreadyDownloaded = Int(totalTracks) - totalToDownload
             
             if totalToDownload == 0 {
-                finalizeSync("All \(Int(totalTracks)) tracks already offline.")
+                isMediaSyncing = false
+                if !isMetadataSyncing && !isAuditing { isSyncing = false }
+                mediaStatus = "All tracks already offline."
                 return
             }
             
-            currentStatus = "Queueing \(totalToDownload) tracks..."
-            AppLogger.shared.log("Queueing \(totalToDownload) tracks.", level: .info)
             for track in tracksToDownload {
-                if !isSyncing { break }
+                if !isMediaSyncing { break }
                 playback?.downloadTrack(track)
-                // Small yield to keep UI responsive during mass queueing
                 await Task.yield()
             }
-            AppLogger.shared.log("Finished queueing. Starting monitor loop.", level: .debug)
-            
-            // Phase 2: Monitor progress with a timeout safety
-            var lastDownloadedCount = -1
-            var stallCounter = 0
             
             let startTime = Date()
-            while isSyncing {
-                let currentlyDownloaded = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
-                let currentlyFailed = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
-                let totalCompleted = Double(alreadyDownloadedCount + currentlyDownloaded + currentlyFailed)
+            while isMediaSyncing {
+                let downloaded = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
+                let failed = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
+                let completed = downloaded + failed
                 
-                if currentlyDownloaded + currentlyFailed == 0 {
-                    AppLogger.shared.log("Sync loop heartbeat: 0/\(totalToDownload) processed. isSyncing: \(isSyncing)", level: .debug)
-                }
+                mediaProgress = Double(alreadyDownloaded + completed) / totalTracks
+                mediaStatus = "Downloading: \(downloaded)/\(totalToDownload) (\(failed) errors)"
                 
-                updateProgress(totalCompleted / totalTracks)
-                currentStatus = "Downloading: \(currentlyDownloaded)/\(totalToDownload) (\(alreadyDownloadedCount) skipped, \(currentlyFailed) failed)"
-                
-                // ETA Calculation
-                let processedInThisBatch = currentlyDownloaded + currentlyFailed
-                if processedInThisBatch > 0 {
+                // ETA
+                if completed > 0 {
                     let elapsed = Date().timeIntervalSince(startTime)
-                    let tracksPerSecond = Double(processedInThisBatch) / elapsed
-                    let remainingTracks = Double(totalToDownload - processedInThisBatch)
-                    let remainingSeconds = Int(remainingTracks / tracksPerSecond)
-                    
-                    if remainingSeconds > 3600 {
-                        self.etaString = "\(remainingSeconds / 3600)h remaining"
-                    } else if remainingSeconds > 60 {
-                        self.etaString = "\(remainingSeconds / 60)m remaining"
-                    } else {
-                        self.etaString = "\(remainingSeconds)s remaining"
-                    }
-                } else {
-                    self.etaString = "Calculating..."
-                }
- 
-                if (currentlyDownloaded + currentlyFailed) >= totalToDownload {
-                    break
+                    let remaining = Double(totalToDownload - completed) / (Double(completed) / elapsed)
+                    mediaEtaString = remaining > 60 ? "\(Int(remaining/60))m remaining" : "\(Int(remaining))s remaining"
                 }
                 
-                if (currentlyDownloaded + currentlyFailed) == lastDownloadedCount {
-                    stallCounter += 1
-                    if stallCounter > 300 { // 5 minutes stall
-                        finalizeSync("Sync Stalled. Check your connection.")
-                        return
-                    }
-                } else {
-                    stallCounter = 0
-                    lastDownloadedCount = currentlyDownloaded + currentlyFailed
-                }
-                
+                if completed >= totalToDownload { break }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             
-            if isSyncing {
-                let successCount = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
-                let failCount = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
-                
-                if failCount > 0 {
-                    finalizeSync("Sync Finished with \(failCount) errors. (\(successCount) saved)")
-                } else {
-                    finalizeSync("Media Sync Complete (\(alreadyDownloadedCount) skipped, \(successCount) downloaded)")
-                }
-            }
+            isMediaSyncing = false
+            if !isMetadataSyncing && !isAuditing { isSyncing = false }
+            mediaStatus = "Media Sync Complete"
         }
     }
     
+    // MARK: - Controls
+    
+    func stopMetadataSync() {
+        isMetadataSyncing = false
+        metadataStatus = "Stopped"
+        if !isMediaSyncing && !isAuditing { isSyncing = false }
+    }
+    
+    func stopMediaSync() {
+        isMediaSyncing = false
+        mediaStatus = "Stopped"
+        if !isMetadataSyncing && !isAuditing { isSyncing = false }
+        playback?.stopAllDownloads()
+    }
+    
     func stopSync() {
+        stopMetadataSync()
+        stopMediaSync()
+        isAuditing = false
         isSyncing = false
-        syncType = .none
-    }
-    
-    private func updateProgress(_ value: Double) {
-        self.syncProgress = value
-    }
-    
-    private func finalizeSync(_ status: String) {
-        self.isSyncing = false
-        self.syncType = .none
-        self.currentStatus = status
-        self.syncProgress = 1.0
-        self.etaString = ""
-        
-        // Ensure UI is updated with new offline tracks
-        self.playback?.refreshDownloadedTracks()
     }
 }

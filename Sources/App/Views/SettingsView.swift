@@ -447,8 +447,8 @@ struct AppSettingsView: View {
                                 .padding(.leading, 4)
                             
                             Button(action: {
-                                if sync.isSyncing && sync.syncType == .metadata {
-                                    sync.stopSync()
+                                if sync.isMetadataSyncing {
+                                    sync.stopMetadataSync()
                                 } else {
                                     sync.startMetadataSync()
                                 }
@@ -456,13 +456,13 @@ struct AppSettingsView: View {
                                 HStack {
                                     Image(systemName: "info.circle.fill")
                                         .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncing && sync.syncType == .metadata ? .blue : labelCol)
+                                        .foregroundColor(sync.isMetadataSyncing ? .blue : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncing && sync.syncType == .metadata ? "Syncing Info..." : "Download Library Metadata")
+                                        Text(sync.isMetadataSyncing ? "Syncing Info..." : "Download Library Metadata")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isSyncing && sync.syncType == .metadata ? sync.currentStatus : "Artist bios, portraits, and album details")
+                                        Text(sync.isMetadataSyncing ? sync.metadataStatus : "Artist bios, portraits, and album details")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -470,14 +470,14 @@ struct AppSettingsView: View {
                                     
                                     Spacer()
                                     
-                                    if sync.isSyncing && sync.syncType == .metadata {
+                                    if sync.isMetadataSyncing {
                                         HStack(spacing: 8) {
-                                            if !sync.etaString.isEmpty {
-                                                Text(sync.etaString)
+                                            if !sync.metadataEtaString.isEmpty {
+                                                Text(sync.metadataEtaString)
                                                     .font(.system(size: 12, weight: .medium))
                                                     .foregroundColor(.gray)
                                             }
-                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .blue)
+                                            CircularProgressView(progress: sync.metadataProgress, size: 24, strokeWidth: 3, accentColor: .blue)
                                         }
                                     } else {
                                         Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
@@ -491,8 +491,8 @@ struct AppSettingsView: View {
 
                             // Media Sync Button
                             Button(action: {
-                                if sync.isSyncing && sync.syncType == .media {
-                                    sync.stopSync()
+                                if sync.isMediaSyncing {
+                                    sync.stopMediaSync()
                                 } else {
                                     sync.startMediaSync()
                                 }
@@ -500,13 +500,13 @@ struct AppSettingsView: View {
                                 HStack {
                                     Image(systemName: "icloud.and.arrow.down.fill")
                                         .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncing && sync.syncType == .media ? .red : labelCol)
+                                        .foregroundColor(sync.isMediaSyncing ? .red : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncing && sync.syncType == .media ? "Downloading..." : "Download All Music")
+                                        Text(sync.isMediaSyncing ? "Downloading..." : "Download All Music")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isSyncing && sync.syncType == .media ? sync.currentStatus : "Save all tracks for offline listening")
+                                        Text(sync.isMediaSyncing ? sync.mediaStatus : "Save all tracks for offline listening")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -514,14 +514,14 @@ struct AppSettingsView: View {
                                     
                                     Spacer()
                                     
-                                    if sync.isSyncing && sync.syncType == .media {
+                                    if sync.isMediaSyncing {
                                         HStack(spacing: 8) {
-                                            if !sync.etaString.isEmpty {
-                                                Text(sync.etaString)
+                                            if !sync.mediaEtaString.isEmpty {
+                                                Text(sync.mediaEtaString)
                                                     .font(.system(size: 12, weight: .medium))
                                                     .foregroundColor(.gray)
                                             }
-                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .red)
+                                            CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 3, accentColor: .red)
                                         }
                                     } else {
                                         Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
@@ -535,8 +535,8 @@ struct AppSettingsView: View {
                             
                             // Deep Audit Button
                             Button(action: {
-                                if sync.isSyncing && sync.syncType == .audit {
-                                    sync.stopSync()
+                                if sync.isAuditing {
+                                    sync.stopSync() // Stop audit also stops everything for now
                                 } else {
                                     sync.startDeepAudit()
                                 }
@@ -544,13 +544,13 @@ struct AppSettingsView: View {
                                 HStack {
                                     Image(systemName: "shield.checkerboard")
                                         .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncing && sync.syncType == .audit ? .green : labelCol)
+                                        .foregroundColor(sync.isAuditing ? .green : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncing && sync.syncType == .audit ? "Auditing..." : "Deep Integrity Audit")
+                                        Text(sync.isAuditing ? "Auditing..." : "Deep Integrity Audit")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isSyncing && sync.syncType == .audit ? sync.currentStatus : "Scan & fix corrupted or partial files")
+                                        Text(sync.isAuditing ? sync.auditStatus : "Scan & fix corrupted or partial files")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -558,14 +558,9 @@ struct AppSettingsView: View {
                                     
                                     Spacer()
                                     
-                                    if sync.isSyncing && sync.syncType == .audit {
+                                    if sync.isAuditing {
                                         HStack(spacing: 8) {
-                                            if !sync.etaString.isEmpty {
-                                                Text(sync.etaString)
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundColor(.gray)
-                                            }
-                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .green)
+                                            CircularProgressView(progress: sync.auditProgress, size: 24, strokeWidth: 3, accentColor: .green)
                                         }
                                     } else {
                                         Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
