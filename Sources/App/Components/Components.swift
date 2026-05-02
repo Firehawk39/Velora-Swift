@@ -56,6 +56,12 @@ struct AppHeader: View {
             } 
         }) {
             HStack(spacing: 12) {
+                Image("Logo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: ScreenTier.isPhone ? 32 : 44, height: ScreenTier.isPhone ? 32 : 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                
                 Text("Velora.")
                     .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 42.0).weight(.bold))
                     .kerning(-1.2)

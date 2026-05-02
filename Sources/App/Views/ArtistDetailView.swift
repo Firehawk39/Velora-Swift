@@ -18,7 +18,6 @@ struct ArtistDetailView: View {
     @State private var biography: String? = nil
     @State private var relatedArtists: [Artist] = []
     @State private var isLoading: Bool = true
-    @State private var scrollOffset: CGFloat = 0
     
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isCompact: Bool { hSizeClass == .compact }
@@ -62,17 +61,8 @@ struct ArtistDetailView: View {
                     .padding(.top, 48)
                     .padding(.bottom, 120)
                 }
-                .background(GeometryReader { geo in
-                    Color.clear.preference(key: ScrollOffsetKey.self, value: geo.frame(in: .global).minY)
-                })
-            }
-            .onPreferenceChange(ScrollOffsetKey.self) { value in
-                self.scrollOffset = value
             }
             .coordinateSpace(name: "scroll")
-            
-            // Header
-            headerOverlay
             
             // Back
             if isCompact {
@@ -84,9 +74,6 @@ struct ArtistDetailView: View {
         }
     }
     
-    private var headerOverlay: some View {
-        EmptyView()
-    }
     
     private var heroNameSize: CGFloat { 
         if isLargeCanvas { return 20.0 }
@@ -434,65 +421,4 @@ struct SongArtworkView: View {
     }
 }
 
-struct ArtistBackdropView: View {
-    let artistId: String
-    let artistName: String
-    let isDarkMode: Bool
-    let client: NavidromeClient
     
-    var backdropPath: URL {
-        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return documentsDir.appendingPathComponent("Backdrops").appendingPathComponent("\(artistId).jpg")
-    }
-    
-    var body: some View {
-        ZStack {
-            if FileManager.default.fileExists(atPath: backdropPath.path) {
-                AsyncImage(url: backdropPath) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        fallbackView
-                    }
-                }
-            } else {
-                fallbackView
-            }
-            
-            // Premium Vignette (Restored to previous default)
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    .black.opacity(0.8),
-                    .clear,
-                    isDarkMode ? Color(hex: "#0A0A0A") : Color(hex: "#FFFFFF")
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-    
-    private var fallbackView: some View {
-        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
-            if let image = phase.image {
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .blur(radius: 30) // Decreased blur intensity as requested
-            } else {
-                Color.gray.opacity(0.1)
-            }
-        }
-    }
-}
-
-// MARK: - Preference Keys
-struct ScrollOffsetKey: PreferenceKey {
-    typealias Value = CGFloat
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
