@@ -51,7 +51,7 @@ struct ContentView: View {
                         }
                     }
                 )
-                .padding(.top, 14)
+                .padding(.top, ScreenTier.isPhone ? 14 : 22)
                 .opacity(((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)) ? 0 : 1)
                 .offset(y: ((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
                 .allowsHitTesting(!((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)))
@@ -108,8 +108,6 @@ struct ContentView: View {
         .environmentObject(playback)
         .environmentObject(SyncManager.shared)
         .preferredColorScheme((isDarkMode || activeTab == "now-playing") ? .dark : .light)
-        .statusBarHidden(true)
-        .hidePersistentSystemOverlays()
         .onAppear { 
             SyncManager.shared.configure(client: client, playback: playback)
             autoLogin() 

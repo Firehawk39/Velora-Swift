@@ -149,7 +149,8 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon</string>
+                          <string>AppIcon@2x</string>
+                          <string>AppIcon@3x</string>
                       </array>
                       <key>CFBundleIconName</key>
                       <string>AppIcon</string>
@@ -161,7 +162,9 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon</string>
+                          <string>AppIcon~ipad</string>
+                          <string>AppIcon@2x~ipad</string>
+                          <string>AppIcon-83.5@2x~ipad</string>
                       </array>
                       <key>CFBundleIconName</key>
                       <string>AppIcon</string>
@@ -178,6 +181,16 @@ workflows:
           </plist>
           EOF
           
+          # 4.5. Fail-safe: Copy loose icons from source to bundle root
+          # This is critical for TrollStore/Jailbreak IPAs to show icons reliably
+          ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
+          if [ -d "$ICON_SOURCE" ]; then
+              echo "Found icon source at $ICON_SOURCE. Copying PNGs to bundle root..."
+              cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
+          else
+              echo "WARNING: Icon source not found at $ICON_SOURCE"
+          fi
+
           echo "Verifying Assets.car existence..."
           if [ -f "$PAYLOAD_APP/Assets.car" ]; then
              echo "SUCCESS: Assets.car found."
@@ -196,7 +209,7 @@ workflows:
           ls -F "$PAYLOAD_APP"
           
           echo "Verifying Info.plist keys:"
-          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen" "$PAYLOAD_APP/Info.plist"
+          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen|CFBundleIcon" "$PAYLOAD_APP/Info.plist"
           
           # 5. Create IPA
           zip -r Velora-Jailbreak.ipa Payload

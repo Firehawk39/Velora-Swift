@@ -30,9 +30,9 @@ class AppLogger: ObservableObject {
     
     func log(_ message: String, level: LogEntry.LogLevel = .debug) {
         DispatchQueue.main.async {
-            self.logs.append(LogEntry(message: message, level: level))
+            self.logs.insert(LogEntry(message: message, level: level), at: 0)
             if self.logs.count > 1000 {
-                self.logs.removeFirst(self.logs.count - 1000)
+                self.logs.removeLast(self.logs.count - 1000)
             }
         }
         print("[\(level)] \(message)")

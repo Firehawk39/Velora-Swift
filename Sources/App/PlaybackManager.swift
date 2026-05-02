@@ -30,12 +30,23 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var activeDownloadCount = 0
     
     func isDownloaded(_ trackId: String) -> Bool {
-        return downloadedTrackIds.contains(trackId)
+        // Double-check memory state against actual filesystem integrity
+        if downloadedTrackIds.contains(trackId) {
+            return true
+        }
+        // Fallback: If it's on disk but not in our memory set yet, verify and add it
+        if IntegrityManager.shared.isTrackValid(id: trackId) {
+            DispatchQueue.main.async {
+                self.downloadedTrackIds.insert(trackId)
+            }
+            return true
+        }
+        return false
     }
     
     /// Checks if a track is downloaded
     func checkFileSystemForTrack(_ trackId: String) -> Bool {
-        return isDownloaded(trackId)
+        return IntegrityManager.shared.isTrackValid(id: trackId)
     }
     
     func filterOffline(_ tracks: [Track]) -> [Track] {
@@ -199,8 +210,18 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let localUrl = documentsDirectory.appendingPathComponent("\(track.id).mp3")
         
         let urlToPlay: URL
-        if FileManager.default.fileExists(atPath: localUrl.path) {
-            urlToPlay = localUrl
+        if IntegrityManager.shared.isTrackValid(id: track.id) {
+            // Find the actual file on disk (could be mp3, flac, etc)
+            let extensions = ["mp3", "flac", "m4a", "wav"]
+            var foundUrl: URL? = nil
+            for ext in extensions {
+                let url = documentsDirectory.appendingPathComponent("\(track.id).\(ext)")
+                if FileManager.default.fileExists(atPath: url.path) {
+                    foundUrl = url
+                    break
+                }
+            }
+            urlToPlay = foundUrl ?? localUrl // Fallback to localUrl if something went wrong
         } else {
             guard let streamUrl = client.getStreamUrl(id: track.id) else { return }
             urlToPlay = streamUrl

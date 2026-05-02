@@ -45,16 +45,24 @@ class FanartManager: ObservableObject {
         return nil
     }
 
-    func hasBackdrop(for artist: String) -> Bool {
+    func getBackdropUrl(for artist: String) -> URL {
         let sanitized = sanitizeFileName(artist)
-        let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
-        return FileManager.default.fileExists(atPath: fileUrl.path)
+        return self.backdropDir.appendingPathComponent(sanitized + ".jpg")
+    }
+
+    func hasBackdrop(for artist: String) -> Bool {
+        let fileUrl = getBackdropUrl(for: artist)
+        return IntegrityManager.shared.isImageValid(at: fileUrl)
     }
     
-    func hasPortrait(for artist: String) -> Bool {
+    func getPortraitUrl(for artist: String) -> URL {
         let sanitized = sanitizeFileName(artist)
-        let fileUrl = self.portraitDir.appendingPathComponent(sanitized + ".jpg")
-        return FileManager.default.fileExists(atPath: fileUrl.path)
+        return self.portraitDir.appendingPathComponent(sanitized + ".jpg")
+    }
+
+    func hasPortrait(for artist: String) -> Bool {
+        let fileUrl = getPortraitUrl(for: artist)
+        return IntegrityManager.shared.isImageValid(at: fileUrl)
     }
     
     func fetchBackdrop(for artist: String, mbid: String? = nil) {
@@ -123,7 +131,7 @@ class FanartManager: ObservableObject {
         
         // 3. Resolve MBID and Fetch
         guard let validMBID = mbid, !validMBID.isEmpty else {
-            self.getMBID(for: artist, priority: URLSessionTask.highPriority) { resolved in
+            MusicBrainzManager.shared.resolveMBID(for: artist) { resolved in
                 if let resolved = resolved {
                     queryFanart(resolved)
                 } else {
@@ -168,7 +176,7 @@ class FanartManager: ObservableObject {
         if let mbid = mbid, !mbid.isEmpty {
             query(mbid)
         } else {
-            getMBID(for: artist, priority: URLSessionTask.lowPriority) { resolved in
+            MusicBrainzManager.shared.resolveMBID(for: artist) { resolved in
                 if let resolved = resolved { query(resolved) }
                 else { self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) } }
             }
@@ -201,7 +209,7 @@ class FanartManager: ObservableObject {
         }
         
         guard let validMBID = mbid, !validMBID.isEmpty else {
-            self.getMBID(for: artist) { resolved in
+            MusicBrainzManager.shared.resolveMBID(for: artist) { resolved in
                 if let resolved = resolved {
                     queryFanartPortrait(resolved)
                 } else {
@@ -216,7 +224,7 @@ class FanartManager: ObservableObject {
             if let url = url {
                 self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.highPriority, completion: completion)
             } else {
-                self.getMBID(for: artist, priority: URLSessionTask.highPriority) { resolved in
+                MusicBrainzManager.shared.resolveMBID(for: artist) { resolved in
                     if let resolved = resolved, resolved != validMBID {
                         queryFanartPortrait(resolved)
                     } else {
@@ -234,7 +242,10 @@ class FanartManager: ObservableObject {
     private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (String?) -> Void) {
         guard let url = URL(string: urlString) else { completion(nil); return }
         
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+        var request = URLRequest(url: url)
+        request.setValue("VeloraMusicApp/1.1 ( https://github.com/Firehawk39/Velora-Swift ; admin@velora.ai )", forHTTPHeaderField: "User-Agent")
+        
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 AppLogger.shared.log("[Fanart] Network error for \(artistName): \(error.localizedDescription)")
             }
@@ -306,41 +317,5 @@ class FanartManager: ObservableObject {
         return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
             .components(separatedBy: .whitespaces).joined(separator: "_")
             .lowercased()
-    }
-    
-    private func extractPrimaryArtist(_ name: String) -> String {
-        let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and "]
-        var primary = name
-        for delimiter in delimiters {
-            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
-                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return primary.isEmpty ? name : primary
-    }
-
-    private func getMBID(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (String?) -> Void) {
-        let primary = extractPrimaryArtist(artistName)
-        let encodedName = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        // Use exact name query to improve accuracy
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encodedName)\"&fmt=json"
-        guard let url = URL(string: urlString) else { completion(nil); return }
-        
-        var request = URLRequest(url: url)
-        request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
-        
-        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
-            if let data = data,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let artists = json["artists"] as? [[String: Any]],
-               let firstArtist = artists.first,
-               let id = firstArtist["id"] as? String {
-                completion(id)
-            } else {
-                completion(nil)
-            }
-        }
-        task.priority = priority
-        task.resume()
     }
 }

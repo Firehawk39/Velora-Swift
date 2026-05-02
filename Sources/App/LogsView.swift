@@ -9,7 +9,7 @@ struct LogsView: View {
             ScrollView {
                 ScrollViewReader { proxy in
                     LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(logger.logs) { entry in
+                        ForEach(logger.logs.reversed()) { entry in
                             HStack(alignment: .top) {
                                 Text(entry.timestamp, style: .time)
                                     .font(.system(.caption2, design: .monospaced))
@@ -25,11 +25,6 @@ struct LogsView: View {
                         }
                     }
                     .padding(.vertical)
-                    .onChange(of: logger.logs.count) { _ in
-                        if let lastId = logger.logs.last?.id {
-                            proxy.scrollTo(lastId, anchor: .bottom)
-                        }
-                    }
                 }
             }
             .navigationTitle("App Logs")

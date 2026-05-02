@@ -25,12 +25,10 @@ struct ArtistDetailView: View {
     
     var body: some View {
         ZStack(alignment: .topLeading) {
-            (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+            (isDarkMode ? Color(hex: "#0A0A0A") : Color(hex: "#FFFFFF"))
                 .ignoresSafeArea()
             
-            ArtistBackdropView(artistId: artistId, artistName: artistName, isDarkMode: isDarkMode, client: client)
-                .frame(height: isCompact ? 400 : 600)
-                .ignoresSafeArea()
+            // Background backdrop removed for a clean look with radiating glow behind portrait
             
             ScrollView {
                 VStack(spacing: 0) {
@@ -99,7 +97,7 @@ struct ArtistDetailView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 100)
         .background(
-            (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+            (isDarkMode ? Color(hex: "#0A0A0A") : Color(hex: "#FFFFFF"))
                 .opacity(Double(opacity))
         )
         .zIndex(100)
@@ -119,7 +117,7 @@ struct ArtistDetailView: View {
                     
                     VStack(spacing: 6) {
                         artistLabel
-                        artistNameText(size: ScreenTier.isSE ? 24 : 28)
+                        artistNameText(size: ScreenTier.isSE ? 32 : 40)
                     }
                     
                     playAllButton
@@ -150,7 +148,7 @@ struct ArtistDetailView: View {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
                             artistLabel
-                            artistNameText(size: 36)
+                            artistNameText(size: 72)
                         }
                         
                         Spacer()
@@ -164,13 +162,38 @@ struct ArtistDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, isCompact ? 60 : 160)
+        .padding(.top, isCompact ? 40 : 120)
         .padding(.bottom, 32)
     }
     
     private func artistLogo(size: CGFloat) -> some View {
-        ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
-            .id("portrait-\(artistId)")
+        ZStack {
+            // Radiating "Aura" behind portrait (Matching user's image) - Enhanced vibrancy
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.5))
+                    .frame(width: size * 2.4, height: size * 2.4)
+                    .blur(radius: 70)
+                
+                Circle()
+                    .fill(Color.yellow.opacity(0.4))
+                    .frame(width: size * 2.2, height: size * 2.2)
+                    .offset(x: -size * 0.2, y: size * 0.2)
+                    .blur(radius: 80)
+                
+                Circle()
+                    .fill(Color.red.opacity(0.25))
+                    .frame(width: size * 2.6, height: size * 2.6)
+                    .offset(x: size * 0.2, y: -size * 0.2)
+                    .blur(radius: 90)
+            }
+            .compositingGroup()
+            .opacity(isDarkMode ? 0.9 : 0.6)
+            
+            ArtistPortraitView(artistId: artistId, artistName: artistName, size: size, client: client, isDarkMode: isDarkMode)
+                .id("portrait-\(artistId)")
+                .shadow(color: .black.opacity(isDarkMode ? 0.4 : 0.15), radius: 30, x: 0, y: 15)
+        }
     }
     
     private var artistLabel: some View {
@@ -381,22 +404,42 @@ struct ArtistDetailView: View {
 
 struct ArtistPortraitView: View {
     let artistId: String
+    let artistName: String
     let size: CGFloat
     let client: NavidromeClient
     let isDarkMode: Bool
     
+    @StateObject private var fanart = FanartManager.shared
+    @State private var portraitImage: UIImage? = nil
+    
     var body: some View {
-        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
-            if let img = phase.image {
-                img.resizable()
+        Group {
+            if let img = portraitImage {
+                Image(uiImage: img)
+                    .resizable()
                     .scaledToFill()
             } else {
-                Color.gray.opacity(0.1)
+                AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
+                    if let img = phase.image {
+                        img.resizable()
+                            .scaledToFill()
+                    } else {
+                        Color.gray.opacity(0.1)
+                    }
+                }
             }
         }
-        .id(artistId)
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .onAppear {
+            fanart.fetchArtistPortrait(for: artistName) { img in
+                if let img = img {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        self.portraitImage = img
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -454,7 +497,7 @@ struct ArtistBackdropView: View {
                 gradient: Gradient(colors: [
                     .black.opacity(0.8),
                     .clear,
-                    isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa")
+                    isDarkMode ? Color(hex: "#0A0A0A") : Color(hex: "#FFFFFF")
                 ]),
                 startPoint: .top,
                 endPoint: .bottom

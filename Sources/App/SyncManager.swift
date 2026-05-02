@@ -74,11 +74,16 @@ final class SyncManager: ObservableObject {
                 let mb = MusicBrainzManager.shared
                 let fa = FanartManager.shared
                 
-                let hasAll = mb.hasArtistMetadata(for: artist.name) && 
-                             fa.hasBackdrop(for: artist.name) && 
-                             fa.hasPortrait(for: artist.name)
+                // Check if artist metadata and images are valid on disk
+                let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
+                let backdropUrl = FanartManager.shared.getBackdropUrl(for: artist.name)
+                let portraitUrl = FanartManager.shared.getPortraitUrl(for: artist.name)
+
+                let hasValidMetadata = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
+                let hasValidBackdrop = IntegrityManager.shared.isImageValid(at: backdropUrl)
+                let hasValidPortrait = IntegrityManager.shared.isImageValid(at: portraitUrl)
                 
-                if hasAll {
+                if hasValidMetadata && hasValidBackdrop && hasValidPortrait {
                     skippedCount += 1
                 } else {
                     currentStatus = "Syncing: \(artist.name)"

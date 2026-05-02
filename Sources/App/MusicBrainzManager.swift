@@ -32,7 +32,7 @@ class MusicBrainzManager: ObservableObject {
     private let cacheFile: URL
     private let metadataDir: URL
     private let fileManager = FileManager.default
-    private let userAgent = "VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )"
+    private let userAgent = "VeloraMusicApp/1.1 ( https://github.com/Firehawk39/Velora-Swift ; admin@velora.ai )"
     
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -56,11 +56,17 @@ class MusicBrainzManager: ObservableObject {
         }
     }
     
-    func hasArtistMetadata(for artistName: String) -> Bool {
-        guard let mbid = nameToMBIDCache[artistName] else { return false }
+    func getMetadataUrl(for artistName: String) -> URL {
+        guard let mbid = nameToMBIDCache[artistName] else {
+            return metadataDir.appendingPathComponent("artist_unknown.json")
+        }
         let fileName = "artist_" + (mbid) + ".json"
-        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
-        return FileManager.default.fileExists(atPath: fileUrl.path)
+        return self.metadataDir.appendingPathComponent(fileName)
+    }
+
+    func hasArtistMetadata(for artistName: String) -> Bool {
+        let fileUrl = getMetadataUrl(for: artistName)
+        return IntegrityManager.shared.isMetadataValid(at: fileUrl)
     }
     
     func hasAlbumMetadata(albumName: String, artistName: String) -> Bool {
@@ -242,41 +248,175 @@ class MusicBrainzManager: ObservableObject {
         }
     }
     
-    private func resolveMBID(for artist: String, completion: @escaping (String?) -> Void) {
-        let primary = extractPrimaryArtist(artist)
-        let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        // Use exact name query to improve accuracy
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encoded)\"&fmt=json"
-        guard let url = URL(string: urlString) else { completion(nil); return }
+    // MARK: - Robust MBID Resolution
+    
+    /// Resolves an artist name to a MusicBrainz ID with multiple fallbacks and robust matching
+    func resolveMBID(for artist: String, completion: @escaping (String?) -> Void) {
+        // 1. Check persistent cache first
+        if let cached = nameToMBIDCache[artist] {
+            completion(cached)
+            return
+        }
         
+        let primary = extractPrimaryArtist(artist)
+        AppLogger.shared.log("[MBID] Resolving robustly: \"\(artist)\" -> Primary: \"\(primary)\"", level: .info)
+        
+        // Use a recursive search strategy
+        performMBIDResolution(primary: primary, step: .exactMusicBrainz) { mbid in
+            if let mbid = mbid {
+                self.nameToMBIDCache[artist] = mbid
+                self.nameToMBIDCache[primary] = mbid // Also cache the primary name
+                self.saveCache()
+                AppLogger.shared.log("[MBID] Successfully resolved \"\(artist)\" to \(mbid)", level: .info)
+            } else {
+                AppLogger.shared.log("[MBID] Failed to resolve \"\(artist)\" after all fallbacks", level: .error)
+            }
+            completion(mbid)
+        }
+    }
+    
+    private enum ResolutionStep {
+        case exactMusicBrainz
+        case looseMusicBrainz
+        case theAudioDB
+    }
+    
+    private func performMBIDResolution(primary: String, step: ResolutionStep, retryCount: Int = 0, completion: @escaping (String?) -> Void) {
+        switch step {
+        case .exactMusicBrainz:
+            // First attempt: Exact artist name match
+            let query = "artist:\"\(primary)\""
+            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+                completion(nil)
+                return
+            }
+            let urlString = "https://musicbrainz.org/ws/2/artist?query=\(encodedQuery)&fmt=json"
+            queryMusicBrainz(urlString: urlString, primary: primary, retryCount: retryCount) { mbid in
+                if let mbid = mbid {
+                    completion(mbid)
+                } else {
+                    self.performMBIDResolution(primary: primary, step: .looseMusicBrainz, completion: completion)
+                }
+            }
+            
+        case .looseMusicBrainz:
+            // Second attempt: Loose search with just the name
+            let query = primary
+            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+                completion(nil)
+                return
+            }
+            let urlString = "https://musicbrainz.org/ws/2/artist?query=\(encodedQuery)&fmt=json"
+            queryMusicBrainz(urlString: urlString, primary: primary, retryCount: retryCount) { mbid in
+                if let mbid = mbid {
+                    completion(mbid)
+                } else {
+                    self.performMBIDResolution(primary: primary, step: .theAudioDB, completion: completion)
+                }
+            }
+            
+        case .theAudioDB:
+            // Final attempt: TheAudioDB search
+            let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let urlString = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=\(encoded)"
+            
+            URLSession.shared.dataTask(with: URL(string: urlString)!) { data, _, _ in
+                guard let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let artists = json["artists"] as? [[String: Any]],
+                      let first = artists.first,
+                      let mbid = first["strMusicBrainzID"] as? String, !mbid.isEmpty else {
+                    completion(nil)
+                    return
+                }
+                AppLogger.shared.log("[MBID] Resolved via TheAudioDB fallback: \(mbid)")
+                completion(mbid)
+            }.resume()
+        }
+    }
+    
+    private func queryMusicBrainz(urlString: String, primary: String, retryCount: Int, completion: @escaping (String?) -> Void) {
+        guard let url = URL(string: urlString) else { completion(nil); return }
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         
-        URLSession.shared.dataTask(with: request) { data, _, _ in
-            if let data = data,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let artists = json["artists"] as? [[String: Any]],
-               let first = artists.first {
-                completion(first["id"] as? String)
-            } else {
-                completion(nil)
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 503 && retryCount < 3 {
+                    // Rate limited - wait and retry
+                    let delay = Double(retryCount + 1) * 1.5
+                    AppLogger.shared.log("[MBID] MusicBrainz 503 (Rate Limited). Retrying in \(delay)s...", level: .warning)
+                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                        self.queryMusicBrainz(urlString: urlString, primary: primary, retryCount: retryCount + 1, completion: completion)
+                    }
+                    return
+                }
+                if http.statusCode != 200 {
+                    AppLogger.shared.log("[MBID] MusicBrainz returned \(http.statusCode)", level: .error)
+                    completion(nil); return
+                }
             }
+            
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let artists = json["artists"] as? [[String: Any]] else {
+                completion(nil); return
+            }
+            
+            // Validation Logic: Find the best match
+            for artistObj in artists {
+                let mbid = artistObj["id"] as? String
+                let name = artistObj["name"] as? String ?? ""
+                let score = Int(artistObj["score"] as? String ?? "0") ?? 0
+                let aliases = (artistObj["aliases"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
+                
+                // If score is high (above 85) and name or alias matches case-insensitively
+                let nameMatches = name.lowercased() == primary.lowercased() || 
+                                 name.lowercased().contains(primary.lowercased()) ||
+                                 aliases.contains(where: { $0.lowercased() == primary.lowercased() })
+                
+                if score >= 85 && nameMatches {
+                    completion(mbid)
+                    return
+                }
+                // Fallback: If score is very high (100) and the primary search term is contained in the name
+                if score >= 95 && name.lowercased().contains(primary.lowercased()) {
+                    completion(mbid)
+                    return
+                }
+            }
+            
+            AppLogger.shared.log("[MBID] No high-confidence match found for \"\(primary)\" in results", level: .warning)
+            completion(nil)
         }.resume()
     }
 
     private func extractPrimaryArtist(_ name: String) -> String {
-        let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and "]
+        // Clean common artist naming noise
+        let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and ", " - ", " / "]
         var primary = name
+        
+        // Remove content in brackets like (Official Video) or [Remix]
+        if let bracketRange = primary.range(of: " (") {
+            primary = String(primary[..<bracketRange.lowerBound])
+        }
+        if let bracketRange = primary.range(of: " [") {
+            primary = String(primary[..<bracketRange.lowerBound])
+        }
+
         for delimiter in delimiters {
             if let range = primary.range(of: delimiter, options: .caseInsensitive) {
                 primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
             }
         }
-        return primary.isEmpty ? name : primary
+        
+        // Final trim and return
+        let result = primary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? name : result
     }
     
     private func resolveAlbumMBID(album: String, artist: String, completion: @escaping (String?) -> Void) {
-        let query = "release:\(album) AND artist:\(artist)"
+        let query = "release:\"\(album)\" AND artist:\"\(artist)\""
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://musicbrainz.org/ws/2/release/?query=\(encoded)&fmt=json"
         guard let url = URL(string: urlString) else { completion(nil); return }
@@ -318,36 +458,44 @@ class MusicBrainzManager: ObservableObject {
     // MARK: - Silent Bulk Fetchers
 
     func downloadMetadataSilently(for artistName: String) async {
-        let resolved = await resolveMBIDAsync(for: artistName)
-        guard let mbid = resolved else { 
-            AppLogger.shared.log("[Metadata] Silent prefetch: Failed to resolve MBID for \(artistName)")
-            return 
-        }
-        
-        AppLogger.shared.log("[Metadata] Silent prefetch: Resolved \(artistName) to \(mbid)")
-        self.nameToMBIDCache[artistName] = mbid
-        saveCache()
-        
-        let fileName = "artist_" + (mbid) + ".json"
-        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
-        
-        if self.fileManager.fileExists(atPath: fileUrl.path) { return }
+        // Resolve using the robust method
+        return await withCheckedContinuation { continuation in
+            resolveMBID(for: artistName) { mbid in
+                guard let mbid = mbid else {
+                    continuation.resume()
+                    return
+                }
+                
+                Task {
+                    let fileName = "artist_" + (mbid) + ".json"
+                    let fileUrl = self.metadataDir.appendingPathComponent(fileName)
+                    
+                    if self.fileManager.fileExists(atPath: fileUrl.path) {
+                        continuation.resume()
+                        return
+                    }
 
-        let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
-        guard let url = URL(string: urlString) else { return }
-        var request = URLRequest(url: url)
-        request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            
-            let annotation = await fetchAnnotationAsync(entityMBID: mbid)
-            json["annotation"] = annotation
-            if let savedData = try? JSONSerialization.data(withJSONObject: json) {
-                try? savedData.write(to: fileUrl)
+                    let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
+                    guard let url = URL(string: urlString) else { continuation.resume(); return }
+                    var request = URLRequest(url: url)
+                    request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
+                    
+                    do {
+                        let (data, _) = try await URLSession.shared.data(for: request)
+                        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
+                            continuation.resume(); return 
+                        }
+                        
+                        let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+                        json["annotation"] = annotation
+                        if let savedData = try? JSONSerialization.data(withJSONObject: json) {
+                            try? savedData.write(to: fileUrl)
+                        }
+                    } catch { }
+                    continuation.resume()
+                }
             }
-        } catch { }
+        }
     }
 
     func downloadAlbumMetadataSilently(albumName: String, artistName: String) async {
@@ -380,25 +528,17 @@ class MusicBrainzManager: ObservableObject {
     }
     
     private func resolveMBIDAsync(for artist: String) async -> String? {
-        if let cached = nameToMBIDCache[artist] { return cached }
-        
-        let encoded = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\(encoded)&fmt=json"
-        guard let url = URL(string: urlString) else { return nil }
-        var request = URLRequest(url: url)
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let artists = json?["artists"] as? [[String: Any]]
-            return artists?.first?["id"] as? String
-        } catch { return nil }
+        return await withCheckedContinuation { continuation in
+            resolveMBID(for: artist) { mbid in
+                continuation.resume(returning: mbid)
+            }
+        }
     }
     
     private func resolveAlbumMBIDAsync(album: String, artist: String) async -> String? {
         if let cached = nameToMBIDCache["\(artist)_\(album)"] { return cached }
         
-        let query = "release:\(album) AND artist:\(artist)"
+        let query = "release:\"\(album)\" AND artist:\"\(artist)\""
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://musicbrainz.org/ws/2/release/?query=\(encoded)&fmt=json"
         guard let url = URL(string: urlString) else { return nil }
@@ -423,5 +563,6 @@ class MusicBrainzManager: ObservableObject {
             let annotations = json?["annotations"] as? [[String: Any]]
             return annotations?.first?["text"] as? String
         } catch { return nil }
+    }
     }
 }
