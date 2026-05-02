@@ -118,6 +118,14 @@ struct ContentView: View {
         .statusBarHidden(true)
         .hidePersistentSystemOverlays()
         .onAppear { 
+            // Screen diagnostics - helps debug iPad scaling
+            let screen = UIScreen.main
+            let bounds = screen.bounds
+            let nativeBounds = screen.nativeBounds
+            let scale = screen.scale
+            let idiom = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+            AppLogger.shared.log("Screen: \(idiom) bounds=\(Int(bounds.width))x\(Int(bounds.height)) native=\(Int(nativeBounds.width))x\(Int(nativeBounds.height)) scale=\(scale)x tier=\(ScreenTier.current)", level: .info)
+            
             SyncManager.shared.configure(client: client, playback: playback)
             
             // Immediately load from disk if available for offline speed
@@ -216,13 +224,34 @@ struct ContentView: View {
     }
 
     private func autoLogin() {
-        // The client now loads credentials automatically in its init().
-        // We only trigger a sync if we actually have a configured server.
-        if !client.baseUrl.isEmpty {
-            AppLogger.shared.log("App: Auto-triggering library sync...", level: .info)
-            client.fetchEverything()
-        } else {
-            AppLogger.shared.log("App: No server configured. Waiting for setup.", level: .info)
+        AppLogger.shared.log("App: autoLogin started. baseUrl='\(client.baseUrl)'", level: .info)
+        
+        guard !client.baseUrl.isEmpty else {
+            AppLogger.shared.log("App: No server configured. Showing setup.", level: .warning)
+            return
+        }
+        
+        // Ping first to verify connectivity, then sync
+        AppLogger.shared.log("App: Pinging server at \(client.baseUrl)...", level: .info)
+        client.ping { success, errorMsg in
+            DispatchQueue.main.async {
+                if success {
+                    AppLogger.shared.log("App: Ping OK! Starting full sync.", level: .info)
+                    self.client.fetchEverything()
+                } else {
+                    AppLogger.shared.log("App: Ping FAILED: \(errorMsg ?? "unknown"). Trying sync anyway...", level: .warning)
+                    // Still try to fetch - maybe the ping endpoint is restricted but data works
+                    self.client.fetchEverything()
+                    
+                    // Retry after 5 seconds in case of initial local network permission delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                        if self.client.artists.isEmpty && self.client.allSongs.isEmpty {
+                            AppLogger.shared.log("App: Retry sync after 5s delay (local network permission?)...", level: .info)
+                            self.client.fetchEverything()
+                        }
+                    }
+                }
+            }
         }
     }
 }

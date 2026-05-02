@@ -26,14 +26,38 @@ class NavidromeClient: ObservableObject {
     func loadCredentials() {
         let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
+        let isOnline = UserDefaults.standard.bool(forKey: "velora_online_mode")
+        
+        AppLogger.shared.log("Client: loadCredentials - URL='\(savedUrl)' user='\(savedUser)' online=\(isOnline)", level: .debug)
         
         if !savedUrl.isEmpty && !savedUser.isEmpty {
+            // Try Keychain first
             if let passData = KeychainHelper.shared.read(service: "velora-password", account: savedUser),
                let pass = String(data: passData, encoding: .utf8) {
                 configure(url: savedUrl, user: savedUser, pass: pass)
-                AppLogger.shared.log("Client: Restored session for \(savedUser)", level: .info)
+                AppLogger.shared.log("Client: Restored session for \(savedUser) from Keychain", level: .info)
+                return
             }
+            AppLogger.shared.log("Client: Keychain empty for \(savedUser), using fallback", level: .warning)
+        } else {
+            AppLogger.shared.log("Client: No saved credentials, using defaults", level: .info)
         }
+        
+        // Fallback: hardcoded defaults for kiosk deployment (same as reconnectWithCurrentMode)
+        let fallbackUrl = isOnline ? "https://sopranosnavi.share.zrok.io" : "http://192.168.1.13:4533"
+        let fallbackUser = "tony"
+        let fallbackPass = "u4vTyG7BcBxR-9-"
+        let finalUrl = savedUrl.isEmpty ? fallbackUrl : savedUrl
+        let finalUser = savedUser.isEmpty ? fallbackUser : savedUser
+        configure(url: finalUrl, user: finalUser, pass: fallbackPass)
+        
+        // Persist so next launch is faster
+        if savedUrl.isEmpty {
+            UserDefaults.standard.set(finalUrl, forKey: "velora_server_url")
+            UserDefaults.standard.set(finalUser, forKey: "velora_username")
+        }
+        
+        AppLogger.shared.log("Client: Fallback session configured for \(finalUser) at \(finalUrl)", level: .info)
     }
 
     // MARK: - Configuration
