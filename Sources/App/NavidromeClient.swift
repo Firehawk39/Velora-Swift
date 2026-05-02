@@ -174,6 +174,4 @@ class NavidromeClient: ObservableObject {
             AppLogger.shared.log("Offline Check: Failed to decode cache - \(error.localizedDescription)", level: .error)
         }
     }
-
-    }
 }
