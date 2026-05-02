@@ -132,12 +132,18 @@ class MusicBrainzManager: ObservableObject {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             
             let genres = (json["genres"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
+            let label = (json["label-info"] as? [[String: Any]])?.first.flatMap { ($0["label"] as? [String: Any])?["name"] as? String }
+            let firstReleaseDate = json["date"] as? String
+            let annotation = (json["annotation"] as? [String: Any])?["text"] as? String
             
             DispatchQueue.main.async {
                 self?.currentAlbumInfo = AlbumInfo(
                     name: name,
                     genres: genres,
-                    mbid: mbid
+                    mbid: mbid,
+                    label: label,
+                    firstReleaseDate: firstReleaseDate,
+                    annotation: annotation
                 )
             }
         }
@@ -388,7 +394,7 @@ class MusicBrainzManager: ObservableObject {
                         if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                             try? savedData.write(to: fileUrl)
                         }
-                    } catch { }
+                    }
                     continuation.resume()
                 }
             }
@@ -464,4 +470,7 @@ struct AlbumInfo {
     let name: String
     var genres: [String] = []
     var mbid: String? = nil
+    var label: String? = nil
+    var firstReleaseDate: String? = nil
+    var annotation: String? = nil
 }
