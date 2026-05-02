@@ -46,32 +46,28 @@ workflows:
           
           # 2. Find the binary
           BINARY_NAME="Velora"
-          BINARY_PATH=$(find Velora.xcarchive/Products -type f -name "$BINARY_NAME" | head -n 1)
-          
-          if [ -z "$BINARY_PATH" ]; then
-            BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
-          fi
+          # Look for the largest executable file that isn't a plist or other resource
+          BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" -not -name "*.sh" | xargs du -a | sort -n -r | head -n 1 | awk '{print $2}')
           
           if [ -z "$BINARY_PATH" ]; then
             echo "CRITICAL: Failed to find binary."
             exit 1
           fi
           
-          # 3. Assemble the bundle manually to be 100% sure
+          echo "Found main binary at: $BINARY_PATH (Size: $(du -h "$BINARY_PATH" | cut -f1))"
+          
+          # 3. Assemble the bundle manually
           echo "Assembling bundle from $APP_PATH"
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           
-          # Update internal variable to point to the copy we are patching
           PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
           
-          if [ ! -f "$PAYLOAD_APP/$BINARY_NAME" ]; then
-             echo "Binary $BINARY_NAME not found in bundle, trying to find it in archive..."
-             cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
-          fi
+          # Force copy the binary we found into the bundle root as the correct name
+          cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           
-          # 4. Force-write the Info.plist to ensure TrollStore compatibility and native iPad resolution
+          # 4. Force-write the Info.plist
           cat <<EOF > "$PAYLOAD_APP/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -183,7 +179,6 @@ workflows:
           EOF
           
           # 4.5. Robust Icon Preparation
-          # We copy and rename to standard names that TrollStore/iOS expects
           ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
           if [ -d "$ICON_SOURCE" ]; then
               echo "Preparing icons from $ICON_SOURCE..."
@@ -192,24 +187,21 @@ workflows:
               cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
               cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
               cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
-              # Fallback broad copy
               cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
           fi
 
-          echo "Verifying Assets.car existence..."
-          if [ -f "$PAYLOAD_APP/Assets.car" ]; then
-              echo "SUCCESS: Assets.car found."
-          else
-              echo "WARNING: Assets.car NOT FOUND in bundle root. Checking subdirectories..."
-              find "$PAYLOAD_APP" -name "Assets.car"
-              CAR_PATH=$(find "$PAYLOAD_APP" -name "Assets.car" | head -n 1)
-              if [ ! -z "$CAR_PATH" ] && [ "$CAR_PATH" != "$PAYLOAD_APP/Assets.car" ]; then
-                  cp "$CAR_PATH" "$PAYLOAD_APP/Assets.car"
-              fi
+          echo "Diagnostic: Final Bundle Listing"
+          ls -Rlh "$PAYLOAD_APP"
+          
+          echo "Verifying Assets.car..."
+          if [ ! -f "$PAYLOAD_APP/Assets.car" ]; then
+              echo "Searching for missing Assets.car in derived data..."
+              find derived_data -name "Assets.car" -exec cp {} "$PAYLOAD_APP/Assets.car" \;
           fi
           
           # 5. Create IPA
           zip -r Velora-Jailbreak.ipa Payload
+          echo "Final IPA size: $(du -h Velora-Jailbreak.ipa | cut -f1)"
           
           mkdir -p artifacts
           mv Velora-Jailbreak.ipa artifacts/
