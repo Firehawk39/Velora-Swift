@@ -63,7 +63,7 @@ workflows:
           fi
           chmod +x "$APP_PATH/$BINARY_NAME"
           
-          # 4. Force-write the Info.plist to ensure TrollStore compatibility
+          # 4. Force-write the Info.plist to ensure TrollStore compatibility and native iPad resolution
           cat <<EOF > "$APP_PATH/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -102,6 +102,28 @@ workflows:
               </array>
               <key>UIRequiresFullScreen</key>
               <true/>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UIApplicationSceneManifest</key>
+              <dict>
+                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <true/>
+                  <key>UISceneConfigurations</key>
+                  <dict/>
+              </dict>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
+              <key>UISupportedInterfaceOrientations~ipad</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationPortraitUpsideDown</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
               <key>NSAppTransportSecurity</key>
               <dict>
                   <key>NSAllowsArbitraryLoads</key>
@@ -123,12 +145,22 @@ workflows:
                       <array>
                           <string>AppIcon</string>
                       </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
+                      <key>UIPrerenderedIcon</key>
+                      <false/>
                   </dict>
               </dict>
-              <key>UILaunchScreen</key>
-              <dict/>
+              <key>CFBundleIcons~ipad</key>
+              <dict>
+                  <key>CFBundlePrimaryIcon</key>
+                  <dict>
+                      <key>CFBundleIconFiles</key>
+                      <array>
+                          <string>AppIcon</string>
+                      </array>
+                      <key>UIPrerenderedIcon</key>
+                      <false/>
+                  </dict>
+              </dict>
               <key>NSLocalNetworkUsageDescription</key>
               <string>Velora needs to connect to your Navidrome server on your local network.</string>
               <key>NSBonjourServices</key>
@@ -141,10 +173,10 @@ workflows:
           EOF
           
           echo "Final bundle contents:"
-          ls -R "$APP_PATH"
+          ls -F "$APP_PATH"
           
-          echo "Verifying Info.plist CFBundleExecutable:"
-          grep -A 1 "CFBundleExecutable" "$APP_PATH/Info.plist"
+          echo "Verifying Info.plist keys:"
+          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen" "$APP_PATH/Info.plist"
           
           # 5. Create IPA
           mkdir -p Payload

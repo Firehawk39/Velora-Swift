@@ -17,10 +17,6 @@ struct VeloraApp: App {
     init() {
         registerCustomFonts()
         setupURLCache()
-        
-        // Diagnostic Startup Logs
-        AppLogger.shared.log("[App] Velora initialized. Native Resolution Enabled.")
-        AppLogger.shared.log("[App] System: \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)")
     }
     
     private func setupURLCache() {
