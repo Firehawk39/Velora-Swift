@@ -175,28 +175,5 @@ class NavidromeClient: ObservableObject {
         }
     }
 
-    func fetchEverything() {
-        guard !baseUrl.isEmpty else { 
-            AppLogger.shared.log("Fetch: Aborted. Base URL is empty.", level: .warning)
-            return 
-        }
-        
-        AppLogger.shared.log("Fetch: Starting sync from \(baseUrl)...", level: .info)
-        
-        fetchArtists { artists in
-            AppLogger.shared.log("Fetch: Received \(artists.count) artists.", level: .info)
-            self.artists = artists
-            
-            // Parallel fetch for speed
-            self.fetchRecentlyPlayed()
-            self.fetchAlbums()
-            
-            self.fetchAllSongs { songs in
-                AppLogger.shared.log("Fetch: Received \(songs.count) total songs.", level: .info)
-                self.allSongs = songs
-                self.lastSyncDate = Date()
-                self.saveMetadataToDisk()
-            }
-        }
     }
 }
