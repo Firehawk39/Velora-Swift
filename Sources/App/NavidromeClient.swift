@@ -12,9 +12,9 @@ class NavidromeClient: ObservableObject {
     var recentTracks: [Track] { recentlyPlayed }
 
     private(set) var username: String = ""
-    private var baseUrl: String = ""
-    private var token: String = ""
-    private var salt: String = ""
+    var baseUrl: String = ""
+    var token: String = ""
+    var salt: String = ""
     private let clientName = "VeloraSwift"
     private let apiVersion = "1.16.1"
     
