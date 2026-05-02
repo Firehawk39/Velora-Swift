@@ -9,6 +9,7 @@ struct NowPlayingView: View {
     @Environment(\.verticalSizeClass)   var vSizeClass
     @Binding var isQueueOpen: Bool
     @Binding var isIdle:      Bool
+    var isActive: Bool = false
 
     @State private var isDragging   = false
     @State private var dragProgress: Double = 0
@@ -161,14 +162,23 @@ struct NowPlayingView: View {
             )
         }
         .onAppear { 
-            isIdle = false // Ensure we don't start in idle state
-            // isIdleTimerDisabled moved to ContentView
-            startIdleTimer() 
-            refreshMetadata()
+            if isActive {
+                isIdle = false
+                startIdleTimer() 
+                refreshMetadata()
+            }
+        }
+        .onChange(of: isActive) { active in
+            if active {
+                isIdle = false
+                startIdleTimer()
+                refreshMetadata()
+            } else {
+                stopIdleTimer()
+            }
         }
         .onDisappear { 
             stopIdleTimer() 
-            // isIdleTimerDisabled moved to ContentView
         }
         .onChange(of: isQueueOpen) { isOpen in
             if isOpen { stopIdleTimer() } else { resetIdleTimer() }

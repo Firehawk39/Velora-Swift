@@ -165,7 +165,7 @@ struct ContentView: View {
             .opacity(activeTab == "search" ? 1 : 0)
             .allowsHitTesting(activeTab == "search")
 
-            NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle)
+            NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle, isActive: activeTab == "now-playing")
                 .opacity(activeTab == "now-playing" ? 1 : 0)
                 .allowsHitTesting(activeTab == "now-playing")
 
