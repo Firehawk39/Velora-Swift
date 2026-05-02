@@ -22,10 +22,17 @@
     <true/>
     <key>UIRequiresFullScreen</key>
     <true/>
+    <key>UISupportsFullScreenInEveryConfiguration</key>
+    <true/>
     <key>UIStatusBarHidden</key>
     <true/>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>UIDeviceFamily</key>
+    <array>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
@@ -48,7 +55,10 @@
         <dict/>
     </dict>
     <key>UILaunchScreen</key>
-    <dict/>
+    <dict>
+        <key>UILaunchScreen</key>
+        <dict/>
+    </dict>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>

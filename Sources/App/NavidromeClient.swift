@@ -19,7 +19,21 @@ class NavidromeClient: ObservableObject {
     private let apiVersion = "1.16.1"
     
     init() {
+        loadCredentials()
         loadMetadataFromDisk()
+    }
+
+    func loadCredentials() {
+        let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
+        let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
+        
+        if !savedUrl.isEmpty && !savedUser.isEmpty {
+            if let passData = KeychainHelper.shared.read(service: "velora-password", account: savedUser),
+               let pass = String(data: passData, encoding: .utf8) {
+                configure(url: savedUrl, user: savedUser, pass: pass)
+                AppLogger.shared.log("Client: Restored session for \(savedUser)", level: .info)
+            }
+        }
     }
 
     // MARK: - Configuration

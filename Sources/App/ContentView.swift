@@ -14,8 +14,14 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
-    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
-    var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
+    var isLargeCanvas: Bool { 
+        if UIDevice.current.userInterfaceIdiom == .pad { return true }
+        return UIScreen.main.bounds.width >= 1024.0 
+    }
+    var isSmallDevice: Bool { 
+        if UIDevice.current.userInterfaceIdiom == .pad { return false }
+        return UIScreen.main.bounds.width <= 393 
+    }
 
     var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 80 }
 
@@ -210,18 +216,13 @@ struct ContentView: View {
     }
 
     private func autoLogin() {
-        let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
-        let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
-        let isOnline = UserDefaults.standard.bool(forKey: "velora_is_online_mode")
-        
-        let localUrl = savedUrl.isEmpty ? "http://192.168.1.13:4533" : savedUrl
-        let finalUrl = isOnline ? "https://sopranosnavi.share.zrok.io" : localUrl
-        
-        let finalUser = savedUser.isEmpty ? "tony" : savedUser
-        let finalPass = "u4vTyG7BcBxR-9-"
-        
-        client.configure(url: finalUrl, user: finalUser, pass: finalPass)
-        client.fetchEverything()
-        showSettings = false
+        // The client now loads credentials automatically in its init().
+        // We only trigger a sync if we actually have a configured server.
+        if !client.baseUrl.isEmpty {
+            AppLogger.shared.log("App: Auto-triggering library sync...", level: .info)
+            client.fetchEverything()
+        } else {
+            AppLogger.shared.log("App: No server configured. Waiting for setup.", level: .info)
+        }
     }
 }
