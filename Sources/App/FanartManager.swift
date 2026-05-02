@@ -105,13 +105,12 @@ class FanartManager: ObservableObject {
         fetchQueue.sync {
             activeBackdropFetches.insert(sanitized)
         }
-        
+        let queryFanart = { (resolvedMBID: String) in
             AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url in
                 if let url = url {
                     AppLogger.shared.log("[Fanart] Found backdrop URL for \(artist)")
-                    // Priority: UI fetch
                     self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.highPriority) { image in
                         self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                     }
@@ -120,6 +119,7 @@ class FanartManager: ObservableObject {
                     self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                 }
             }
+        }
         
         // 3. Resolve MBID and Fetch
         guard let validMBID = mbid, !validMBID.isEmpty else {
