@@ -27,7 +27,6 @@ let package = Package(
                 .landscapeLeft,
                 .portraitUpsideDown
             ],
-            launchScreen: .default,
             additionalInfoPlistContentFilePath: "Info.plist"
         )
     ],
