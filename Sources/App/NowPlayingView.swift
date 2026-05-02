@@ -162,15 +162,13 @@ struct NowPlayingView: View {
         }
         .onAppear { 
             isIdle = false // Ensure we don't start in idle state
+            // isIdleTimerDisabled moved to ContentView
             startIdleTimer() 
             refreshMetadata()
         }
         .onDisappear { 
             stopIdleTimer() 
-            UIApplication.shared.isIdleTimerDisabled = false
-        }
-        .onChange(of: isIdle) { idle in
-            UIApplication.shared.isIdleTimerDisabled = idle
+            // isIdleTimerDisabled moved to ContentView
         }
         .onChange(of: isQueueOpen) { isOpen in
             if isOpen { stopIdleTimer() } else { resetIdleTimer() }
@@ -183,6 +181,8 @@ struct NowPlayingView: View {
             refreshMetadata()
         }
         .preferredColorScheme(.dark)
+        .statusBarHidden(isIdle)
+        .hideOverlays(if: isIdle)
     }
 
     private func startIdleTimer() {
@@ -770,5 +770,24 @@ struct NowPlayingView: View {
         
         // 3. Album info
         mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: nil)
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func hideOverlays(if condition: Bool) -> some View {
+        if condition {
+            if #available(iOS 16.0, *) {
+                self.persistentSystemOverlays(.hidden)
+            } else {
+                self
+            }
+        } else {
+            if #available(iOS 16.0, *) {
+                self.persistentSystemOverlays(.automatic)
+            } else {
+                self
+            }
+        }
     }
 }

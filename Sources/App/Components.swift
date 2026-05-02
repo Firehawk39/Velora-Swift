@@ -56,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0).weight(.bold))
+                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 42 : 46) : 54.0).weight(.black))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -82,23 +82,23 @@ struct AppHeader: View {
             ZStack {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: 72, height: 36)
+                    .frame(width: 90, height: 46)
                 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 28, height: 28)
-                    .offset(x: isDarkMode ? 18 : -18)
+                    .frame(width: 38, height: 38)
+                    .offset(x: isDarkMode ? 22 : -22)
                 
                 HStack {
                     Image(systemName: "sun.max.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundColor(isDarkMode ? .gray : .yellow)
                     Spacer()
                     Image(systemName: "moon.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundColor(isDarkMode ? .blue : .gray)
                 }
-                .frame(width: 48)
+                .frame(width: 68)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
@@ -114,7 +114,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: ScreenTier.isPhone ? 24 : 26))
+                .font(.system(size: ScreenTier.isPhone ? 38 : 42))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -122,19 +122,18 @@ struct AppHeader: View {
     }
     
     private var navigationPill: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: ScreenTier.isPhone ? 4 : 8) {
             TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(ScreenTier.isPhone ? 6 : 8)
+        .padding(ScreenTier.isPhone ? 8 : 10)
         .background(
             isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
             (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(ScreenTier.isPhone ? 0.9 : 0.95) // Slightly smaller on everything
     }
 }
 
@@ -158,10 +157,10 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: ScreenTier.isPhone ? 15 : 14, weight: isActive ? .bold : .medium))
+                .font(.system(size: ScreenTier.isPhone ? 16 : 16, weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
                 .background(
                     isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
                 )
@@ -382,7 +381,7 @@ struct QueuePanel: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Up Next")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundColor(isDarkMode ? .white : .black)
                 Text("\(playback.queue.count) tracks in queue")
                     .font(.system(size: 14))

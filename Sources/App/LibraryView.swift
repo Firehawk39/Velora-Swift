@@ -57,7 +57,7 @@ struct LibraryView: View {
     @ViewBuilder
     private func categoryDetailView(category: String, forceOffline: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: isCompact ? 80 : 100)
+            Spacer().frame(height: isCompact ? 95 : 125)
             // Header
             HStack {
                 Button(action: { activeCategory = nil }) {
@@ -687,7 +687,7 @@ private struct PlaylistDetailView: View {
         }
 
         VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: isCompact ? 80 : 100)
+            Spacer().frame(height: isCompact ? 95 : 125)
             
             // Header with Filters & Toggles
             HStack(alignment: .center, spacing: 12) {

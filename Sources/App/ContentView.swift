@@ -52,9 +52,9 @@ struct ContentView: View {
                     }
                 )
                 .padding(.top, 14)
-                .opacity(((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)) ? 0 : 1)
-                .offset(y: ((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
-                .allowsHitTesting(!((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)))
+                .opacity(((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? 0 : 1)
+                .offset(y: ((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
+                .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) // Ensure header is ALWAYS on top, above ArtistDetailView (200)
             }
@@ -114,12 +114,13 @@ struct ContentView: View {
             SyncManager.shared.configure(client: client, playback: playback)
             autoLogin() 
         }
-        .onChange(of: activeTab) { _ in
+        .onChange(of: activeTab) { tab in
             withAnimation { 
                 isIdle = false 
                 selectedArtistId = nil
                 selectedArtistName = nil
             }
+            UIApplication.shared.isIdleTimerDisabled = (tab == "now-playing")
         }
         .fullScreenCover(isPresented: $showSettings) {
             SettingsView(showSettings: $showSettings)
@@ -133,35 +134,40 @@ struct ContentView: View {
     @ViewBuilder
     private var pageContent: some View {
         ZStack {
-            switch activeTab {
-            case "home":
-                HomeView(onArtistClick: { id, name in
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = id
-                        selectedArtistName = name
-                    }
-                })
-            case "library":
-                LibraryView(onArtistClick: { id, name in
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = id
-                        selectedArtistName = name
-                    }
-                })
-            case "settings":
-                AppSettingsView()
-            case "search":
-                SearchView(onArtistClick: { id, name in
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = id
-                        selectedArtistName = name
-                    }
-                })
-            case "now-playing":
-                NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle)
-            default:
-                HomeView()
-            }
+            HomeView(onArtistClick: { id, name in
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    selectedArtistId = id
+                    selectedArtistName = name
+                }
+            })
+            .opacity(activeTab == "home" ? 1 : 0)
+            .allowsHitTesting(activeTab == "home")
+
+            LibraryView(onArtistClick: { id, name in
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    selectedArtistId = id
+                    selectedArtistName = name
+                }
+            })
+            .opacity(activeTab == "library" ? 1 : 0)
+            .allowsHitTesting(activeTab == "library")
+
+            AppSettingsView()
+                .opacity(activeTab == "settings" ? 1 : 0)
+                .allowsHitTesting(activeTab == "settings")
+
+            SearchView(onArtistClick: { id, name in
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    selectedArtistId = id
+                    selectedArtistName = name
+                }
+            })
+            .opacity(activeTab == "search" ? 1 : 0)
+            .allowsHitTesting(activeTab == "search")
+
+            NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle)
+                .opacity(activeTab == "now-playing" ? 1 : 0)
+                .allowsHitTesting(activeTab == "now-playing")
 
             if let id = selectedArtistId, let name = selectedArtistName {
                 ArtistDetailView(

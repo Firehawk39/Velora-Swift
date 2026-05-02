@@ -56,7 +56,7 @@ extension NavidromeClient {
                     }
                 }
             } catch { 
-                print("Error decoding recent songs: \(error)")
+                AppLogger.shared.log("Error decoding recent songs: \(error)", level: .error)
                 self.fetchRandomAsRecent()
             }
         }.resume()
@@ -82,7 +82,7 @@ extension NavidromeClient {
                                artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     }
                 }
-            } catch { print("Error decoding random songs as fallback: \(error)") }
+            } catch { AppLogger.shared.log("Error decoding random songs as fallback: \(error)", level: .error) }
         }.resume()
     }
 
@@ -103,7 +103,7 @@ extension NavidromeClient {
                               coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
                     }
                 }
-            } catch { print("Error decoding albums: \(error)") }
+            } catch { AppLogger.shared.log("Error decoding albums: \(error)", level: .error) }
         }.resume()
     }
 
@@ -115,7 +115,12 @@ extension NavidromeClient {
             return 
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { 
+            if let error = error {
+                AppLogger.shared.log("Network error fetching artists: \(error.localizedDescription)", level: .error)
+                completion?([])
+                return
+            }
+            guard let data = data else { 
                 completion?([])
                 return 
             }
@@ -132,7 +137,7 @@ extension NavidromeClient {
                     completion?(parsed)
                 }
             } catch { 
-                print("Error decoding artists: \(error)") 
+                AppLogger.shared.log("Error decoding artists: \(error)", level: .error) 
                 completion?([])
             }
         }.resume()
@@ -514,6 +519,17 @@ extension NavidromeClient {
         for dir in [backdropDir, portraitDir, metadataDir] {
             if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
                 for case let fileURL as URL in enumerator {
+                    if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                        totalSize += Int64(fileSize)
+                    }
+                }
+            }
+        }
+        
+        // Also include downloaded .mp3 files in the Document Directory
+        if let enumerator = fileManager.enumerator(at: docs, includingPropertiesForKeys: [.fileSizeKey]) {
+            for case let fileURL as URL in enumerator {
+                if fileURL.pathExtension.lowercased() == "mp3" {
                     if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
                         totalSize += Int64(fileSize)
                     }

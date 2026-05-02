@@ -39,7 +39,7 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 // ── Logo ──────────────────────────────────────────
                 Text("Velora.")
-                    .font(.custom("Stardom", size: ScreenTier.isSE ? 56 : 72).weight(.bold))
+                    .font(.custom("Stardom", size: ScreenTier.isSE ? 64 : 80).weight(.black))
                     .kerning(-2.5)
                     .foregroundColor(isDark ? .white : .black)
                     .padding(.top, ScreenTier.isSE ? 30 : 60)
@@ -373,7 +373,7 @@ struct AppSettingsView: View {
                     // Header
                     VStack(spacing: 8) {
                         Text("Settings")
-                            .font(.custom("Stardom", size: ScreenTier.isSE ? 40 : 48))
+                            .font(.custom("Stardom", size: ScreenTier.isSE ? 48 : 56))
                             .fontWeight(.bold)
                             .foregroundColor(isDark ? .white : .black)
                         
@@ -490,7 +490,13 @@ struct AppSettingsView: View {
                             }
 
                             // Media Sync Button
+                            let downloadedCount = PlaybackManager.shared?.downloadedTrackIds.count ?? 0
+                            let totalSongs = client.allSongs.count
+                            let isFullyDownloaded = totalSongs > 0 && downloadedCount >= totalSongs
+                            let pendingCount = totalSongs > 0 ? max(0, totalSongs - downloadedCount) : 0
+                            
                             Button(action: {
+                                if isFullyDownloaded { return }
                                 if sync.isSyncing && sync.syncType == .media {
                                     sync.stopSync()
                                 } else {
@@ -498,15 +504,15 @@ struct AppSettingsView: View {
                                 }
                             }) {
                                 HStack {
-                                    Image(systemName: "icloud.and.arrow.down.fill")
+                                    Image(systemName: isFullyDownloaded ? "checkmark.circle.fill" : "icloud.and.arrow.down.fill")
                                         .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncing && sync.syncType == .media ? .red : labelCol)
+                                        .foregroundColor(isFullyDownloaded ? .green : (sync.isSyncing && sync.syncType == .media ? .red : labelCol))
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncing && sync.syncType == .media ? "Downloading..." : "Download All Music")
+                                        Text(isFullyDownloaded ? "Library Fully Downloaded" : (sync.isSyncing && sync.syncType == .media ? "Downloading..." : "Download All Music"))
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isSyncing && sync.syncType == .media ? sync.currentStatus : "Save all tracks for offline listening")
+                                        Text(isFullyDownloaded ? "\(totalSongs) songs saved offline" : (sync.isSyncing && sync.syncType == .media ? sync.currentStatus : (pendingCount > 0 ? "\(pendingCount) tracks pending" : "Save all tracks for offline listening")))
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -514,7 +520,9 @@ struct AppSettingsView: View {
                                     
                                     Spacer()
                                     
-                                    if sync.isSyncing && sync.syncType == .media {
+                                    if isFullyDownloaded {
+                                        // No right chevron if it's done
+                                    } else if sync.isSyncing && sync.syncType == .media {
                                         HStack(spacing: 8) {
                                             if !sync.etaString.isEmpty {
                                                 Text(sync.etaString)
@@ -530,8 +538,9 @@ struct AppSettingsView: View {
                                 .padding()
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(isFullyDownloaded ? Color.green.opacity(0.3) : borderCol.opacity(0.3), lineWidth: 1))
                             }
+                            .disabled(isFullyDownloaded)
                             
                             Button(action: {
                                 client.clearCache()

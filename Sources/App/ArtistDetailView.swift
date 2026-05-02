@@ -28,10 +28,6 @@ struct ArtistDetailView: View {
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
             
-            ArtistBackdropView(artistId: artistId, artistName: artistName, isDarkMode: isDarkMode, client: client)
-                .frame(height: isCompact ? 400 : 600)
-                .ignoresSafeArea()
-            
             ScrollView {
                 VStack(spacing: 0) {
                     heroSection
@@ -89,15 +85,17 @@ struct ArtistDetailView: View {
     private var headerOverlay: some View {
         let opacity = min(1, max(0, (-scrollOffset - 300) / 50))
         return HStack {
+            Spacer()
             Text(artistName)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .opacity(Double(opacity))
             Spacer()
         }
+        .padding(.top, 40)
         .padding(.horizontal, isCompact ? 24 : 48)
         .frame(maxWidth: .infinity)
-        .frame(height: 100)
+        .frame(height: 120)
         .background(
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .opacity(Double(opacity))
@@ -164,13 +162,22 @@ struct ArtistDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, isCompact ? 60 : 160)
+        .padding(.top, isCompact ? 140 : 180)
         .padding(.bottom, 32)
     }
     
     private func artistLogo(size: CGFloat) -> some View {
-        ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
-            .id("portrait-\(artistId)")
+        ZStack {
+            // Radiating glow behind
+            ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
+                .blur(radius: size * 0.25)
+                .scaleEffect(1.3)
+                .opacity(0.8)
+            
+            // Actual portrait
+            ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
+        }
+        .id("portrait-\(artistId)")
     }
     
     private var artistLabel: some View {
@@ -355,7 +362,7 @@ struct ArtistDetailView: View {
                 .clipShape(Circle())
         }
         .padding(.leading, 24)
-        .padding(.top, 100)
+        .padding(.top, 120)
         .zIndex(110)
     }
     
@@ -468,7 +475,6 @@ struct ArtistBackdropView: View {
                 image
                     .resizable()
                     .scaledToFill()
-                    .blur(radius: 30) // Decreased blur intensity as requested
             } else {
                 Color.gray.opacity(0.1)
             }

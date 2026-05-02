@@ -23,5 +23,12 @@
     <array>
         <string>audio</string>
     </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Velora needs access to the local network to connect to your Navidrome server.</string>
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <false/>
+    <key>UIStatusBarHidden</key>
+    <true/>
 </dict>
+
 </plist>

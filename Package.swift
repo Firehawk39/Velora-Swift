@@ -10,12 +10,13 @@ let package = Package(
     products: [
         .iOSApplication(
             name: "Velora",
-            targets: ["Velora"],
+            targets: ["AppModule"],
             bundleIdentifier: "com.velora.aistudio",
+            teamIdentifier: "",
             displayVersion: "1.0",
             bundleVersion: "1",
-            iconAssetName: "AppIcon",
-            accentColorAssetName: "AccentColor",
+            appIcon: .placeholder(icon: .note),
+            accentColor: .presetColor(.red),
             supportedDeviceFamilies: [
                 .pad,
                 .phone
@@ -26,11 +27,12 @@ let package = Package(
                 .landscapeLeft,
                 .portraitUpsideDown
             ],
+            additionalInfoPlistContentFilePath: "Info.plist"
         )
     ],
     targets: [
         .executableTarget(
-            name: "Velora",
+            name: "AppModule",
             path: "Sources/App",
             resources: [
                 .process("Resources")

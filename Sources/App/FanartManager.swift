@@ -79,9 +79,8 @@ class FanartManager: ObservableObject {
         }
         
         // 2. Check if we are ALREADY fetching it (e.g. from prefetch)
-        var alreadyFetching = false
-        fetchQueue.sync {
-            alreadyFetching = activeBackdropFetches.contains(sanitized)
+        let alreadyFetching = fetchQueue.sync {
+            activeBackdropFetches.contains(sanitized)
         }
         
         // 3. Only if NOT in cache and it's a new artist, nil it
@@ -101,7 +100,7 @@ class FanartManager: ObservableObject {
         
         if alreadyFetching { return }
         
-        fetchQueue.sync {
+        _ = fetchQueue.sync {
             activeBackdropFetches.insert(sanitized)
         }
         
