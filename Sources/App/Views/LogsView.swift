@@ -24,6 +24,7 @@ struct LogsView: View {
                             .id(entry.id)
                         }
                     }
+                    .textSelection(.enabled)
                     .padding(.vertical)
                 }
             }

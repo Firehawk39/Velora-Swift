@@ -119,10 +119,7 @@ class MusicBrainzManager: ObservableObject {
             let urlString = "https://musicbrainz.org/ws/2/artist/\(resolvedMBID)?fmt=json&inc=aliases+tags+annotation"
             guard let url = URL(string: urlString) else { return }
             
-            var request = URLRequest(url: url)
-            request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
-            
-            URLSession.shared.dataTask(with: request) { data, _, _ in
+            self.performMusicBrainzRequest(url: url) { data in
                 DispatchQueue.main.async { self.metadataProgress = 0.7 }
                 guard let data = data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
@@ -152,7 +149,7 @@ class MusicBrainzManager: ObservableObject {
                             self.isLoading = false
                         }
                     }
-            }.resume()
+            }
         }
         
         if let mbid = mbid, !mbid.isEmpty {
@@ -199,10 +196,7 @@ class MusicBrainzManager: ObservableObject {
             let urlString = "https://musicbrainz.org/ws/2/release/\(resolvedMBID)?fmt=json&inc=labels+recordings"
             guard let url = URL(string: urlString) else { return }
             
-            var request = URLRequest(url: url)
-            request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
-            
-            URLSession.shared.dataTask(with: request) { data, _, _ in
+            self.performMusicBrainzRequest(url: url) { data in
                 guard let data = data,
                       var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     DispatchQueue.main.async { self.isLoading = false }
@@ -232,7 +226,7 @@ class MusicBrainzManager: ObservableObject {
                         self.isLoading = false
                     }
                 }
-            }.resume()
+            }
         }
         
         if let mbid = mbid, !mbid.isEmpty {
@@ -337,26 +331,8 @@ class MusicBrainzManager: ObservableObject {
     
     private func queryMusicBrainz(urlString: String, primary: String, retryCount: Int, completion: @escaping (String?) -> Void) {
         guard let url = URL(string: urlString) else { completion(nil); return }
-        var request = URLRequest(url: url)
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         
-        URLSession.shared.dataTask(with: request) { data, response, _ in
-            if let http = response as? HTTPURLResponse {
-                if http.statusCode == 503 && retryCount < 3 {
-                    // Rate limited - wait and retry
-                    let delay = Double(retryCount + 1) * 1.5
-                    AppLogger.shared.log("[MBID] MusicBrainz 503 (Rate Limited). Retrying in \(delay)s...", level: .warning)
-                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
-                        self.queryMusicBrainz(urlString: urlString, primary: primary, retryCount: retryCount + 1, completion: completion)
-                    }
-                    return
-                }
-                if http.statusCode != 200 {
-                    AppLogger.shared.log("[MBID] MusicBrainz returned \(http.statusCode)", level: .error)
-                    completion(nil); return
-                }
-            }
-            
+        self.performMusicBrainzRequest(url: url) { data in
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let artists = json["artists"] as? [[String: Any]] else {
@@ -388,6 +364,37 @@ class MusicBrainzManager: ObservableObject {
             
             AppLogger.shared.log("[MBID] No high-confidence match found for \"\(primary)\" in results", level: .warning)
             completion(nil)
+        }
+    }
+
+    private func performMusicBrainzRequest(url: URL, retryCount: Int = 0, completion: @escaping (Data?) -> Void) {
+        var request = URLRequest(url: url)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 503 && retryCount < 5 {
+                    // Exponential backoff for 503s
+                    let delay = pow(2.0, Double(retryCount)) + Double.random(in: 0...1)
+                    AppLogger.shared.log("[MBID] Rate limited (503). Retrying in \(String(format: "%.1f", delay))s...", level: .warning)
+                    DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+                        self.performMusicBrainzRequest(url: url, retryCount: retryCount + 1, completion: completion)
+                    }
+                    return
+                }
+                if http.statusCode != 200 {
+                    AppLogger.shared.log("[MBID] Request failed with status \(http.statusCode)", level: .error)
+                    completion(nil)
+                    return
+                }
+            }
+            
+            if error != nil {
+                completion(nil)
+                return
+            }
+            
+            completion(data)
         }.resume()
     }
 
@@ -475,24 +482,34 @@ class MusicBrainzManager: ObservableObject {
                         return
                     }
 
+                Task {
+                    let fileName = "artist_" + (mbid) + ".json"
+                    let fileUrl = self.metadataDir.appendingPathComponent(fileName)
+                    
+                    if self.fileManager.fileExists(atPath: fileUrl.path) {
+                        continuation.resume()
+                        return
+                    }
+
                     let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
                     guard let url = URL(string: urlString) else { continuation.resume(); return }
-                    var request = URLRequest(url: url)
-                    request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
                     
-                    do {
-                        let (data, _) = try await URLSession.shared.data(for: request)
-                        guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
+                    self.performMusicBrainzRequest(url: url) { data in
+                        guard let data = data,
+                              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
                             continuation.resume(); return 
                         }
                         
-                        let annotation = await self.fetchAnnotationAsync(entityMBID: mbid)
-                        json["annotation"] = annotation
-                        if let savedData = try? JSONSerialization.data(withJSONObject: json) {
-                            try? savedData.write(to: fileUrl)
+                        Task {
+                            let annotation = await self.fetchAnnotationAsync(entityMBID: mbid)
+                            json["annotation"] = annotation
+                            if let savedData = try? JSONSerialization.data(withJSONObject: json) {
+                                try? savedData.write(to: fileUrl)
+                            }
+                            continuation.resume()
                         }
-                    } catch { }
-                    continuation.resume()
+                    }
+                }
                 }
             }
         }
@@ -512,19 +529,19 @@ class MusicBrainzManager: ObservableObject {
 
         let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=labels+recordings"
         guard let url = URL(string: urlString) else { return }
-        var request = URLRequest(url: url)
-        request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
         
-        do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        self.performMusicBrainzRequest(url: url) { data in
+            guard let data = data,
+                  var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             
-            let annotation = await fetchAnnotationAsync(entityMBID: mbid)
-            json["annotation"] = annotation
-            if let savedData = try? JSONSerialization.data(withJSONObject: json) {
-                try? savedData.write(to: fileUrl)
+            Task {
+                let annotation = await self.fetchAnnotationAsync(entityMBID: mbid)
+                json["annotation"] = annotation
+                if let savedData = try? JSONSerialization.data(withJSONObject: json) {
+                    try? savedData.write(to: fileUrl)
+                }
             }
-        } catch { }
+        }
     }
     
     private func resolveMBIDAsync(for artist: String) async -> String? {

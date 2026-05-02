@@ -108,6 +108,7 @@ struct ContentView: View {
         .environmentObject(playback)
         .environmentObject(SyncManager.shared)
         .preferredColorScheme((isDarkMode || activeTab == "now-playing") ? .dark : .light)
+        .statusBarHidden(true)
         .onAppear { 
             SyncManager.shared.configure(client: client, playback: playback)
             autoLogin() 

@@ -48,7 +48,7 @@ struct HomeView: View {
                                 TrackCard(
                                     track: track,
                                     isDark: isDark,
-                                    size: ScreenTier.isPhone ? 140 : 150,
+                                    size: ScreenTier.isPhone ? 140 : 180,
                                     onPlay: { playback.playTrack(track, context: Array(client.recentTracks)) }
                                 )
                             }
@@ -69,7 +69,7 @@ struct HomeView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: isCompact ? 16 : 24) {
                             ForEach(client.artists.prefix(isCompact ? 8 : 12)) { artist in
-                                ArtistCircle(artist: artist, isDark: isDark, size: isCompact ? 75 : 90)
+                                ArtistCircle(artist: artist, isDark: isDark, size: isCompact ? 75 : 120)
                                     .onTapGesture {
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                             onArtistClick?(artist.id, artist.name)
@@ -93,7 +93,7 @@ struct HomeView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: ScreenTier.isPhone ? 12 : 24) {
                             ForEach(client.albums.prefix(isCompact ? 6 : 8)) { album in
-                                AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 180, cardH: ScreenTier.isPhone ? 100 : 120)
+                                AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 220, cardH: ScreenTier.isPhone ? 100 : 140)
                                     .onTapGesture {
                                         client.fetchAlbumTracks(albumId: album.id) { tracks in
                                             if let first = tracks.first {

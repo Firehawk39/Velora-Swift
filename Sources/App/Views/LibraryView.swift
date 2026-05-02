@@ -265,7 +265,7 @@ private struct LibraryMenuView: View {
                         ("Artists", "\(client.artists.count)", "person.2", Color.teal)
                     ]
                     
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 200), spacing: 16)], spacing: 16) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 240), spacing: 16)], spacing: 16) {
                         ForEach(stats, id: \.0) { stat in
                             VStack(alignment: .leading, spacing: 8) {
                                 Image(systemName: stat.2).foregroundColor(stat.3).font(.system(size: isCompact ? 20 : 24))
@@ -438,7 +438,7 @@ private struct ArtistGridView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { a in
                     VStack(spacing: isCompact ? 6 : 8) {
-                        ArtistPortraitView(artistId: a.id, artistName: a.name, size: isCompact ? 100 : 160, client: client, isDarkMode: isDarkMode)
+                        ArtistPortraitView(artistId: a.id, artistName: a.name, size: isCompact ? 100 : 180, client: client, isDarkMode: isDarkMode)
                             .id("artist-grid-\(a.id)")
                         
                         Text(a.name)

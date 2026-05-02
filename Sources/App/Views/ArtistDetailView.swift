@@ -168,27 +168,11 @@ struct ArtistDetailView: View {
     
     private func artistLogo(size: CGFloat) -> some View {
         ZStack {
-            // Radiating "Aura" behind portrait (Matching user's image) - Enhanced vibrancy
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.5))
-                    .frame(width: size * 2.4, height: size * 2.4)
-                    .blur(radius: 70)
-                
-                Circle()
-                    .fill(Color.yellow.opacity(0.4))
-                    .frame(width: size * 2.2, height: size * 2.2)
-                    .offset(x: -size * 0.2, y: size * 0.2)
-                    .blur(radius: 80)
-                
-                Circle()
-                    .fill(Color.red.opacity(0.25))
-                    .frame(width: size * 2.6, height: size * 2.6)
-                    .offset(x: size * 0.2, y: -size * 0.2)
-                    .blur(radius: 90)
-            }
-            .compositingGroup()
-            .opacity(isDarkMode ? 0.9 : 0.6)
+            // Radiating "Aura" behind portrait - Even softer and more subtle
+            Circle()
+                .fill(isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.05))
+                .frame(width: size * 1.8, height: size * 1.8)
+                .blur(radius: 60)
             
             ArtistPortraitView(artistId: artistId, artistName: artistName, size: size, client: client, isDarkMode: isDarkMode)
                 .id("portrait-\(artistId)")

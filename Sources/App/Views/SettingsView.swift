@@ -533,34 +533,6 @@ struct AppSettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
                             
-                            Button(action: {
-                                client.clearCache()
-                                cacheCleared = true
-                                self.cacheSize = "0 MB"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                    cacheCleared = false
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: "trash.fill")
-                                        .foregroundColor(.red)
-                                    Text("Clear Media Cache")
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(isDark ? .white : .black)
-                                    Spacer()
-                                    if cacheCleared {
-                                        Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)
-                                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                                    } else {
-                                        Text(cacheSize).font(.system(size: 14)).foregroundColor(.gray)
-                                    }
-                                }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                            }
-
                             // Deep Audit Button
                             Button(action: {
                                 if sync.isSyncing && sync.syncType == .audit {
@@ -597,6 +569,48 @@ struct AppSettingsView: View {
                                         }
                                     } else {
                                         Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            }
+                            
+                            // Clear Media Cache
+                            Button(action: {
+                                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                                let mediaDir = docs.appendingPathComponent("Media")
+                                try? FileManager.default.removeItem(at: mediaDir)
+                                try? FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
+                                
+                                withAnimation {
+                                    cacheCleared = true
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    cacheCleared = false
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.red.opacity(0.8))
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Clear Media Cache")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text("Purge all locally stored music and cover art")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                    }
+                                    
+                                    Spacer()
+                                    if cacheCleared {
+                                        Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)
+                                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                                    } else {
+                                        Text(cacheSize).font(.system(size: 14)).foregroundColor(.gray)
                                     }
                                 }
                                 .padding()

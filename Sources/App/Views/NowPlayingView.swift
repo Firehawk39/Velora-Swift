@@ -84,6 +84,7 @@ struct NowPlayingView: View {
                         Color.black
                     }
                 }
+                .id("bg-\(playback.currentTrack?.id ?? "none")") // Force refresh on track change
                 .overlay(
                     // Combined Vignette: Dark edges + Vertical fade
                     ZStack {
@@ -135,6 +136,7 @@ struct NowPlayingView: View {
                         if isIdle { resetIdleTimer() }
                     }
                 }
+                .scrollDisabled(isIdle) // Lock scrolling when in idle state
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
@@ -179,7 +181,8 @@ struct NowPlayingView: View {
             if isMode { stopIdleTimer() } else { resetIdleTimer() }
         }
         .onChange(of: playback.currentTrack?.id) { _ in
-            resetIdleTimer()
+            // Don't wake the UI on automatic track change; just restart the countdown
+            startIdleTimer()
             refreshMetadata()
         }
         .preferredColorScheme(.dark)

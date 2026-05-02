@@ -56,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0).weight(.bold))
+                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 42.0).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -114,7 +114,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: ScreenTier.isPhone ? 24 : 26))
+                .font(.system(size: ScreenTier.isPhone ? 24 : 32))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -158,7 +158,7 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: ScreenTier.isPhone ? 15 : 14, weight: isActive ? .bold : .medium))
+                .font(.system(size: ScreenTier.isPhone ? 15 : 16, weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -195,11 +195,11 @@ struct TrackCard: View {
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: ScreenTier.isPhone ? 14 : 16, weight: .bold))
                         .foregroundColor(isDark ? .white : .black)
                         .lineLimit(1)
                     Text(track.artist ?? "Unknown")
-                        .font(.system(size: 12))
+                        .font(.system(size: ScreenTier.isPhone ? 12 : 14))
                         .foregroundColor(.gray)
                         .lineLimit(1)
                 }
@@ -251,7 +251,7 @@ struct AlbumCard: View {
             } placeholder: {
                 Rectangle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
             }
-            .frame(width: cardW ?? 160, height: cardH ?? 160)
+            .frame(width: cardW ?? (ScreenTier.isPhone ? 160 : 200), height: cardH ?? (ScreenTier.isPhone ? 160 : 200))
             .cornerRadius(16)
             .id(album.id)
             .clipped()
@@ -259,15 +259,15 @@ struct AlbumCard: View {
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(album.name)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: ScreenTier.isPhone ? 15 : 18, weight: .bold))
                     .foregroundColor(isDark ? .white : .black)
                     .lineLimit(1)
                 Text(album.artist ?? "Unknown")
-                    .font(.system(size: 13))
+                    .font(.system(size: ScreenTier.isPhone ? 13 : 15))
                     .foregroundColor(.gray)
                     .lineLimit(1)
             }
-            .frame(width: cardW ?? 160, alignment: .leading)
+            .frame(width: cardW ?? (ScreenTier.isPhone ? 160 : 200), alignment: .leading)
         }
     }
 }
