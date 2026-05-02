@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon~ios-marketing.png" width="200" height="200" style="border-radius: 20%">
+  <img src="Sources/App/Resources/Assets.xcassets/Logo.imageset/Logo.png" width="320" height="320">
 
   <h3>The smartest private music player ever made.</h3>
   

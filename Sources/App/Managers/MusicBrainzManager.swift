@@ -8,9 +8,21 @@ class MusicBrainzManager: ObservableObject {
     
     @Published var currentArtistInfo: ArtistInfo? = nil
     @Published var currentAlbumInfo: AlbumInfo? = nil
+    @Published var isLoading: Bool = false
+    @Published var metadataProgress: Double = 0.0
     
     private let userAgent = "VeloraMusicApp/1.1 ( https://github.com/Firehawk39/Velora-Swift ; admin@velora.ai )"
     private let cacheFile = "mbid_cache.json"
+    private let fileManager = FileManager.default
+    
+    private var metadataDir: URL {
+        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let dir = docs.appendingPathComponent("metadata")
+        if !fileManager.fileExists(atPath: dir.path) {
+            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
     
     // In-memory cache for fast lookups
     private var mbidCache: [String: String] = [:]
@@ -21,6 +33,11 @@ class MusicBrainzManager: ObservableObject {
     
     init() {
         loadCache()
+    }
+    
+    func getMetadataUrl(for artist: String) -> URL {
+        let mbid = nameToMBIDCache[artist] ?? "unknown"
+        return metadataDir.appendingPathComponent("artist_\(mbid).json")
     }
     
     private func loadCache() {
@@ -70,12 +87,25 @@ class MusicBrainzManager: ObservableObject {
             let genres = (json["genres"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
             let bioSnippet = (json["annotation"] as? [String: Any])?["text"] as? String ?? ""
             
+            let type = json["type"] as? String
+            let area = (json["area"] as? [String: Any])?["name"] as? String
+            let lifeSpanObj = json["life-span"] as? [String: Any]
+            let begin = lifeSpanObj?["begin"] as? String
+            let end = lifeSpanObj?["end"] as? String
+            var lifeSpan: String? = nil
+            if let b = begin {
+                lifeSpan = b + (end != nil ? " – \(end!)" : " – Present")
+            }
+            
             DispatchQueue.main.async {
                 self?.currentArtistInfo = ArtistInfo(
                     name: name,
                     biography: bioSnippet.isEmpty ? "Biographical data is being resolved..." : bioSnippet,
                     genres: genres,
-                    mbid: mbid
+                    mbid: mbid,
+                    type: type,
+                    area: area,
+                    lifeSpan: lifeSpan
                 )
             }
         }
@@ -320,13 +350,79 @@ class MusicBrainzManager: ObservableObject {
             }
         }
     }
+
+    // MARK: - Silent Bulk Fetchers
+
+    func downloadMetadataSilently(for artistName: String) async {
+        return await withCheckedContinuation { continuation in
+            resolveMBID(for: artistName) { mbid in
+                guard let mbid = mbid else {
+                    continuation.resume()
+                    return
+                }
+                
+                Task {
+                    let fileUrl = self.getMetadataUrl(for: artistName)
+                    if self.fileManager.fileExists(atPath: fileUrl.path) {
+                        continuation.resume()
+                        return
+                    }
+
+                    let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
+                    guard let url = URL(string: urlString) else { continuation.resume(); return }
+                    
+                    do {
+                        let data = await withCheckedContinuation { innerCont in
+                            _ = self.performMusicBrainzRequest(url: url) { data in
+                                innerCont.resume(returning: data)
+                            }
+                        }
+                        
+                        guard let data = data,
+                              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
+                            continuation.resume(); return 
+                        }
+                        
+                        let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+                        json["annotation"] = annotation
+                        if let savedData = try? JSONSerialization.data(withJSONObject: json) {
+                            try? savedData.write(to: fileUrl)
+                        }
+                    } catch { }
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private func fetchAnnotationAsync(entityMBID: String) async -> String? {
+        let urlString = "https://musicbrainz.org/ws/2/annotation/?query=entity:\(entityMBID)&fmt=json"
+        guard let url = URL(string: urlString) else { return nil }
+        
+        return await withCheckedContinuation { continuation in
+            _ = self.performMusicBrainzRequest(url: url) { data in
+                if let data = data,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let annotations = json["annotations"] as? [[String: Any]],
+                   let first = annotations.first {
+                    continuation.resume(returning: first["text"] as? String)
+                } else {
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
 }
+
 
 struct ArtistInfo {
     let name: String
     var biography: String
     var genres: [String] = []
     var mbid: String? = nil
+    var type: String? = nil
+    var area: String? = nil
+    var lifeSpan: String? = nil
 }
 
 struct AlbumInfo {

@@ -24,6 +24,7 @@ struct AppHeader: View {
     let isDarkMode: Bool
     let toggleDark: () -> Void
     let subtitle: String?
+    let onAction: () -> Void
     
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
