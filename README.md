@@ -1,8 +1,8 @@
 <div align="center">
+  <img src="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon~ios-marketing.png" width="200" height="200" style="border-radius: 20%">
+
   <h1>Velora</h1>
   <h3>The smartest private music player ever made.</h3>
-
-  <img src="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon~ios-marketing.png" width="200" height="200" style="border-radius: 20%">
   
   <br/>
   
