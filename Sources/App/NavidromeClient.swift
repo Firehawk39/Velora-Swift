@@ -7,6 +7,7 @@ class NavidromeClient: ObservableObject {
     @Published var recentlyPlayed: [Track] = [] { didSet { saveMetadataToDisk() } }
     @Published var playlists: [Playlist] = [] { didSet { saveMetadataToDisk() } }
     @Published var allSongs: [Track] = [] { didSet { saveMetadataToDisk() } }
+    @Published var lastSyncDate: Date?
 
     var recentTracks: [Track] { recentlyPlayed }
 
@@ -28,13 +29,22 @@ class NavidromeClient: ObservableObject {
         self.username = user
         self.salt = SubsonicAuth.generateSalt()
         self.token = SubsonicAuth.generateToken(password: pass, salt: self.salt)
+        AppLogger.shared.log("Client: Configured for \(user) at \(baseUrl)", level: .info)
     }
 
     // MARK: - URL Construction
 
     func buildUrl(method: String, params: [String: String] = [:], extraItems: [URLQueryItem] = []) -> URL? {
         guard !baseUrl.isEmpty else { return nil }
-        var components = URLComponents(string: "\(baseUrl)/rest/\(method)")
+        
+        // Ensure the URL is properly formed (handle missing http prefix)
+        var finalBase = baseUrl
+        if !finalBase.hasPrefix("http") {
+            finalBase = "http://\(finalBase)"
+        }
+        
+        var components = URLComponents(string: "\(finalBase)/rest/\(method)")
+        
         var items = [
             URLQueryItem(name: "u", value: username),
             URLQueryItem(name: "t", value: token),
@@ -43,9 +53,11 @@ class NavidromeClient: ObservableObject {
             URLQueryItem(name: "c", value: clientName),
             URLQueryItem(name: "f", value: "json")
         ]
+        
         params.forEach { items.append(URLQueryItem(name: $0.key, value: $0.value)) }
         items.append(contentsOf: extraItems)
         components?.queryItems = items
+        
         return components?.url
     }
 
@@ -74,11 +86,9 @@ class NavidromeClient: ObservableObject {
         self.token = ""
         self.salt = ""
         
-        // Clear files
         let url = getMetadataURL()
         try? FileManager.default.removeItem(at: url)
         
-        // Clear data
         DispatchQueue.main.async {
             self.artists = []
             self.albums = []
@@ -91,64 +101,102 @@ class NavidromeClient: ObservableObject {
     // MARK: - Persistence
 
     private func getMetadataURL() -> URL {
-        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        return paths[0].appendingPathComponent("velora_metadata.json")
+        getDocumentsDirectory().appendingPathComponent("velora_metadata.json")
     }
 
-    struct PersistedMetadata: Codable {
+    private func getDocumentsDirectory() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    struct CachedMetadata: Codable {
         let artists: [Artist]
         let albums: [Album]
         let recentlyPlayed: [Track]
         let playlists: [Playlist]
         let allSongs: [Track]
+        let lastSyncDate: Date?
     }
 
     func saveMetadataToDisk() {
-        // We do this on a background thread to avoid blocking UI during fast updates
-        let meta = PersistedMetadata(
+        let meta = CachedMetadata(
             artists: self.artists,
             albums: self.albums,
             recentlyPlayed: self.recentlyPlayed,
             playlists: self.playlists,
-            allSongs: self.allSongs
+            allSongs: self.allSongs,
+            lastSyncDate: self.lastSyncDate
         )
         DispatchQueue.global(qos: .background).async {
             do {
                 let data = try JSONEncoder().encode(meta)
                 try data.write(to: self.getMetadataURL())
             } catch {
-                // Silently fail as this is just a cache
+                AppLogger.shared.log("Cache: Failed to save metadata - \(error.localizedDescription)", level: .warning)
             }
         }
     }
 
     func loadMetadataFromDisk() {
-        let url = getMetadataURL()
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let fileUrl = getMetadataURL()
+        let oldFileUrl = getDocumentsDirectory().appendingPathComponent("metadata.json")
         
-        // NEW: Check if any tracks are actually downloaded to satisfy the "Metadata AND Tracks" requirement
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let files = (try? FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)) ?? []
-        let hasTracks = files.contains { ["mp3", "flac", "m4a", "wav"].contains($0.pathExtension.lowercased()) }
-        
-        guard hasTracks else {
-            AppLogger.shared.log("Offline Check: Metadata exists but no tracks found. Cache load skipped.", level: .info)
+        // Migration check
+        let finalUrl: URL
+        if FileManager.default.fileExists(atPath: fileUrl.path) {
+            finalUrl = fileUrl
+        } else if FileManager.default.fileExists(atPath: oldFileUrl.path) {
+            finalUrl = oldFileUrl
+            AppLogger.shared.log("Offline Check: Found legacy metadata file. Migrating...", level: .info)
+        } else {
+            AppLogger.shared.log("Offline Check: No metadata found on disk.", level: .info)
             return
         }
         
         do {
-            let data = try Data(contentsOf: url)
-            let decoded = try JSONDecoder().decode(PersistedMetadata.self, from: data)
+            let data = try Data(contentsOf: finalUrl)
+            let decoded = try JSONDecoder().decode(CachedMetadata.self, from: data)
+            
             DispatchQueue.main.async {
-                // Assign to backing variables to avoid triggering didSet loop
                 self.artists = decoded.artists
                 self.albums = decoded.albums
                 self.recentlyPlayed = decoded.recentlyPlayed
                 self.playlists = decoded.playlists
                 self.allSongs = decoded.allSongs
+                self.lastSyncDate = decoded.lastSyncDate
+                AppLogger.shared.log("Offline Check: Successfully loaded \(decoded.artists.count) artists from cache.", level: .info)
+            }
+            
+            // Clean up old file after successful migration
+            if finalUrl == oldFileUrl {
+                try? FileManager.default.moveItem(at: oldFileUrl, to: fileUrl)
             }
         } catch {
-            AppLogger.shared.log("Failed to load metadata cache: \(error.localizedDescription)", level: .warning)
+            AppLogger.shared.log("Offline Check: Failed to decode cache - \(error.localizedDescription)", level: .error)
+        }
+    }
+
+    func fetchEverything() {
+        guard !baseUrl.isEmpty else { 
+            AppLogger.shared.log("Fetch: Aborted. Base URL is empty.", level: .warning)
+            return 
+        }
+        
+        AppLogger.shared.log("Fetch: Starting sync from \(baseUrl)...", level: .info)
+        
+        fetchArtists { artists in
+            AppLogger.shared.log("Fetch: Received \(artists.count) artists.", level: .info)
+            self.artists = artists
+            
+            // Parallel fetch for speed
+            self.fetchRecentlyPlayed()
+            self.fetchAlbums()
+            
+            self.fetchAllSongs { songs in
+                AppLogger.shared.log("Fetch: Received \(songs.count) total songs.", level: .info)
+                self.allSongs = songs
+                self.lastSyncDate = Date()
+                self.saveMetadataToDisk()
+            }
         }
     }
 }
