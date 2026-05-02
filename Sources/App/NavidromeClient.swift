@@ -126,6 +126,16 @@ class NavidromeClient: ObservableObject {
         let url = getMetadataURL()
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         
+        // NEW: Check if any tracks are actually downloaded to satisfy the "Metadata AND Tracks" requirement
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let files = (try? FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)) ?? []
+        let hasTracks = files.contains { ["mp3", "flac", "m4a", "wav"].contains($0.pathExtension.lowercased()) }
+        
+        guard hasTracks else {
+            AppLogger.shared.log("Offline Check: Metadata exists but no tracks found. Cache load skipped.", level: .info)
+            return
+        }
+        
         do {
             let data = try Data(contentsOf: url)
             let decoded = try JSONDecoder().decode(PersistedMetadata.self, from: data)
