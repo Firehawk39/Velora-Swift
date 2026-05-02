@@ -2,14 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key>
-    <string>Velora</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.velora.aistudio</string>
-    <key>CFBundleName</key>
-    <string>Velora</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
@@ -36,6 +28,17 @@
     <true/>
     <key>UIRequiresFullScreen</key>
     <true/>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict/>
+    </dict>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
