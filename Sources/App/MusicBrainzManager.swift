@@ -319,8 +319,12 @@ class MusicBrainzManager: ObservableObject {
 
     func downloadMetadataSilently(for artistName: String) async {
         let resolved = await resolveMBIDAsync(for: artistName)
-        guard let mbid = resolved else { return }
+        guard let mbid = resolved else { 
+            AppLogger.shared.log("[Metadata] Silent prefetch: Failed to resolve MBID for \(artistName)")
+            return 
+        }
         
+        AppLogger.shared.log("[Metadata] Silent prefetch: Resolved \(artistName) to \(mbid)")
         self.nameToMBIDCache[artistName] = mbid
         saveCache()
         

@@ -64,6 +64,7 @@ class FanartManager: ObservableObject {
         
         // 1. Check Cache Synchronously BEFORE nilling anything
         if let cached = getCachedBackdrop(for: artist) {
+            AppLogger.shared.log("[Fanart] Cache hit for \(artist)")
             DispatchQueue.main.async {
                 self.currentArtistName = artist
                 // Use animation if it's a new artist, otherwise just set it
@@ -105,19 +106,20 @@ class FanartManager: ObservableObject {
             activeBackdropFetches.insert(sanitized)
         }
         
-        let queryFanart = { (resolvedMBID: String) in
+            AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url in
                 if let url = url {
+                    AppLogger.shared.log("[Fanart] Found backdrop URL for \(artist)")
                     // Priority: UI fetch
                     self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.highPriority) { image in
                         self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                     }
                 } else {
+                    AppLogger.shared.log("[Fanart] No backdrop found for \(artist)")
                     self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                 }
             }
-        }
         
         // 3. Resolve MBID and Fetch
         guard let validMBID = mbid, !validMBID.isEmpty else {
@@ -131,6 +133,7 @@ class FanartManager: ObservableObject {
             return
         }
         
+        AppLogger.shared.log("[Fanart] Fetch start for \(artist)")
         queryFanart(validMBID)
     }
     
@@ -231,7 +234,10 @@ class FanartManager: ObservableObject {
     private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (String?) -> Void) {
         guard let url = URL(string: urlString) else { completion(nil); return }
         
-        let task = URLSession.shared.dataTask(with: url) { data, _, _ in
+        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                AppLogger.shared.log("[Fanart] Network error for \(artistName): \(error.localizedDescription)")
+            }
             guard let data = data else { completion(nil); return }
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {

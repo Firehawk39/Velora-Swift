@@ -57,7 +57,10 @@ workflows:
           
           # 3. Assemble the bundle manually to be 100% sure
           echo "Assembling bundle at $APP_PATH"
-          cp "$BINARY_PATH" "$APP_PATH/$BINARY_NAME"
+          if [ ! -f "$APP_PATH/$BINARY_NAME" ]; then
+             echo "Binary $BINARY_NAME not found in bundle, trying to find it in archive..."
+             cp "$BINARY_PATH" "$APP_PATH/$BINARY_NAME"
+          fi
           chmod +x "$APP_PATH/$BINARY_NAME"
           
           # 4. Force-write the Info.plist to ensure TrollStore compatibility
