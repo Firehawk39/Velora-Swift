@@ -74,7 +74,7 @@ struct NowPlayingView: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                .frame(width: proxy.size.width, height: proxy.size.height)
                                 .blur(radius: 15) // Subtle blur for ambient feel when backdrop is missing
                                 .opacity(isIdle ? 0.4 : 0.3)
                         } placeholder: {
