@@ -110,7 +110,7 @@ class FanartManager: ObservableObject {
         
         if alreadyFetching { return }
         
-        fetchQueue.sync {
+        _ = fetchQueue.sync {
             activeBackdropFetches.insert(sanitized)
         }
         let queryFanart = { (resolvedMBID: String) in

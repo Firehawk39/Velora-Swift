@@ -136,7 +136,7 @@ struct NowPlayingView: View {
                         if isIdle { resetIdleTimer() }
                     }
                 }
-                .scrollDisabled(isIdle) // Lock scrolling when in idle state
+                .scrollDisabledIfAvailable(isIdle) // Lock scrolling when in idle state
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
