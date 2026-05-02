@@ -564,5 +564,4 @@ class MusicBrainzManager: ObservableObject {
             return annotations?.first?["text"] as? String
         } catch { return nil }
     }
-    }
 }
