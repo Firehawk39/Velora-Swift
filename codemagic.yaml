@@ -56,15 +56,21 @@ workflows:
           fi
           
           # 3. Assemble the bundle manually to be 100% sure
-          echo "Assembling bundle at $APP_PATH"
-          if [ ! -f "$APP_PATH/$BINARY_NAME" ]; then
+          echo "Assembling bundle from $APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          
+          # Update internal variable to point to the copy we are patching
+          PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
+          
+          if [ ! -f "$PAYLOAD_APP/$BINARY_NAME" ]; then
              echo "Binary $BINARY_NAME not found in bundle, trying to find it in archive..."
-             cp "$BINARY_PATH" "$APP_PATH/$BINARY_NAME"
+             cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
           fi
-          chmod +x "$APP_PATH/$BINARY_NAME"
+          chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           
           # 4. Force-write the Info.plist to ensure TrollStore compatibility and native iPad resolution
-          cat <<EOF > "$APP_PATH/Info.plist"
+          cat <<EOF > "$PAYLOAD_APP/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -172,15 +178,13 @@ workflows:
           </plist>
           EOF
           
-          echo "Final bundle contents:"
-          ls -F "$APP_PATH"
+          echo "Final bundle contents for $(basename "$APP_PATH"):"
+          ls -F "$PAYLOAD_APP"
           
           echo "Verifying Info.plist keys:"
-          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen" "$APP_PATH/Info.plist"
+          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen" "$PAYLOAD_APP/Info.plist"
           
           # 5. Create IPA
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
           zip -r Velora-Jailbreak.ipa Payload
           
           mkdir -p artifacts
