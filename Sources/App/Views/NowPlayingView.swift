@@ -66,7 +66,7 @@ struct NowPlayingView: View {
                         Image(uiImage: backdrop)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                             .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                             .opacity(isIdle ? 0.45 : 0.35)
                     } else if let track = playback.currentTrack, let url = track.coverArtUrl {
@@ -74,7 +74,7 @@ struct NowPlayingView: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width, height: proxy.size.height)
+                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                                 .blur(radius: 15) // Subtle blur for ambient feel when backdrop is missing
                                 .opacity(isIdle ? 0.4 : 0.3)
                         } placeholder: {
@@ -101,7 +101,7 @@ struct NowPlayingView: View {
                         )
                     }
                 )
-                .ignoresSafeArea()
+                .ignoresSafeArea(.all)
                 .animation(.easeInOut(duration: 0.6), value: isIdle)
                 .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
                 .allowsHitTesting(false)
@@ -738,6 +738,9 @@ struct NowPlayingView: View {
         
         let artistName = track.artist ?? "Unknown Artist"
         let albumName = track.album ?? "Unknown Album"
+        
+        // 0. Immediately clear the current backdrop to avoid stale artist images
+        fanart.currentBackdrop = nil
         
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker

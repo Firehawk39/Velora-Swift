@@ -104,10 +104,8 @@ class FanartManager: ObservableObject {
             currentBackdropTask = nil
             
             DispatchQueue.main.async {
-                if !alreadyFetching {
-                    withAnimation(.easeInOut(duration: 0.4)) {
-                        self.currentBackdrop = nil
-                    }
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    self.currentBackdrop = nil
                 }
             }
         }
