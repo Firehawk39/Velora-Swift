@@ -2,11 +2,11 @@ import Foundation
 import CryptoKit
 
 class NavidromeClient: ObservableObject {
-    @Published var artists: [Artist] = []
-    @Published var albums: [Album] = []
-    @Published var recentlyPlayed: [Track] = []
-    @Published var playlists: [Playlist] = []
-    @Published var allSongs: [Track] = []
+    @Published var artists: [Artist] = [] { didSet { saveMetadataToDisk() } }
+    @Published var albums: [Album] = [] { didSet { saveMetadataToDisk() } }
+    @Published var recentlyPlayed: [Track] = [] { didSet { saveMetadataToDisk() } }
+    @Published var playlists: [Playlist] = [] { didSet { saveMetadataToDisk() } }
+    @Published var allSongs: [Track] = [] { didSet { saveMetadataToDisk() } }
 
     var recentTracks: [Track] { recentlyPlayed }
 
@@ -69,11 +69,72 @@ class NavidromeClient: ObservableObject {
         self.username = ""
         self.token = ""
         self.salt = ""
+        
+        // Clear files
+        let url = getMetadataURL()
+        try? FileManager.default.removeItem(at: url)
+        
         // Clear data
-        self.artists = []
-        self.albums = []
-        self.recentlyPlayed = []
-        self.playlists = []
-        self.allSongs = []
+        DispatchQueue.main.async {
+            self.artists = []
+            self.albums = []
+            self.recentlyPlayed = []
+            self.playlists = []
+            self.allSongs = []
+        }
+    }
+
+    // MARK: - Persistence
+
+    private func getMetadataURL() -> URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent("velora_metadata.json")
+    }
+
+    struct PersistedMetadata: Codable {
+        let artists: [Artist]
+        let albums: [Album]
+        let recentlyPlayed: [Track]
+        let playlists: [Playlist]
+        let allSongs: [Track]
+    }
+
+    func saveMetadataToDisk() {
+        // We do this on a background thread to avoid blocking UI during fast updates
+        let meta = PersistedMetadata(
+            artists: self.artists,
+            albums: self.albums,
+            recentlyPlayed: self.recentlyPlayed,
+            playlists: self.playlists,
+            allSongs: self.allSongs
+        )
+        DispatchQueue.global(qos: .background).async {
+            do {
+                let data = try JSONEncoder().encode(meta)
+                try data.write(to: self.getMetadataURL())
+            } catch {
+                // Silently fail as this is just a cache
+            }
+        }
+    }
+
+    func loadMetadataFromDisk() {
+        let url = getMetadataURL()
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        
+        do {
+            let data = try Data(contentsOf: url)
+            let decoded = try JSONDecoder().decode(PersistedMetadata.self, from: data)
+            DispatchQueue.main.async {
+                // Assign to backing variables to avoid triggering didSet loop
+                self.artists = decoded.artists
+                self.albums = decoded.albums
+                self.recentlyPlayed = decoded.recentlyPlayed
+                self.playlists = decoded.playlists
+                self.allSongs = decoded.allSongs
+            }
+        } catch {
+            AppLogger.shared.log("Failed to load metadata cache: \(error.localizedDescription)", level: .warning)
+        }
     }
 }

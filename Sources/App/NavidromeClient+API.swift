@@ -453,6 +453,7 @@ extension NavidromeClient {
     // MARK: - Batch Fetch
 
     func fetchEverything() {
+        // Always attempt to fetch from server. Caching is now a silent fallback.
         fetchRecentlyPlayed()
         fetchAlbums()
         fetchArtists()
@@ -489,11 +490,7 @@ extension NavidromeClient {
             }
         }
         
-        fetchRecentlyPlayed()
-        fetchAlbums()
-        fetchArtists()
-        fetchPlaylists()
-        fetchAllSongs()
+        fetchEverything()
     }
     
     func getMediaCacheSize() -> String {

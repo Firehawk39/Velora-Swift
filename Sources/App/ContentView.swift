@@ -23,6 +23,7 @@ struct ContentView: View {
 
     init() {
         let clientInstance = NavidromeClient()
+        clientInstance.loadMetadataFromDisk()
         let playbackInstance = PlaybackManager(client: clientInstance)
         _client = StateObject(wrappedValue: clientInstance)
         _playback = StateObject(wrappedValue: playbackInstance)
@@ -113,6 +114,8 @@ struct ContentView: View {
         .onAppear { 
             SyncManager.shared.configure(client: client, playback: playback)
             autoLogin() 
+            // Ping server immediately to trigger iOS Local Network permission dialog
+            client.ping { _, _ in }
         }
         .onChange(of: activeTab) { tab in
             withAnimation { 
