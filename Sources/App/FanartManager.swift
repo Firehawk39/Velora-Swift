@@ -66,6 +66,7 @@ class FanartManager: ObservableObject {
         if let cached = getCachedBackdrop(for: artist) {
             DispatchQueue.main.async {
                 self.currentArtistName = artist
+                // Use animation if it's a new artist, otherwise just set it
                 if isNewArtist {
                     withAnimation(.easeInOut(duration: 0.6)) {
                         self.currentBackdrop = cached
@@ -74,14 +75,13 @@ class FanartManager: ObservableObject {
                     self.currentBackdrop = cached
                 }
             }
-            AppLogger.shared.log("Fanart: Cache HIT for '\(artist)'", level: .debug)
             return
         }
-        AppLogger.shared.log("Fanart: Cache MISS for '\(artist)', fetching...", level: .info)
         
         // 2. Check if we are ALREADY fetching it (e.g. from prefetch)
-        let alreadyFetching = fetchQueue.sync {
-            activeBackdropFetches.contains(sanitized)
+        var alreadyFetching = false
+        fetchQueue.sync {
+            alreadyFetching = activeBackdropFetches.contains(sanitized)
         }
         
         // 3. Only if NOT in cache and it's a new artist, nil it
@@ -101,26 +101,19 @@ class FanartManager: ObservableObject {
         
         if alreadyFetching { return }
         
-        _ = fetchQueue.sync {
+        fetchQueue.sync {
             activeBackdropFetches.insert(sanitized)
         }
         
         let queryFanart = { (resolvedMBID: String) in
-            AppLogger.shared.log("Fanart: Querying fanart.tv for '\(artist)' MBID=\(resolvedMBID)", level: .info)
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url in
                 if let url = url {
-                    AppLogger.shared.log("Fanart: Got backdrop URL for '\(artist)': ...\(url.suffix(40))", level: .info)
+                    // Priority: UI fetch
                     self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.highPriority) { image in
-                        if image != nil {
-                            AppLogger.shared.log("Fanart: Backdrop saved for '\(artist)'", level: .info)
-                        } else {
-                            AppLogger.shared.log("Fanart: Download FAILED for '\(artist)'", level: .warning)
-                        }
                         self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                     }
                 } else {
-                    AppLogger.shared.log("Fanart: No backdrop found on fanart.tv for '\(artist)'", level: .warning)
                     self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                 }
             }
@@ -128,13 +121,10 @@ class FanartManager: ObservableObject {
         
         // 3. Resolve MBID and Fetch
         guard let validMBID = mbid, !validMBID.isEmpty else {
-            AppLogger.shared.log("Fanart: No MBID provided for '\(artist)', resolving from MusicBrainz...", level: .info)
             self.getMBID(for: artist, priority: URLSessionTask.highPriority) { resolved in
                 if let resolved = resolved {
-                    AppLogger.shared.log("Fanart: Resolved MBID for '\(artist)': \(resolved)", level: .info)
                     queryFanart(resolved)
                 } else {
-                    AppLogger.shared.log("Fanart: MBID resolution FAILED for '\(artist)'", level: .warning)
                     self.fetchQueue.async { self.activeBackdropFetches.remove(sanitized) }
                 }
             }

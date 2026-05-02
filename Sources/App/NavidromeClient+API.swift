@@ -8,44 +8,20 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "ping.view") else {
             completion(false, "Invalid URL configuration."); return
         }
-        AppLogger.shared.log("Ping: Connecting to \(url.host ?? "unknown")...", level: .info)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10.0
         
-        // Use a dedicated ephemeral session to avoid cached/stale connections
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 30.0  // iPadOS local network prompt can take time
-        config.timeoutIntervalForResource = 30.0
-        config.waitsForConnectivity = true
-        let session = URLSession(configuration: config)
-        
-        session.dataTask(with: url) { data, response, error in
-            if let error = error {
-                AppLogger.shared.log("Ping: Failed - \(error.localizedDescription)", level: .error)
-                completion(false, error.localizedDescription)
-                return
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                AppLogger.shared.log("Ping: HTTP \(httpResponse.statusCode)", level: .debug)
-            }
-            
-            guard let data = data else { 
-                completion(false, "No data received.")
-                return
-            }
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            if let error = error { completion(false, error.localizedDescription); return }
+            guard let data = data else { completion(false, "No data received."); return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 if decoded.subsonicResponse?.status == "ok" {
-                    AppLogger.shared.log("Ping: Success!", level: .info)
                     completion(true, nil)
                 } else {
-                    let msg = decoded.subsonicResponse?.error?.message ?? "Authentication failed."
-                    AppLogger.shared.log("Ping: Server rejected - \(msg)", level: .error)
-                    completion(false, msg)
+                    completion(false, decoded.subsonicResponse?.error?.message ?? "Authentication failed.")
                 }
-            } catch { 
-                AppLogger.shared.log("Ping: Parse error - \(error)", level: .error)
-                completion(false, "Failed to parse server response.") 
-            }
+            } catch { completion(false, "Failed to parse server response.") }
         }.resume()
     }
 
@@ -80,7 +56,7 @@ extension NavidromeClient {
                     }
                 }
             } catch { 
-                AppLogger.shared.log("Error decoding recent songs: \(error)", level: .error)
+                print("Error decoding recent songs: \(error)")
                 self.fetchRandomAsRecent()
             }
         }.resume()
@@ -106,7 +82,7 @@ extension NavidromeClient {
                                artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     }
                 }
-            } catch { AppLogger.shared.log("Error decoding random songs as fallback: \(error)", level: .error) }
+            } catch { print("Error decoding random songs as fallback: \(error)") }
         }.resume()
     }
 
@@ -127,7 +103,7 @@ extension NavidromeClient {
                               coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
                     }
                 }
-            } catch { AppLogger.shared.log("Error decoding albums: \(error)", level: .error) }
+            } catch { print("Error decoding albums: \(error)") }
         }.resume()
     }
 
@@ -139,12 +115,7 @@ extension NavidromeClient {
             return 
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            if let error = error {
-                AppLogger.shared.log("Network error fetching artists: \(error.localizedDescription)", level: .error)
-                completion?([])
-                return
-            }
-            guard let data = data else { 
+            guard error == nil, let data = data else { 
                 completion?([])
                 return 
             }
@@ -161,7 +132,7 @@ extension NavidromeClient {
                     completion?(parsed)
                 }
             } catch { 
-                AppLogger.shared.log("Error decoding artists: \(error)", level: .error) 
+                print("Error decoding artists: \(error)") 
                 completion?([])
             }
         }.resume()
@@ -392,16 +363,10 @@ extension NavidromeClient {
 
     // MARK: - All Songs
 
-    func fetchAllSongs(size: Int = 2000, completion: (([Track]) -> Void)? = nil) {
-        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": String(size)]) else { 
-            completion?([])
-            return 
-        }
+    func fetchAllSongs(size: Int = 2000) {
+        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": String(size)]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { 
-                completion?([])
-                return 
-            }
+            guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let songs = (decoded.subsonicResponse?.randomSongs?.song ?? decoded.subsonicResponse?.randomSongs2?.song ?? []).map { s in
@@ -414,34 +379,25 @@ extension NavidromeClient {
                     return t
                 }
                 
-                DispatchQueue.main.async { 
-                    if !songs.isEmpty {
+                if !songs.isEmpty {
+                    DispatchQueue.main.async { 
                         self.allSongs = songs 
                         self.syncLosslessPlaylist()
-                        completion?(songs)
-                    } else {
-                        self.fetchAlphabeticalSongs(completion: completion)
                     }
+                } else {
+                    self.fetchAlphabeticalSongs()
                 }
             } catch { 
                 print("Error decoding random songs: \(error)")
-                DispatchQueue.main.async {
-                    self.fetchAlphabeticalSongs(completion: completion)
-                }
+                self.fetchAlphabeticalSongs()
             }
         }.resume()
     }
 
-    private func fetchAlphabeticalSongs(completion: (([Track]) -> Void)? = nil) {
-        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "500"]) else { 
-            completion?([])
-            return 
-        }
+    private func fetchAlphabeticalSongs() {
+        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "500"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { 
-                completion?([])
-                return 
-            }
+            guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { s in
@@ -453,12 +409,8 @@ extension NavidromeClient {
                 DispatchQueue.main.async { 
                     self.allSongs = songs 
                     self.syncLosslessPlaylist()
-                    completion?(songs)
                 }
-            } catch { 
-                print("Search fallback failed: \(error)")
-                DispatchQueue.main.async { completion?([]) }
-            }
+            } catch { print("Search fallback failed: \(error)") }
         }.resume()
     }
 
@@ -496,28 +448,11 @@ extension NavidromeClient {
     // MARK: - Batch Fetch
 
     func fetchEverything() {
-        guard !baseUrl.isEmpty else { 
-            AppLogger.shared.log("Fetch: Aborted. Base URL is empty.", level: .warning)
-            return 
-        }
-        
-        AppLogger.shared.log("Fetch: Starting full library sync...", level: .info)
-        
-        fetchArtists { artists in
-            AppLogger.shared.log("Fetch: Received \(artists.count) artists.", level: .info)
-            // self.artists is updated inside fetchArtists
-            
-            // Parallel fetch for secondary data
-            self.fetchRecentlyPlayed()
-            self.fetchAlbums()
-            self.fetchPlaylists()
-            
-            self.fetchAllSongs { songs in
-                AppLogger.shared.log("Fetch: Received \(songs.count) total songs. Sync complete.", level: .info)
-                self.lastSyncDate = Date()
-                self.saveMetadataToDisk()
-            }
-        }
+        fetchRecentlyPlayed()
+        fetchAlbums()
+        fetchArtists()
+        fetchPlaylists()
+        fetchAllSongs()
     }
 
 
@@ -549,7 +484,11 @@ extension NavidromeClient {
             }
         }
         
-        fetchEverything()
+        fetchRecentlyPlayed()
+        fetchAlbums()
+        fetchArtists()
+        fetchPlaylists()
+        fetchAllSongs()
     }
     
     func getMediaCacheSize() -> String {
@@ -575,17 +514,6 @@ extension NavidromeClient {
         for dir in [backdropDir, portraitDir, metadataDir] {
             if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
                 for case let fileURL as URL in enumerator {
-                    if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                        totalSize += Int64(fileSize)
-                    }
-                }
-            }
-        }
-        
-        // Also include downloaded .mp3 files in the Document Directory
-        if let enumerator = fileManager.enumerator(at: docs, includingPropertiesForKeys: [.fileSizeKey]) {
-            for case let fileURL as URL in enumerator {
-                if fileURL.pathExtension.lowercased() == "mp3" {
                     if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
                         totalSize += Int64(fileSize)
                     }

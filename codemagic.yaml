@@ -97,6 +97,8 @@ workflows:
               <array>
                   <string>audio</string>
               </array>
+              <key>UIRequiresFullScreen</key>
+              <true/>
               <key>NSAppTransportSecurity</key>
               <dict>
                   <key>NSAllowsArbitraryLoads</key>
@@ -108,6 +110,18 @@ workflows:
               <true/>
               <key>CADisableMinimumFrameDurationOnPhone</key>
               <true/>
+              <key>CFBundleIconName</key>
+              <string>AppIcon</string>
+              <key>CFBundleIcons</key>
+              <dict>
+                  <key>CFBundlePrimaryIcon</key>
+                  <dict>
+                      <key>CFBundleIconFiles</key>
+                      <array>
+                          <string>AppIcon</string>
+                      </array>
+                  </dict>
+              </dict>
               <key>NSLocalNetworkUsageDescription</key>
               <string>Velora needs to connect to your Navidrome server on your local network.</string>
               <key>NSBonjourServices</key>

@@ -15,7 +15,7 @@ let package = Package(
             teamIdentifier: "",
             displayVersion: "1.0",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .note),
+            appIcon: .asset(name: "AppIcon"),
             accentColor: .presetColor(.red),
             supportedDeviceFamilies: [
                 .pad,
@@ -26,8 +26,7 @@ let package = Package(
                 .landscapeRight,
                 .landscapeLeft,
                 .portraitUpsideDown
-            ],
-            additionalInfoPlistContentFilePath: "Info.plist"
+            ]
         )
     ],
     targets: [

@@ -317,24 +317,19 @@ class MusicBrainzManager: ObservableObject {
 
     // MARK: - Silent Bulk Fetchers
 
-    func downloadMetadataSilently(for artistName: String, mbid: String? = nil) async {
-        var resolved = mbid
-        if resolved == nil {
-            resolved = await resolveMBIDAsync(for: artistName)
-        }
-        guard let finalMbid = resolved else { return }
+    func downloadMetadataSilently(for artistName: String) async {
+        let resolved = await resolveMBIDAsync(for: artistName)
+        guard let mbid = resolved else { return }
         
-        if self.nameToMBIDCache[artistName] != finalMbid {
-            self.nameToMBIDCache[artistName] = finalMbid
-            saveCache()
-        }
+        self.nameToMBIDCache[artistName] = mbid
+        saveCache()
         
-        let fileName = "artist_" + (finalMbid) + ".json"
+        let fileName = "artist_" + (mbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
         
         if self.fileManager.fileExists(atPath: fileUrl.path) { return }
 
-        let urlString = "https://musicbrainz.org/ws/2/artist/\(finalMbid)?fmt=json&inc=aliases+tags"
+        let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
         guard let url = URL(string: urlString) else { return }
         var request = URLRequest(url: url)
         request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
@@ -343,7 +338,7 @@ class MusicBrainzManager: ObservableObject {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             
-            let annotation = await fetchAnnotationAsync(entityMBID: finalMbid)
+            let annotation = await fetchAnnotationAsync(entityMBID: mbid)
             json["annotation"] = annotation
             if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                 try? savedData.write(to: fileUrl)

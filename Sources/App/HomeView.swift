@@ -27,7 +27,7 @@ struct HomeView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                Spacer().frame(height: isCompact ? 95 : 125)
+                Spacer().frame(height: isCompact ? 80 : 100)
 
                 // ── Greeting ─────────────────────────────────────────
                 Text(greeting)

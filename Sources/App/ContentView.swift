@@ -14,14 +14,8 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
-    var isLargeCanvas: Bool { 
-        if UIDevice.current.userInterfaceIdiom == .pad { return true }
-        return UIScreen.main.bounds.width >= 1024.0 
-    }
-    var isSmallDevice: Bool { 
-        if UIDevice.current.userInterfaceIdiom == .pad { return false }
-        return UIScreen.main.bounds.width <= 393 
-    }
+    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
+    var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
 
     var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 80 }
 
@@ -29,7 +23,6 @@ struct ContentView: View {
 
     init() {
         let clientInstance = NavidromeClient()
-        clientInstance.loadMetadataFromDisk()
         let playbackInstance = PlaybackManager(client: clientInstance)
         _client = StateObject(wrappedValue: clientInstance)
         _playback = StateObject(wrappedValue: playbackInstance)
@@ -59,9 +52,9 @@ struct ContentView: View {
                     }
                 )
                 .padding(.top, 14)
-                .opacity(((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? 0 : 1)
-                .offset(y: ((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
-                .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
+                .opacity(((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)) ? 0 : 1)
+                .offset(y: ((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
+                .allowsHitTesting(!((isIdle && activeTab == "now-playing") || selectedArtistId != nil || (activeTab == "now-playing" && playback.isLyricsMode)))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) // Ensure header is ALWAYS on top, above ArtistDetailView (200)
             }
@@ -118,29 +111,15 @@ struct ContentView: View {
         .statusBarHidden(true)
         .hidePersistentSystemOverlays()
         .onAppear { 
-            // Screen diagnostics - helps debug iPad scaling
-            let screen = UIScreen.main
-            let bounds = screen.bounds
-            let nativeBounds = screen.nativeBounds
-            let scale = screen.scale
-            let idiom = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
-            AppLogger.shared.log("Screen: \(idiom) bounds=\(Int(bounds.width))x\(Int(bounds.height)) native=\(Int(nativeBounds.width))x\(Int(nativeBounds.height)) scale=\(scale)x tier=\(ScreenTier.current)", level: .info)
-            
             SyncManager.shared.configure(client: client, playback: playback)
-            
-            // Immediately load from disk if available for offline speed
-            client.loadMetadataFromDisk()
-            
-            // Then attempt to connect to server
-            autoLogin()
+            autoLogin() 
         }
-        .onChange(of: activeTab) { tab in
+        .onChange(of: activeTab) { _ in
             withAnimation { 
                 isIdle = false 
                 selectedArtistId = nil
                 selectedArtistName = nil
             }
-            UIApplication.shared.isIdleTimerDisabled = (tab == "now-playing")
         }
         .fullScreenCover(isPresented: $showSettings) {
             SettingsView(showSettings: $showSettings)
@@ -154,40 +133,35 @@ struct ContentView: View {
     @ViewBuilder
     private var pageContent: some View {
         ZStack {
-            HomeView(onArtistClick: { id, name in
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    selectedArtistId = id
-                    selectedArtistName = name
-                }
-            })
-            .opacity(activeTab == "home" ? 1 : 0)
-            .allowsHitTesting(activeTab == "home")
-
-            LibraryView(onArtistClick: { id, name in
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    selectedArtistId = id
-                    selectedArtistName = name
-                }
-            })
-            .opacity(activeTab == "library" ? 1 : 0)
-            .allowsHitTesting(activeTab == "library")
-
-            AppSettingsView()
-                .opacity(activeTab == "settings" ? 1 : 0)
-                .allowsHitTesting(activeTab == "settings")
-
-            SearchView(onArtistClick: { id, name in
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    selectedArtistId = id
-                    selectedArtistName = name
-                }
-            })
-            .opacity(activeTab == "search" ? 1 : 0)
-            .allowsHitTesting(activeTab == "search")
-
-            NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle, isActive: activeTab == "now-playing")
-                .opacity(activeTab == "now-playing" ? 1 : 0)
-                .allowsHitTesting(activeTab == "now-playing")
+            switch activeTab {
+            case "home":
+                HomeView(onArtistClick: { id, name in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedArtistId = id
+                        selectedArtistName = name
+                    }
+                })
+            case "library":
+                LibraryView(onArtistClick: { id, name in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedArtistId = id
+                        selectedArtistName = name
+                    }
+                })
+            case "settings":
+                AppSettingsView()
+            case "search":
+                SearchView(onArtistClick: { id, name in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedArtistId = id
+                        selectedArtistName = name
+                    }
+                })
+            case "now-playing":
+                NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle)
+            default:
+                HomeView()
+            }
 
             if let id = selectedArtistId, let name = selectedArtistName {
                 ArtistDetailView(
@@ -224,34 +198,18 @@ struct ContentView: View {
     }
 
     private func autoLogin() {
-        AppLogger.shared.log("App: autoLogin started. baseUrl='\(client.baseUrl)'", level: .info)
+        let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
+        let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
+        let isOnline = UserDefaults.standard.bool(forKey: "velora_is_online_mode")
         
-        guard !client.baseUrl.isEmpty else {
-            AppLogger.shared.log("App: No server configured. Showing setup.", level: .warning)
-            return
-        }
+        let localUrl = savedUrl.isEmpty ? "http://192.168.1.13:4533" : savedUrl
+        let finalUrl = isOnline ? "https://sopranosnavi.share.zrok.io" : localUrl
         
-        // Ping first to verify connectivity, then sync
-        AppLogger.shared.log("App: Pinging server at \(client.baseUrl)...", level: .info)
-        client.ping { success, errorMsg in
-            DispatchQueue.main.async {
-                if success {
-                    AppLogger.shared.log("App: Ping OK! Starting full sync.", level: .info)
-                    self.client.fetchEverything()
-                } else {
-                    AppLogger.shared.log("App: Ping FAILED: \(errorMsg ?? "unknown"). Trying sync anyway...", level: .warning)
-                    // Still try to fetch - maybe the ping endpoint is restricted but data works
-                    self.client.fetchEverything()
-                    
-                    // Retry after 5 seconds in case of initial local network permission delay
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                        if self.client.artists.isEmpty && self.client.allSongs.isEmpty {
-                            AppLogger.shared.log("App: Retry sync after 5s delay (local network permission?)...", level: .info)
-                            self.client.fetchEverything()
-                        }
-                    }
-                }
-            }
-        }
+        let finalUser = savedUser.isEmpty ? "tony" : savedUser
+        let finalPass = "u4vTyG7BcBxR-9-"
+        
+        client.configure(url: finalUrl, user: finalUser, pass: finalPass)
+        client.fetchEverything()
+        showSettings = false
     }
 }

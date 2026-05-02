@@ -18,7 +18,7 @@ struct SearchView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            Spacer().frame(height: isCompact ? 95 : 125)
+            Spacer().frame(height: isCompact ? 80 : 100)
             SearchSearchBar(query: $query, isDarkMode: isDarkMode, hPad: hPad, isCompact: isCompact, onSearch: performSearch)
             
             ScrollView(.vertical, showsIndicators: false) {

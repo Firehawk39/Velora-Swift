@@ -2,38 +2,26 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UILaunchScreen</key>
-	<dict/>
-	<key>UILaunchStoryboardName</key>
-	<string></string>
-	<key>UIRequiresFullScreen</key>
-	<true/>
-	<key>UISupportsFullScreenInEveryConfiguration</key>
-	<true/>
-	<key>UIStatusBarHidden</key>
-	<true/>
-	<key>UIViewControllerBasedStatusBarAppearance</key>
-	<false/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Velora needs local network access to connect to your Navidrome server and stream your music library.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_subsonic._tcp</string>
-		<string>_http._tcp</string>
-	</array>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<true/>
-		<key>UISceneConfigurations</key>
-		<dict/>
-	</dict>
+    <key>CFBundleExecutable</key>
+    <string>Velora</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.velora.aistudio</string>
+    <key>CFBundleName</key>
+    <string>Velora</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
+    <key>CADisableMinimumFrameDuration</key>
+    <true/>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
 </dict>
 </plist>

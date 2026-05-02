@@ -5,20 +5,15 @@ import Foundation
 public enum ScreenTier {
     case tiny, compact, regular, large, huge
     public static var current: ScreenTier {
-        // On iPad hardware, always use tablet tiers regardless of compatibility scaling
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            let w = UIScreen.main.bounds.width
-            if w >= 1024 { return .huge }  // iPad Pro 12.9"
-            return .large                   // All other iPads
-        }
-        // iPhone tier detection by screen width
         let w = UIScreen.main.bounds.width
-        if w <= 320 { return .tiny }    // iPhone SE 1st Gen
-        if w < 414 { return .compact }  // Standard iPhone / mini
-        return .regular                  // Plus/Max iPhones
+        if w <= 320 { return .tiny } // iPhone SE 1st Gen
+        if w < 414 { return .compact } // Standard iPhone / mini
+        if w < 768 { return .regular } // Plus/Max iPhones
+        if w < 1024 { return .large } // 10.25" Displays / standard iPads
+        return .huge // iPad Pro 12.9"
     }
     public static var isSE: Bool { current == .tiny }
-    public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+    public static var isPhone: Bool { UIScreen.main.bounds.width < 768 }
     public static var isHuge: Bool { current == .huge }
 }
 
@@ -61,7 +56,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 42 : 46) : 54.0).weight(.black))
+                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -87,23 +82,23 @@ struct AppHeader: View {
             ZStack {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: 90, height: 46)
+                    .frame(width: 72, height: 36)
                 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 38, height: 38)
-                    .offset(x: isDarkMode ? 22 : -22)
+                    .frame(width: 28, height: 28)
+                    .offset(x: isDarkMode ? 18 : -18)
                 
                 HStack {
                     Image(systemName: "sun.max.fill")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(isDarkMode ? .gray : .yellow)
                     Spacer()
                     Image(systemName: "moon.fill")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(isDarkMode ? .blue : .gray)
                 }
-                .frame(width: 68)
+                .frame(width: 48)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
@@ -119,7 +114,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: ScreenTier.isPhone ? 38 : 42))
+                .font(.system(size: ScreenTier.isPhone ? 24 : 26))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -127,18 +122,19 @@ struct AppHeader: View {
     }
     
     private var navigationPill: some View {
-        HStack(spacing: ScreenTier.isPhone ? 4 : 8) {
+        HStack(spacing: 0) {
             TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(ScreenTier.isPhone ? 8 : 10)
+        .padding(ScreenTier.isPhone ? 6 : 8)
         .background(
             isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
             (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
+        .scaleEffect(ScreenTier.isPhone ? 0.9 : 0.95) // Slightly smaller on everything
     }
 }
 
@@ -162,10 +158,10 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: ScreenTier.isPhone ? 16 : 16, weight: isActive ? .bold : .medium))
+                .font(.system(size: ScreenTier.isPhone ? 15 : 14, weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 .background(
                     isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
                 )
@@ -386,7 +382,7 @@ struct QueuePanel: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Up Next")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(isDarkMode ? .white : .black)
                 Text("\(playback.queue.count) tracks in queue")
                     .font(.system(size: 14))

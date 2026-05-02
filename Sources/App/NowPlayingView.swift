@@ -9,7 +9,6 @@ struct NowPlayingView: View {
     @Environment(\.verticalSizeClass)   var vSizeClass
     @Binding var isQueueOpen: Bool
     @Binding var isIdle:      Bool
-    var isActive: Bool = false
 
     @State private var isDragging   = false
     @State private var dragProgress: Double = 0
@@ -139,11 +138,6 @@ struct NowPlayingView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in resetIdleTimer() }
-            )
             .highPriorityGesture(
                 DragGesture(minimumDistance: 40)
                     .onChanged { _ in
@@ -167,25 +161,16 @@ struct NowPlayingView: View {
             )
         }
         .onAppear { 
-            if isActive {
-                AppLogger.shared.log("NowPlaying: View Appeared (Active)", level: .debug)
-                resetIdleTimer() 
-                refreshMetadata()
-            }
-        }
-        .onChange(of: isActive) { active in
-            if active {
-                AppLogger.shared.log("NowPlaying: Tab Switched (Active)", level: .debug)
-                resetIdleTimer()
-                refreshMetadata()
-            } else {
-                AppLogger.shared.log("NowPlaying: Tab Switched (Inactive)", level: .debug)
-                stopIdleTimer()
-                withAnimation { isIdle = false }
-            }
+            isIdle = false // Ensure we don't start in idle state
+            startIdleTimer() 
+            refreshMetadata()
         }
         .onDisappear { 
             stopIdleTimer() 
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
+        .onChange(of: isIdle) { idle in
+            UIApplication.shared.isIdleTimerDisabled = idle
         }
         .onChange(of: isQueueOpen) { isOpen in
             if isOpen { stopIdleTimer() } else { resetIdleTimer() }
@@ -198,28 +183,15 @@ struct NowPlayingView: View {
             refreshMetadata()
         }
         .preferredColorScheme(.dark)
-        .statusBarHidden(isIdle)
-        .hideOverlays(if: isIdle)
     }
 
     private func startIdleTimer() {
         stopIdleTimer()
         guard !isQueueOpen && !playback.isLyricsMode else { return }
-        guard isActive else { return } // Don't start timer if view isn't the active tab
         
-        // MUST schedule on main RunLoop otherwise the timer never fires
-        DispatchQueue.main.async {
-            self.idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
-                DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 2.5)) {
-                        self.isIdle = true
-                    }
-                    AppLogger.shared.log("NowPlaying: Entered idle state", level: .debug)
-                }
-            }
-            // Ensure the timer is added to the common run loop mode
-            if let timer = self.idleTimer {
-                RunLoop.main.add(timer, forMode: .common)
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
+            withAnimation(.easeInOut(duration: 2.5)) {
+                isIdle = true
             }
         }
     }
@@ -798,24 +770,5 @@ struct NowPlayingView: View {
         
         // 3. Album info
         mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: nil)
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func hideOverlays(if condition: Bool) -> some View {
-        if condition {
-            if #available(iOS 16.0, *) {
-                self.persistentSystemOverlays(.hidden)
-            } else {
-                self
-            }
-        } else {
-            if #available(iOS 16.0, *) {
-                self.persistentSystemOverlays(.automatic)
-            } else {
-                self
-            }
-        }
     }
 }

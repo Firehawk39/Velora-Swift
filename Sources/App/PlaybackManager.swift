@@ -324,22 +324,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 
-                // Fetch MBID from Navidrome if possible to completely bypass MusicBrainz fallback lookups
-                if let artistId = track.artistId {
-                    self.client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                        // 1. Prefetch Backdrop Silently
-                        FanartManager.shared.downloadBackdropSilently(for: artist, mbid: mbid)
-                        
-                        Task {
-                            // 2. Prefetch Metadata Silently
-                            await MusicBrainzManager.shared.downloadMetadataSilently(for: artist, mbid: mbid)
-                        }
-                    }
-                } else {
-                    // Fallback to MusicBrainz API search
-                    FanartManager.shared.downloadBackdropSilently(for: artist)
-                    await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
-                }
+                // 1. Prefetch Backdrop Silently
+                FanartManager.shared.downloadBackdropSilently(for: artist)
+                
+                // 2. Prefetch Metadata Silently
+                await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
             }
         }
     }
@@ -490,25 +479,12 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     func loadDownloadedTracks() {
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: [.fileSizeKey])
-            var validIds: [String] = []
-            
-            for url in fileURLs {
-                if ["mp3", "flac", "m4a"].contains(url.pathExtension.lowercased()) {
-                    let resources = try? url.resourceValues(forKeys: [.fileSizeKey])
-                    let fileSize = resources?.fileSize ?? 0
-                    
-                    if fileSize < 100_000 {
-                        try? FileManager.default.removeItem(at: url)
-                        AppLogger.shared.log("Deleted corrupted/incomplete track file: \(url.lastPathComponent)", level: .warning)
-                    } else {
-                        validIds.append(url.deletingPathExtension().lastPathComponent)
-                    }
-                }
-            }
-            
+            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
+            let ids = fileURLs
+                .filter { ["mp3", "flac", "m4a"].contains($0.pathExtension.lowercased()) }
+                .map { $0.deletingPathExtension().lastPathComponent }
             DispatchQueue.main.async {
-                self.downloadedTrackIds = Set(validIds)
+                self.downloadedTrackIds = Set(ids)
                 self.objectWillChange.send()
             }
         } catch {
@@ -617,32 +593,6 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             return 
         }
         
-        // 1. Check HTTP Status
-        if let httpResponse = downloadTask.response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-            AppLogger.shared.log("Task \(downloadTask.taskIdentifier) failed with HTTP \(httpResponse.statusCode)", level: .error)
-            DispatchQueue.main.async {
-                self.failedDownloadIds.insert(trackId)
-                self.downloadProgress.removeValue(forKey: trackId)
-                self.downloadETAs.removeValue(forKey: trackId)
-                self.downloadStartTimes.removeValue(forKey: trackId)
-            }
-            return
-        }
-        
-        // 2. Check File Size (must be > 100KB to be a valid audio file)
-        let resources = try? location.resourceValues(forKeys: [.fileSizeKey])
-        let fileSize = resources?.fileSize ?? 0
-        if fileSize < 100_000 {
-            AppLogger.shared.log("Task \(downloadTask.taskIdentifier) downloaded file is too small (\(fileSize) bytes), marking as corrupted.", level: .error)
-            DispatchQueue.main.async {
-                self.failedDownloadIds.insert(trackId)
-                self.downloadProgress.removeValue(forKey: trackId)
-                self.downloadETAs.removeValue(forKey: trackId)
-                self.downloadStartTimes.removeValue(forKey: trackId)
-            }
-            return
-        }
-        
         // Use track's suffix if available, fallback to mp3
         var suffix = "mp3"
         if let track = client.allSongs.first(where: { $0.id == trackId }), let s = track.suffix {
@@ -671,7 +621,6 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         } catch {
             AppLogger.shared.log("Failed to save track \(trackId): \(error.localizedDescription)", level: .error)
             DispatchQueue.main.async {
-                self.failedDownloadIds.insert(trackId)
                 self.downloadProgress.removeValue(forKey: trackId)
             }
         }
