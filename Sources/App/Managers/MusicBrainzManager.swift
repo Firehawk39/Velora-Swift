@@ -383,7 +383,7 @@ class MusicBrainzManager: ObservableObject {
                             continuation.resume(); return 
                         }
                         
-                        let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+                        let annotation = await self.fetchAnnotationAsync(entityMBID: mbid)
                         json["annotation"] = annotation
                         if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                             try? savedData.write(to: fileUrl)
@@ -408,6 +408,41 @@ class MusicBrainzManager: ObservableObject {
                     continuation.resume(returning: first["text"] as? String)
                 } else {
                     continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Album Metadata Helpers
+    
+    func hasAlbumMetadata(albumName: String, artistName: String) -> Bool {
+        let safeAlbum = albumName.replacingOccurrences(of: "/", with: "_")
+        let safeArtist = artistName.replacingOccurrences(of: "/", with: "_")
+        let fileUrl = metadataDir.appendingPathComponent("album_\(safeArtist)_\(safeAlbum).json")
+        return fileManager.fileExists(atPath: fileUrl.path)
+    }
+    
+    func downloadAlbumMetadataSilently(albumName: String, artistName: String) async {
+        if hasAlbumMetadata(albumName: albumName, artistName: artistName) { return }
+        
+        return await withCheckedContinuation { continuation in
+            resolveAlbumMBID(album: albumName, artist: artistName) { [weak self] mbid in
+                guard let self = self, let mbid = mbid else {
+                    continuation.resume()
+                    return
+                }
+                
+                let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=genres"
+                guard let url = URL(string: urlString) else { continuation.resume(); return }
+                
+                _ = self.performMusicBrainzRequest(url: url) { data in
+                    if let data = data {
+                        let safeAlbum = albumName.replacingOccurrences(of: "/", with: "_")
+                        let safeArtist = artistName.replacingOccurrences(of: "/", with: "_")
+                        let fileUrl = self.metadataDir.appendingPathComponent("album_\(safeArtist)_\(safeAlbum).json")
+                        try? data.write(to: fileUrl)
+                    }
+                    continuation.resume()
                 }
             }
         }

@@ -503,11 +503,6 @@ struct NowPlayingView: View {
                                 .font(.system(size: isSE ? 14 : 16))
                                 .foregroundColor(.white.opacity(0.8))
                                 .lineLimit(10)
-                        } else if let annotation = mb.currentArtistInfo?.annotation {
-                            Text(annotation)
-                                .font(.system(size: isSE ? 14 : 16))
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(10)
                         } else {
                             Text("No further information found.")
                                 .font(.system(size: isSE ? 14 : 16))
