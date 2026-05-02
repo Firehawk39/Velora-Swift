@@ -26,12 +26,12 @@ struct ArtistDetailView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             (isDarkMode ? Color(hex: "#0A0A0A") : Color(hex: "#FFFFFF"))
-                .ignoresSafeArea()
-            
-            // Background backdrop removed for a clean look with radiating glow behind portrait
             
             ScrollView {
                 VStack(spacing: 0) {
+                    // Spacer to account for global header height (approx 100px)
+                    Spacer().frame(height: isCompact ? 80 : 110)
+                    
                     heroSection
                     
                     VStack(alignment: .leading, spacing: 48) {
@@ -85,22 +85,7 @@ struct ArtistDetailView: View {
     }
     
     private var headerOverlay: some View {
-        let opacity = min(1, max(0, (-scrollOffset - 300) / 50))
-        return HStack {
-            Text(artistName)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(isDarkMode ? .white : .black)
-                .opacity(Double(opacity))
-            Spacer()
-        }
-        .padding(.horizontal, isCompact ? 24 : 48)
-        .frame(maxWidth: .infinity)
-        .frame(height: 100)
-        .background(
-            (isDarkMode ? Color(hex: "#0A0A0A") : Color(hex: "#FFFFFF"))
-                .opacity(Double(opacity))
-        )
-        .zIndex(100)
+        EmptyView()
     }
     
     private var heroNameSize: CGFloat { 

@@ -23,8 +23,8 @@ struct AppHeader: View {
     @Binding var showProfileMenu: Bool
     let isDarkMode: Bool
     let toggleDark: () -> Void
-    var onAction: () -> Void
-
+    let subtitle: String?
+    
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
@@ -55,10 +55,21 @@ struct AppHeader: View {
                 activeTab = "home" 
             } 
         }) {
-            Text("Velora.")
-                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 42.0).weight(.bold))
-                .kerning(-1.2)
-                .foregroundColor(headerFG)
+            HStack(spacing: 12) {
+                Text("Velora.")
+                    .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 42.0).weight(.bold))
+                    .kerning(-1.2)
+                    .foregroundColor(headerFG)
+                
+                if let subtitle = subtitle {
+                    Text("/")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundColor(.gray)
+                    Text(subtitle)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(headerFG)
+                }
+            }
         }
         .accessibilityLabel("Velora Home")
         .hoverEffect()

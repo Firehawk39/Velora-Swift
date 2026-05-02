@@ -28,6 +28,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var downloadedTrackIds = Set<String>()
     @Published var failedDownloadIds = Set<String>()
     @Published var activeDownloadCount = 0
+    private var playbackHistory: [Int] = []
     
     func isDownloaded(_ trackId: String) -> Bool {
         // Double-check memory state against actual filesystem integrity
@@ -193,6 +194,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             self.queue = [track]
             self.queueIndex = 0
         }
+        self.playbackHistory.removeAll()
         
         loadAndPlay(track: track)
     }
@@ -366,10 +368,19 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     func skipForward() {
         guard !queue.isEmpty else { return }
+        
+        // Record current position in history before moving
+        playbackHistory.append(queueIndex)
+        // Keep history manageable
+        if playbackHistory.count > 50 { playbackHistory.removeFirst() }
+
         let nextIndex: Int
         if isShuffle {
             var rand = Int.random(in: 0..<queue.count)
-            if rand == queueIndex && queue.count > 1 { rand = (rand + 1) % queue.count }
+            // Avoid playing same song again if queue is large enough
+            if rand == queueIndex && queue.count > 1 { 
+                rand = (rand + 1) % queue.count 
+            }
             nextIndex = rand
         } else {
             nextIndex = (queueIndex + 1) % queue.count
@@ -387,14 +398,25 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func skipBackward() {
-        // If more than 3 seconds in, restart. Otherwise go to previous.
+        // If more than 3 seconds in, restart current track.
         if progress > 3 {
             player?.seek(to: .zero)
-        } else {
-            let prevIndex = queueIndex - 1
-            guard prevIndex >= 0 else { return }
-            queueIndex = prevIndex
+            return
+        }
+        
+        // Otherwise, use history to find the exact previous song
+        if let lastIndex = playbackHistory.popLast() {
+            queueIndex = lastIndex
             loadAndPlay(track: queue[queueIndex])
+        } else {
+            // Fallback to linear backward if history is empty
+            let prevIndex = queueIndex - 1
+            if prevIndex >= 0 {
+                queueIndex = prevIndex
+                loadAndPlay(track: queue[queueIndex])
+            } else {
+                player?.seek(to: .zero)
+            }
         }
     }
     

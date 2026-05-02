@@ -15,6 +15,9 @@ class FanartManager: ObservableObject {
     // Fanart.tv API Key - Provided by user
     private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80" 
     
+    private var currentBackdropTask: URLSessionDataTask?
+    private var currentPortraitTask: URLSessionDataTask?
+
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.backdropDir = docs.appendingPathComponent("Backdrops", isDirectory: true)
@@ -54,7 +57,7 @@ class FanartManager: ObservableObject {
         let fileUrl = getBackdropUrl(for: artist)
         return IntegrityManager.shared.isImageValid(at: fileUrl)
     }
-    
+
     func getPortraitUrl(for artist: String) -> URL {
         let sanitized = sanitizeFileName(artist)
         return self.portraitDir.appendingPathComponent(sanitized + ".jpg")
@@ -94,12 +97,13 @@ class FanartManager: ObservableObject {
         }
         
         // 3. Only if NOT in cache and it's a new artist, nil it
-        // BUT if it's already fetching, we might want to wait a split second instead of flashing to black
         if isNewArtist {
             self.currentArtistName = artist
+            // KILL previous tasks as they are no longer priority
+            currentBackdropTask?.cancel()
+            currentBackdropTask = nil
+            
             DispatchQueue.main.async {
-                // If it's already fetching, we don't nil it immediately to allow a possible smooth transition
-                // unless we want to clear the old artist's face.
                 if !alreadyFetching {
                     withAnimation(.easeInOut(duration: 0.4)) {
                         self.currentBackdrop = nil
@@ -245,7 +249,14 @@ class FanartManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue("VeloraMusicApp/1.1 ( https://github.com/Firehawk39/Velora-Swift ; admin@velora.ai )", forHTTPHeaderField: "User-Agent")
         
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            if type == .background { self.currentBackdropTask = nil }
+            else { self.currentPortraitTask = nil }
+            
+            if let error = error as NSError?, error.code == NSURLErrorCancelled { return }
+            
             if let error = error {
                 AppLogger.shared.log("[Fanart] Network error for \(artistName): \(error.localizedDescription)")
             }
@@ -254,7 +265,6 @@ class FanartManager: ObservableObject {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if type == .background {
                         if let bgs = json["artistbackground"] as? [[String: Any]], !bgs.isEmpty {
-                            // Stable Deterministic Selection: FNV-1a hash ensures consistency across app launches
                             let hashValue = self.stableHash(artistName.lowercased())
                             let index = abs(hashValue) % bgs.count
                             let selected = bgs[index]["url"] as? String
@@ -270,6 +280,10 @@ class FanartManager: ObservableObject {
             } catch { print("Fanart JSON error: \(error)") }
             completion(nil)
         }
+        
+        if type == .background { self.currentBackdropTask = task }
+        else { self.currentPortraitTask = task }
+        
         task.priority = priority
         task.resume()
     }
@@ -286,7 +300,7 @@ class FanartManager: ObservableObject {
     }
     
     private func downloadAndCache(from urlString: String, to localUrl: URL, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (UIImage?) -> Void) {
-        guard let url = URL(string: urlString) else { return }
+        guard let url = URL(string: urlString) else { completion(nil); return }
         
         var request = URLRequest(url: url)
         request.networkServiceType = priority == URLSessionTask.highPriority ? .responsiveData : .background
@@ -295,8 +309,6 @@ class FanartManager: ObservableObject {
             if let data = data, let image = UIImage(data: data) {
                 try? data.write(to: localUrl)
                 
-                // CRITICAL: Even if this was a "silent" or background fetch, 
-                // if the artist is the one we are currently viewing, update the UI!
                 DispatchQueue.main.async {
                     if self.currentArtistName == artistName {
                         withAnimation(.easeInOut(duration: 0.8)) {
