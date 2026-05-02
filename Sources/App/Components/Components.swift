@@ -56,7 +56,7 @@ struct AppHeader: View {
                 activeTab = "home" 
             } 
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: 0) {
                 Text("Velora.")
                     .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 42.0).weight(.bold))
                     .kerning(-1.2)
