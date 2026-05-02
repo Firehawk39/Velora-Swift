@@ -1,8 +1,10 @@
-# Velora 
-### The smartest private music player ever made.
-
 <div align="center">
+  <h1>Velora</h1>
+  <h3>The smartest private music player ever made.</h3>
+
   <img src="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon~ios-marketing.png" width="200" height="200" style="border-radius: 20%">
+  
+  <br/>
   
   [![Swift](https://img.shields.io/badge/App-Swift-FA7343?logo=swift&logoColor=white)](https://developer.apple.com/swift/)
   [![Navidrome](https://img.shields.io/badge/Server-Navidrome-orange?logo=music&logoColor=white)](https://www.navidrome.org/)
