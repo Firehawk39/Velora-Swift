@@ -8,20 +8,44 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "ping.view") else {
             completion(false, "Invalid URL configuration."); return
         }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10.0
+        AppLogger.shared.log("Ping: Connecting to \(url.host ?? "unknown")...", level: .info)
         
-        URLSession.shared.dataTask(with: request) { data, _, error in
-            if let error = error { completion(false, error.localizedDescription); return }
-            guard let data = data else { completion(false, "No data received."); return }
+        // Use a dedicated ephemeral session to avoid cached/stale connections
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 30.0  // iPadOS local network prompt can take time
+        config.timeoutIntervalForResource = 30.0
+        config.waitsForConnectivity = true
+        let session = URLSession(configuration: config)
+        
+        session.dataTask(with: url) { data, response, error in
+            if let error = error {
+                AppLogger.shared.log("Ping: Failed - \(error.localizedDescription)", level: .error)
+                completion(false, error.localizedDescription)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                AppLogger.shared.log("Ping: HTTP \(httpResponse.statusCode)", level: .debug)
+            }
+            
+            guard let data = data else { 
+                completion(false, "No data received.")
+                return
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 if decoded.subsonicResponse?.status == "ok" {
+                    AppLogger.shared.log("Ping: Success!", level: .info)
                     completion(true, nil)
                 } else {
-                    completion(false, decoded.subsonicResponse?.error?.message ?? "Authentication failed.")
+                    let msg = decoded.subsonicResponse?.error?.message ?? "Authentication failed."
+                    AppLogger.shared.log("Ping: Server rejected - \(msg)", level: .error)
+                    completion(false, msg)
                 }
-            } catch { completion(false, "Failed to parse server response.") }
+            } catch { 
+                AppLogger.shared.log("Ping: Parse error - \(error)", level: .error)
+                completion(false, "Failed to parse server response.") 
+            }
         }.resume()
     }
 
