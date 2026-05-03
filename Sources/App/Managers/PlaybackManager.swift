@@ -513,6 +513,16 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
     
+    func skipForward() {
+        let newTime = min(progress + 15.0, duration)
+        seek(to: newTime)
+    }
+    
+    func skipBackward() {
+        let newTime = max(progress - 15.0, 0)
+        seek(to: newTime)
+    }
+    
     // MARK: - Seeking (Steering Wheel Hold)
     
     private func startSeeking(forward: Bool) {
