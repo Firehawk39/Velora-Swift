@@ -687,6 +687,16 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         task.resume()
     }
     
+    func stopAllDownloads() {
+        downloadSession.getAllTasks { tasks in
+            tasks.forEach { $0.cancel() }
+        }
+        downloadTasks.removeAll()
+        downloadProgress.removeAll()
+        downloadStartTimes.removeAll()
+        activeDownloadCount = 0
+    }
+    
     func isDownloaded(_ trackId: String) -> Bool {
         // If it's in the active download map, it's not finished yet
         if downloadTasks.values.contains(trackId) { return false }

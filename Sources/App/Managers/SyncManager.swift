@@ -89,16 +89,13 @@ final class SyncManager: ObservableObject {
                 auditStatus = "Auditing: \(fileName)"
                 
                 // Integrity check logic
-                let isValid: Bool
                 if fileName.hasPrefix("artist_") || fileName.hasPrefix("album_") {
-                    isValid = IntegrityManager.shared.isMetadataValid(at: fileUrl)
+                    _ = IntegrityManager.shared.isMetadataValid(at: fileUrl)
                 } else if fileName.hasSuffix(".jpg") || fileName.hasSuffix(".png") {
-                    isValid = IntegrityManager.shared.isImageValid(at: fileUrl)
+                    _ = IntegrityManager.shared.isImageValid(at: fileUrl)
                 } else if fileName.hasSuffix(".mp3") || fileName.hasSuffix(".flac") || fileName.hasSuffix(".m4a") {
                     let trackId = fileUrl.deletingPathExtension().lastPathComponent
-                    isValid = IntegrityManager.shared.isTrackValid(id: trackId)
-                } else {
-                    isValid = true
+                    _ = IntegrityManager.shared.isTrackValid(id: trackId)
                 }
                 
                 processed += 1
