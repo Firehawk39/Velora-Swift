@@ -12,7 +12,7 @@ struct SettingsView: View {
     var isDark: Bool { colorScheme == .dark }
 
     @State private var step: SettingsStep = .server
-    @State private var serverAddress: String = UserDefaults.standard.string(forKey: "velora_server_url") ?? "http://"
+    @State private var serverUrl: String = UserDefaults.standard.string(forKey: "velora_server_url") ?? "http://"
     @State private var username: String     = UserDefaults.standard.string(forKey: "velora_username") ?? ""
     @State private var password: String     = ""
 
@@ -75,14 +75,14 @@ struct SettingsView: View {
             FloatingLabelField(
                 label: "Server Endpoint URL",
                 placeholder: "http://192.168.1.13:4533",
-                text: $serverAddress,
+                text: $serverUrl,
                 isDark: isDark,
                 borderCol: borderCol,
                 labelCol: labelCol
             )
 
             // Next button
-            Button(action: { if isValidUrl(serverAddress) { withAnimation { step = .login } } }) {
+            Button(action: { if isValidUrl(serverUrl) { withAnimation { step = .login } } }) {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.right")
                     Text("Next")
@@ -90,11 +90,11 @@ struct SettingsView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 64)
-                .background(isValidUrl(serverAddress) ? accentBg : accentBg.opacity(0.5))
+                .background(isValidUrl(serverUrl) ? accentBg : accentBg.opacity(0.5))
                 .foregroundColor(accentFg)
                 .cornerRadius(100)
             }
-            .disabled(!isValidUrl(serverAddress))
+            .disabled(!isValidUrl(serverUrl))
             .padding(.top, 28)
 
 
@@ -109,7 +109,7 @@ struct SettingsView: View {
     private var loginStep: some View {
         VStack(spacing: 0) {
             // Server badge (matches the web pill showing the URL)
-            Text(serverAddress)
+            Text(serverUrl)
                 .font(.system(size: 12))
                 .foregroundColor(Color(hex: "#9ca3af"))
                 .padding(.horizontal, 12)
@@ -199,7 +199,7 @@ struct SettingsView: View {
         status = .connecting
 
         // 1. Configure the client temporarily to test
-        client.configure(url: serverAddress, user: username, pass: password)
+        client.configure(url: serverUrl, user: username, pass: password)
         
         // 2. Perform actual verification with server
         client.ping { success, errorMessage in
@@ -208,7 +208,7 @@ struct SettingsView: View {
                     status = .connected
                     
                     // 3. Persist configuration only on success
-                    UserDefaults.standard.set(serverAddress, forKey: "velora_server_url")
+                    UserDefaults.standard.set(serverUrl, forKey: "velora_server_url")
                     UserDefaults.standard.set(username, forKey: "velora_username")
                     
                     // 4. Securely save password in Keychain

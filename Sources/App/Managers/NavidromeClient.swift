@@ -78,4 +78,28 @@ class NavidromeClient: ObservableObject {
         self.playlists = []
         self.allSongs = []
     }
+
+    // MARK: - Cache Size (not in API extension)
+
+    func getMediaCacheSize() -> String {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let mediaDir = docs.appendingPathComponent("Media")
+        let backdropDir = docs.appendingPathComponent("Backdrops")
+
+        var totalSize: Int64 = 0
+        [mediaDir, backdropDir].forEach { url in
+            if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) {
+                for case let fileUrl as URL in enumerator {
+                    if let attrs = try? fileUrl.resourceValues(forKeys: [.fileSizeKey]), let size = attrs.fileSize {
+                        totalSize += Int64(size)
+                    }
+                }
+            }
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useAll]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: totalSize)
+    }
 }
