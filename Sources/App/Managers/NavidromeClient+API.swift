@@ -1,6 +1,15 @@
 import Foundation
 
 extension NavidromeClient {
+    
+    /// Orchestrates a full refresh of all library metadata (Artists, Albums, Playlists, and Songs).
+    func fetchEverything() {
+        fetchRecentlyPlayed()
+        fetchAlbums()
+        fetchArtists()
+        fetchPlaylists()
+        fetchAllSongs()
+    }
 
     // MARK: - Ping
 
@@ -139,6 +148,16 @@ extension NavidromeClient {
                 completion?([])
             }
         }.resume()
+    }
+
+    /// Async version of fetchArtists for modern concurrency.
+    @discardableResult
+    func fetchArtistsAsync() async -> [Artist] {
+        await withCheckedContinuation { continuation in
+            fetchArtists { artists in
+                continuation.resume(returning: artists)
+            }
+        }
     }
 
     // MARK: - Album Tracks
@@ -505,6 +524,15 @@ extension NavidromeClient {
         }
         
         fetchInternal(offset: 0, currentBatch: initialBatchSize)
+    }
+
+    /// Async version of fetchAllTracks for modern concurrency.
+    func fetchAllTracksAsync() async -> [Track] {
+        await withCheckedContinuation { continuation in
+            fetchAllTracks { tracks in
+                continuation.resume(returning: tracks)
+            }
+        }
     }
     
     private func mapSubsonicSongToTrack(_ s: SubsonicSong) -> Track {

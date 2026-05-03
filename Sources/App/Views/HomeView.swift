@@ -15,10 +15,8 @@ struct HomeView: View {
     // Greeting — matches the web's time-of-day logic
     var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
-        let customName = UserDefaults.standard.string(forKey: "velora_display_name")
-        let name = (customName != nil && !customName!.isEmpty)
-            ? customName!
-            : (client.username.isEmpty ? "there" : (client.username.prefix(1).uppercased() + client.username.dropFirst()))
+        let name = client.username.isEmpty ? "there" : (client.username.prefix(1).uppercased() + client.username.dropFirst())
+        
         if h >= 12 && h < 17 { return "Good afternoon, \(name)" }
         if h >= 17 || h < 5  { return "Good evening, \(name)"   }
         return "Good morning, \(name)"

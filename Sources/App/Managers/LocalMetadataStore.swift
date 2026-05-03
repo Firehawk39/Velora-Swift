@@ -229,6 +229,36 @@ class LocalMetadataStore {
         }
     }
     
+    func updateArtistInfo(for artistId: String, bio: String?, mbid: String?) {
+        guard let context = context else { return }
+        
+        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { $0.id == artistId })
+        
+        do {
+            if let persistent = try context.fetch(fetchDescriptor).first {
+                if let bio = bio { persistent.biography = bio }
+                if let mbid = mbid { persistent.musicBrainzId = mbid }
+                persistent.lastAuditDate = Date()
+                try context.save()
+            }
+        } catch {
+            print("Error updating artist info: \(error)")
+        }
+    }
+
+    func updateAlbumYear(for albumId: String, year: Int) {
+        guard let context = context else { return }
+        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == albumId })
+        do {
+            if let persistent = try context.fetch(fetchDescriptor).first {
+                persistent.releaseYear = year
+                try context.save()
+            }
+        } catch {
+            print("Error updating album year: \(error)")
+        }
+    }
+    
     func updateDownloadStatus(for trackId: String, isDownloaded: Bool, localPath: String?) {
         guard let context = context else { return }
         let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == trackId })
@@ -256,6 +286,18 @@ class LocalMetadataStore {
         return (try? context.fetch(fetchDescriptor)) ?? []
     }
     
+    func fetchAllArtists() -> [PersistentArtist] {
+        guard let context = context else { return [] }
+        let fetchDescriptor = FetchDescriptor<PersistentArtist>(sortBy: [SortDescriptor(\.name)])
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
+    func fetchAllAlbums() -> [PersistentAlbum] {
+        guard let context = context else { return [] }
+        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(sortBy: [SortDescriptor(\.name)])
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
     func searchTracks(query: String) -> [PersistentTrack] {
         guard let context = context, !query.isEmpty else { return [] }
         
@@ -263,7 +305,9 @@ class LocalMetadataStore {
             predicate: #Predicate<PersistentTrack> { track in
                 track.title.localizedStandardContains(query) ||
                 (track.artist ?? "").localizedStandardContains(query) ||
-                (track.album ?? "").localizedStandardContains(query)
+                (track.album ?? "").localizedStandardContains(query) ||
+                (track.aiGenrePrediction ?? "").localizedStandardContains(query) ||
+                (track.aiAtmosphere ?? "").localizedStandardContains(query)
             },
             sortBy: [SortDescriptor(\.title)]
         )
@@ -279,6 +323,84 @@ class LocalMetadataStore {
                 artist.name.localizedStandardContains(query)
             },
             sortBy: [SortDescriptor(\.name)]
+        )
+        
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
+    // MARK: - Audit & Enrichment Helpers
+    
+    func fetchTracksMissingGenre() -> [PersistentTrack] {
+        guard let context = context else { return [] }
+        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
+            predicate: #Predicate<PersistentTrack> { track in
+                track.aiGenrePrediction == nil
+            }
+        )
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
+    func fetchTracksWithUnknownMetadata() -> [PersistentTrack] {
+        guard let context = context else { return [] }
+        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
+            predicate: #Predicate<PersistentTrack> { track in
+                track.artist == "Unknown" || track.album == "Unknown"
+            }
+        )
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
+    func fetchAlbumsMissingYear() -> [PersistentAlbum] {
+        guard let context = context else { return [] }
+        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(
+            predicate: #Predicate<PersistentAlbum> { album in
+                album.releaseYear == 0 || album.releaseYear == nil
+            }
+        )
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
+    func fetchTracksWithLowResArt() -> [PersistentTrack] {
+        guard let context = context else { return [] }
+        // We look for tracks that don't have "size=500" in their coverArt URL (Navidrome convention for high-res)
+        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
+            predicate: #Predicate<PersistentTrack> { track in
+                track.coverArt != nil
+            }
+        )
+        let results = (try? context.fetch(fetchDescriptor)) ?? []
+        return results.filter { $0.coverArt?.contains("size=500") == false }
+    }
+    
+    func fetchArtistsMissingInfo() -> [PersistentArtist] {
+        guard let context = context else { return [] }
+        let fetchDescriptor = FetchDescriptor<PersistentArtist>(
+            predicate: #Predicate<PersistentArtist> { artist in
+                artist.biography == nil || artist.musicBrainzId == nil
+            }
+        )
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
+    func fetchTracksMissingBackdrop() -> [PersistentTrack] {
+        guard let context = context else { return [] }
+        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
+            predicate: #Predicate<PersistentTrack> { track in
+                !track.hasCustomBackdrop
+            }
+        )
+        return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+
+    func fetchAuditTargets() -> [PersistentTrack] {
+        guard let context = context else { return [] }
+        
+        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
+            predicate: #Predicate<PersistentTrack> { track in
+                track.aiGenrePrediction == nil || 
+                track.artist == "Unknown" || 
+                track.album == "Unknown"
+            }
         )
         
         return (try? context.fetch(fetchDescriptor)) ?? []

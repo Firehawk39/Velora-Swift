@@ -28,6 +28,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var downloadedTrackIds = Set<String>()
     @Published var failedDownloadIds = Set<String>()
     @Published var activeDownloadCount = 0
+    @Published var showOfflineOnly: Bool = false
     private var playbackHistory: [Int] = []
     
     enum RepeatMode {
@@ -38,6 +39,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var downloadETAs: [String: String] = [:]
     
     private var downloadQueue: [Track] = []
+    private var downloadTasks: [Int: String] = [:]
     private var downloadStartTimes: [String: Date] = [:]
     private var maxConcurrentDownloads: Int {
         UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0 
@@ -70,6 +72,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private var playerItemObserver: Any?
     private var statusObserver: NSKeyValueObservation?
     private var currentArtworkTrackId: String? = nil
+    private var seekTimer: Timer?
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
@@ -481,8 +484,32 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         if let sync = hiFiSynchronizer {
             sync.setRate(isPlaying ? 1.0 : 0, time: cmTime)
         } else {
-            player?.seek(to: cmTime)
+            player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
         }
+    }
+    
+    // MARK: - Seeking (Steering Wheel Hold)
+    
+    private func startSeeking(forward: Bool) {
+        stopSeeking()
+        // Standard seeking: Move 2 seconds every 0.2s (10x speed)
+        // This is smoother for AVPlayer than 0.1s updates
+        seekTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let delta = forward ? 2.0 : -2.0
+            let newTime = max(0, min(self.duration, self.progress + delta))
+            self.seek(to: newTime)
+            DispatchQueue.main.async {
+                self.progress = newTime
+            }
+        }
+    }
+    
+    private func stopSeeking() {
+        seekTimer?.invalidate()
+        seekTimer = nil
+        // Ensure info center is updated with final position
+        updateNowPlayingInfo()
     }
     
     // MARK: - Metadata & Lyrics
@@ -552,13 +579,60 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     private func setupRemoteCommandCenter() {
         let center = MPRemoteCommandCenter.shared()
+        center.playCommand.isEnabled = true
         center.playCommand.addTarget { _ in self.play(); return .success }
+        
+        center.pauseCommand.isEnabled = true
         center.pauseCommand.addTarget { _ in self.pause(); return .success }
+        
+        center.nextTrackCommand.isEnabled = true
         center.nextTrackCommand.addTarget { _ in self.nextTrack(); return .success }
+        
+        center.previousTrackCommand.isEnabled = true
         center.previousTrackCommand.addTarget { _ in self.prevTrack(); return .success }
-        center.changePlaybackPositionCommand.addTarget { event in
+        
+        // Seek commands for holding buttons
+        center.seekForwardCommand.isEnabled = true
+        center.seekForwardCommand.addTarget { [weak self] event in
+            guard let self = self, let ev = event as? MPSeekCommandEvent else { return .commandFailed }
+            if ev.type == .beginSeeking {
+                self.startSeeking(forward: true)
+            } else {
+                self.stopSeeking()
+            }
+            return .success
+        }
+        
+        center.seekBackwardCommand.isEnabled = true
+        center.seekBackwardCommand.addTarget { [weak self] event in
+            guard let self = self, let ev = event as? MPSeekCommandEvent else { return .commandFailed }
+            if ev.type == .beginSeeking {
+                self.startSeeking(forward: false)
+            } else {
+                self.stopSeeking()
+            }
+            return .success
+        }
+        
+        // Skip commands for quick jumps (sometimes triggered by steering wheel "double click" or menu)
+        center.skipForwardCommand.isEnabled = true
+        center.skipForwardCommand.preferredIntervals = [15.0]
+        center.skipForwardCommand.addTarget { event in
+            self.seek(to: self.progress + 15.0)
+            return .success
+        }
+        
+        center.skipBackwardCommand.isEnabled = true
+        center.skipBackwardCommand.preferredIntervals = [15.0]
+        center.skipBackwardCommand.addTarget { event in
+            self.seek(to: self.progress - 15.0)
+            return .success
+        }
+        
+        center.changePlaybackPositionCommand.isEnabled = true
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
             if let ev = event as? MPChangePlaybackPositionCommandEvent {
-                self.seek(to: ev.positionTime)
+                self?.seek(to: ev.positionTime)
                 return .success
             }
             return .commandFailed
@@ -579,10 +653,49 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func isDownloaded(_ trackId: String) -> Bool {
+        // If it's in the active download map, it's not finished yet
+        if downloadTasks.values.contains(trackId) { return false }
+        
         if downloadedTrackIds.contains(trackId) { return true }
         let exists = IntegrityManager.shared.isTrackValid(id: trackId)
         if exists { downloadedTrackIds.insert(trackId) }
         return exists
+    }
+    
+    func filterOffline(_ tracks: [Track]) -> [Track] {
+        return tracks.filter { isDownloaded($0.id) }
+    }
+    
+    func filterOffline(_ albums: [Album], allSongs: [Track]) -> [Album] {
+        // Only show albums where at least one track is downloaded
+        return albums.filter { album in
+            allSongs.contains { $0.albumId == album.id && isDownloaded($0.id) }
+        }
+    }
+    
+    func filterOffline(_ artists: [Artist], allSongs: [Track]) -> [Artist] {
+        // Only show artists who have at least one downloaded track
+        return artists.filter { artist in
+            allSongs.contains { $0.artistId == artist.id && isDownloaded($0.id) }
+        }
+    }
+
+    func filterOffline(_ playlists: [Playlist], allSongs: [Track]) -> [Playlist] {
+        // For playlists, we need to check if any of the tracks currently in allSongs 
+        // (which represents the local cache/fetched list) are downloaded.
+        // However, playlists might have tracks not in allSongs yet if they haven't been fetched.
+        // For now, if we want to be strict, we show playlists that have at least one downloaded track.
+        return playlists.filter { playlist in
+            // If we have track IDs for the playlist, we could check them. 
+            // But Playlist object only has 'songCount'.
+            // So we'll have to rely on what tracks we know about.
+            allSongs.contains { track in
+                // This is a bit weak because we don't know which tracks are in the playlist 
+                // without fetching the playlist tracks first.
+                // But usually, if a user has downloaded tracks, they'll be in 'allSongs'.
+                isDownloaded(track.id)
+            }
+        }
     }
     
     func checkFileSystemForTrack(_ trackId: String) -> Bool {

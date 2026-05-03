@@ -11,7 +11,6 @@ struct LibraryView: View {
     @State private var viewMode: ViewMode = .grid
     @State private var sortMode: SortMode = .alphabetical
     @State private var showSortDropdown: Bool = false
-    @State private var showOfflineOnly: Bool = false
     @State private var selectedPlaylist: Playlist? = nil
     @State private var playlistTracks: [Track] = []
     @State private var isLoadingPlaylist: Bool = false
@@ -103,18 +102,18 @@ struct LibraryView: View {
                     .accessibilityLabel("View Options")
                     
                     // Offline Only Toggle
-                    Button(action: { showOfflineOnly.toggle() }) {
+                    Button(action: { playback.showOfflineOnly.toggle() }) {
                         HStack(spacing: 6) {
-                            Image(systemName: showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
+                            Image(systemName: playback.showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
                             if !isCompact {
                                 Text("Offline")
                             }
                         }
                         .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                        .foregroundColor(showOfflineOnly ? .red : (isDarkMode ? .white : .black))
+                        .foregroundColor(playback.showOfflineOnly ? .red : (isDarkMode ? .white : .black))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
+                        .background(Capsule().fill(playback.showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
                     }
                     .accessibilityLabel("Offline Only Filter")
                     
@@ -198,7 +197,7 @@ struct LibraryView: View {
             ScrollView(showsIndicators: false) {
                 Group {
                     switch category {
-                    case "playlists": PlaylistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline) { p in
+                    case "playlists": PlaylistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: playback.showOfflineOnly || forceOffline) { p in
                         selectedPlaylist = p
                         isLoadingPlaylist = true
                         client.fetchPlaylistTracks(playlistId: p.id) { t in
@@ -206,13 +205,13 @@ struct LibraryView: View {
                             self.isLoadingPlaylist = false
                         }
                     }
-                    case "artists":   ArtistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, onArtistClick: { id, name in
+                    case "artists":   ArtistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: playback.showOfflineOnly || forceOffline, onArtistClick: { id, name in
                         withAnimation {
                             onArtistClick?(id, name)
                         }
                     })
-                    case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
-                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
+                    case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: playback.showOfflineOnly || forceOffline)
+                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: playback.showOfflineOnly || forceOffline)
                     default:          EmptyView()
                     }
                 }
@@ -301,12 +300,7 @@ private struct PlaylistGridView: View {
 
     var body: some View {
         let base = client.playlists
-        let filtered = showOfflineOnly ? base.filter { p in
-            // For playlists, we consider it offline if at least one song is downloaded 
-            // (or ideally if the user has flagged the whole playlist for offline, but we don't have that yet)
-            // For now, let's just show all playlists, but we could improve this.
-            return true 
-        } : base
+        let filtered = showOfflineOnly ? playback.filterOffline(base, allSongs: client.allSongs) : base
         
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
@@ -425,9 +419,7 @@ private struct ArtistGridView: View {
 
     var body: some View {
         let base = client.artists
-        let filtered = showOfflineOnly ? base.filter { artist in
-            client.allSongs.contains(where: { $0.artistId == artist.id && playback.isDownloaded($0.id) })
-        } : base
+        let filtered = showOfflineOnly ? playback.filterOffline(base, allSongs: client.allSongs) : base
         
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
@@ -480,10 +472,7 @@ private struct AlbumGridView: View {
 
     var body: some View {
         let base = client.albums
-        let filtered = showOfflineOnly ? base.filter { album in
-            // Album is offline if it has at least one downloaded track
-            client.allSongs.contains(where: { $0.albumId == album.id && playback.isDownloaded($0.id) })
-        } : base
+        let filtered = showOfflineOnly ? playback.filterOffline(base, allSongs: client.allSongs) : base
         
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
@@ -675,7 +664,7 @@ private struct PlaylistDetailView: View {
     
     @State private var viewMode: LibraryView.ViewMode = .list
     @State private var sortMode: LibraryView.SortMode = .alphabetical
-    @State private var showOfflineOnly: Bool = false
+    @State private var sortMode: LibraryView.SortMode = .alphabetical
 
     var body: some View {
         let filtered = showOfflineOnly ? playback.filterOffline(tracks) : tracks
@@ -725,18 +714,18 @@ private struct PlaylistDetailView: View {
                 }
                 
                 // Offline Only Toggle (Matching Songs style)
-                Button(action: { showOfflineOnly.toggle() }) {
+                Button(action: { playback.showOfflineOnly.toggle() }) {
                     HStack(spacing: 6) {
-                        Image(systemName: showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
+                        Image(systemName: playback.showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
                         if !isCompact {
                             Text("Offline")
                         }
                     }
                     .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                    .foregroundColor(showOfflineOnly ? .red : (isDarkMode ? .white : .black))
+                    .foregroundColor(playback.showOfflineOnly ? .red : (isDarkMode ? .white : .black))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(Capsule().fill(showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
+                    .background(Capsule().fill(playback.showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
                 }
                 
                 // Sort Mode Menu (Matching Songs style)
@@ -798,7 +787,7 @@ private struct PlaylistDetailView: View {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "music.note.list").font(.system(size: 40)).foregroundColor(.gray.opacity(0.3))
-                    Text(showOfflineOnly ? "No offline tracks in this playlist" : "No tracks in this playlist").foregroundColor(.gray)
+                    Text(playback.showOfflineOnly ? "No offline tracks in this playlist" : "No tracks in this playlist").foregroundColor(.gray)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)

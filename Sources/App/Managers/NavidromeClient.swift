@@ -2,6 +2,8 @@ import Foundation
 import CryptoKit
 
 class NavidromeClient: ObservableObject {
+    static let shared = NavidromeClient()
+    
     @Published var artists: [Artist] = []
     @Published var albums: [Album] = []
     @Published var recentlyPlayed: [Track] = []
@@ -25,6 +27,7 @@ class NavidromeClient: ObservableObject {
         self.salt = SubsonicAuth.generateSalt()
         self.token = SubsonicAuth.generateToken(password: pass, salt: self.salt)
     }
+
 
     // MARK: - URL Construction
 
@@ -59,7 +62,6 @@ class NavidromeClient: ObservableObject {
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
         UserDefaults.standard.removeObject(forKey: "velora_server_url")
         UserDefaults.standard.removeObject(forKey: "velora_username")
-        UserDefaults.standard.removeObject(forKey: "velora_display_name")
         
         if !savedUser.isEmpty {
             KeychainHelper.shared.delete(service: "velora-password", account: savedUser)

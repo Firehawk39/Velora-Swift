@@ -146,6 +146,39 @@ class FanartManager: ObservableObject {
         AppLogger.shared.log("[Fanart] Fetch start for \(artist)")
         queryFanart(validMBID)
     }
+
+    /// Async version of fetchBackdrop that returns the image if found.
+    func fetchBackdropAsync(for artist: String, mbid: String? = nil) async -> UIImage? {
+        await withCheckedContinuation { continuation in
+            // Check cache first
+            if let cached = getCachedBackdrop(for: artist) {
+                continuation.resume(returning: cached)
+                return
+            }
+            
+            // We reuse the existing logic but wrap the completion
+            MusicBrainzManager.shared.resolveMBID(for: artist) { resolved in
+                guard let mbid = resolved else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                let urlString = "https://webservice.fanart.tv/v3/music/\(mbid)?api_key=\(self.fanartApiKey)"
+                self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url in
+                    guard let url = url else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    
+                    let sanitized = self.sanitizeFileName(artist)
+                    let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
+                    self.downloadAndCache(from: url, to: fileUrl, artistName: artist) { image in
+                        continuation.resume(returning: image)
+                    }
+                }
+            }
+        }
+    }
     
     func downloadBackdropSilently(for artist: String, mbid: String? = nil) {
         let sanitized = sanitizeFileName(artist)
