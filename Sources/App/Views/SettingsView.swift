@@ -74,7 +74,7 @@ struct SettingsView: View {
             // Floating-label field
             FloatingLabelField(
                 label: "Server Endpoint URL",
-                placeholder: "http://192.168.1.6:4533",
+                placeholder: "http://192.168.1.13:4533",
                 text: $serverAddress,
                 isDark: isDark,
                 borderCol: borderCol,
@@ -305,14 +305,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
-    @StateObject private var aiManager = AIManager.shared
-    @AppStorage("gemini_api_key") private var geminiApiKey: String = ""
-    @AppStorage("discogs_api_key") private var discogsApiKey: String = ""
-    @AppStorage("discogs_api_secret") private var discogsApiSecret: String = ""
-    @AppStorage("fal_api_key") private var falApiKey: String = ""
-    
-    @State private var showGeminiKey = false
-    @State private var showFalKey = false
+
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @AppStorage("velora_crossfade_enabled") private var isCrossfadeEnabled: Bool = false
     @AppStorage("velora_crossfade_duration") private var crossfadeDuration: Double = 5.0
@@ -525,107 +518,7 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
-                            
-                            // AI Integrity Audit Button
-                            Button(action: {
-                                Task {
-                                    await aiManager.runLibraryAudit()
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: "wand.and.stars.inverse")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(aiManager.isProcessing ? .purple : labelCol)
-                                    
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(aiManager.isProcessing ? "AI Working..." : "Run AI Library Audit")
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(isDark ? .white : .black)
-                                        Text(aiManager.isProcessing ? aiManager.auditStatus : "Scan for missing backdrops and enriched metadata")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.gray)
-                                            .lineLimit(1)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    if aiManager.isProcessing {
-                                        CircularProgressView(progress: aiManager.fixProgress, size: 24, strokeWidth: 3, accentColor: .purple)
-                                    } else {
-                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
-                                    }
-                                }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                            }
-                            
-                            // Audit Results Dashboard
-                            if !aiManager.auditResults.isEmpty {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("Audit Results")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(labelCol.opacity(0.8))
-                                        .textCase(.uppercase)
-                                    
-                                    ForEach(aiManager.auditResults) { result in
-                                        HStack {
-                                            Image(systemName: result.type == .missingBackdrop ? "photo.on.rectangle" : "doc.text.fill")
-                                                .font(.system(size: 14))
-                                                .foregroundColor(.gray)
-                                            VStack(alignment: .leading) {
-                                                Text(result.description)
-                                                    .font(.system(size: 13))
-                                                    .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
-                                            }
-                                            Spacer()
-                                            
-                                            Button(action: {
-                                                Task {
-                                                    await aiManager.fixLibraryIssues(stages: [result.type])
-                                                }
-                                            }) {
-                                                Text("Fix")
-                                                    .font(.system(size: 11, weight: .bold))
-                                                    .padding(.horizontal, 12)
-                                                    .padding(.vertical, 4)
-                                                    .background(accentBg.opacity(0.2))
-                                                    .foregroundColor(accentBg)
-                                                    .cornerRadius(8)
-                                            }
-                                            .disabled(aiManager.isProcessing)
-                                            
-                                            Text("\(result.count)")
-                                                .font(.system(size: 13, weight: .bold))
-                                                .foregroundColor(accentBg)
-                                                .frame(minWidth: 24)
-                                        }
-                                        .padding(.vertical, 4)
-                                    }
-                                    
-                                    Button(action: {
-                                        Task {
-                                            await aiManager.fixLibraryIssues()
-                                        }
-                                    }) {
-                                        Text("Fix All Issues")
-                                            .font(.system(size: 14, weight: .bold))
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 12)
-                                            .background(accentBg)
-                                            .foregroundColor(accentFg)
-                                            .cornerRadius(12)
-                                    }
-                                    .padding(.top, 8)
-                                    .disabled(aiManager.isProcessing)
-                                }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.02) : Color.black.opacity(0.02))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(labelCol.opacity(0.2), lineWidth: 1))
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
+
 
                             // Clear Media Cache
                             Button(action: {
@@ -672,66 +565,6 @@ struct AppSettingsView: View {
                         
                         // Audio Engine
                         VStack(alignment: .leading, spacing: 20) {
-                            Text("AI & Intelligence")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(labelCol)
-                                .textCase(.uppercase)
-                                .padding(.leading, 4)
-                            
-                            VStack(spacing: 20) {
-                                FloatingLabelField(
-                                    label: "Gemini API Key",
-                                    placeholder: "Required for metadata enrichment",
-                                    text: $geminiApiKey,
-                                    isDark: isDark,
-                                    borderCol: borderCol,
-                                    labelCol: labelCol,
-                                    isSecure: !showGeminiKey,
-                                    trailingIcon: showGeminiKey ? "eye.slash" : "eye",
-                                    onTrailingTap: { showGeminiKey.toggle() }
-                                )
-                                
-                                FloatingLabelField(
-                                    label: "fal.ai API Key",
-                                    placeholder: "Required for backdrop generation",
-                                    text: $falApiKey,
-                                    isDark: isDark,
-                                    borderCol: borderCol,
-                                    labelCol: labelCol,
-                                    isSecure: !showFalKey,
-                                    trailingIcon: showFalKey ? "eye.slash" : "eye",
-                                    onTrailingTap: { showFalKey.toggle() }
-                                )
-                                
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("Discogs Integration (Optional)")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.gray)
-                                    
-                                    FloatingLabelField(
-                                        label: "Discogs Key",
-                                        placeholder: "API Key",
-                                        text: $discogsApiKey,
-                                        isDark: isDark,
-                                        borderCol: borderCol,
-                                        labelCol: labelCol
-                                    )
-                                    
-                                    FloatingLabelField(
-                                        label: "Discogs Secret",
-                                        placeholder: "API Secret",
-                                        text: $discogsApiSecret,
-                                        isDark: isDark,
-                                        borderCol: borderCol,
-                                        labelCol: labelCol
-                                    )
-                                }
-                                .padding(.top, 8)
-                            }
-                            .padding()
-                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
-                            .cornerRadius(16)
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
 
                             Text("Audio Engine")
                                 .font(.system(size: 14, weight: .bold))
@@ -857,30 +690,11 @@ struct AppSettingsView: View {
         .sheet(isPresented: $showLogs) {
             LogsView()
         }
-        .onChange(of: geminiApiKey) { newValue in
-            if let data = newValue.data(using: .utf8) {
-                KeychainHelper.shared.save(data, service: "velora-ai", account: "gemini_api_key")
-            }
-        }
-        .onChange(of: discogsApiKey) { newValue in
-            if let data = newValue.data(using: .utf8) {
-                KeychainHelper.shared.save(data, service: "velora-ai", account: "discogs_api_key")
-            }
-        }
-        .onChange(of: discogsApiSecret) { newValue in
-            if let data = newValue.data(using: .utf8) {
-                KeychainHelper.shared.save(data, service: "velora-ai", account: "discogs_api_secret")
-            }
-        }
-        .onChange(of: falApiKey) { newValue in
-            if let data = newValue.data(using: .utf8) {
-                KeychainHelper.shared.save(data, service: "velora-ai", account: "fal_api_key")
-            }
-        }
+
     }
 
     private func reconnectWithCurrentMode() {
-        let localUrl = serverAddress.isEmpty ? "http://192.168.1.13:4533" : serverAddress
+        let localUrl = serverUrl.isEmpty ? "http://192.168.1.13:4533" : serverUrl
         let finalUrl = isOnlineMode ? "https://sopranosnavi.share.zrok.io" : localUrl
         let finalUser = username.isEmpty ? "Harsh" : username
         
