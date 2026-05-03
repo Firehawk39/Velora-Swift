@@ -206,7 +206,12 @@ final class SyncManager: ObservableObject {
             }
             
             let tracks = client.allSongs
-            let tracksToDownload = tracks.filter { !(playback?.checkFileSystemForTrack($0.id) ?? false) }
+            let tracksToDownload = tracks.filter { track in
+                if let persistent = LocalMetadataStore.shared.fetchTrack(id: track.id), persistent.isDownloaded {
+                    return false
+                }
+                return !(playback?.checkFileSystemForTrack(track.id) ?? false)
+            }
             let totalTracks = Double(tracks.count)
             let totalToDownload = tracksToDownload.count
             let alreadyDownloaded = Int(totalTracks) - totalToDownload

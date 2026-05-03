@@ -29,14 +29,14 @@ struct NowPlayingView: View {
     
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
-        if isLargeCanvas { return 220 }
-        if !isCompact { return 160 }
-        return isSE ? 130.0 : 120.0
+        if isLargeCanvas { return 250 }
+        if !isCompact { return 190 }
+        return isSE ? 120.0 : 140.0
     }
     private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return 32 }
-        if !isCompact { return 26 }
-        return isSE ? 18.0 : 20.0
+        if isLargeCanvas { return 38 }
+        if !isCompact { return 32 }
+        return isSE ? 20.0 : 24.0
     }
     private var tabletArtistSize:  CGFloat { 
         if isLargeCanvas { return 18 }
@@ -225,8 +225,8 @@ struct NowPlayingView: View {
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
-                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.55 : 0.65), 260) : tabletArtworkSize)
-                        .padding(.bottom, isSE ? 8 : 12)
+                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.48 : 0.65), 260) : tabletArtworkSize)
+                        .padding(.bottom, isSE ? 4 : 12)
                     
                     // Centered Metadata
                     VStack(alignment: .center, spacing: 8) {
@@ -252,11 +252,11 @@ struct NowPlayingView: View {
                 if !isIdle {
                     // Controls Section for Portrait
                     VStack(spacing: 24) {
-                        HStack(spacing: 24) {
+                        HStack(spacing: isSE ? 18 : 24) {
                             playbackControls
                         }
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 16)
+                        .padding(.horizontal, isSE ? 24 : 32)
+                        .padding(.vertical, isSE ? 12 : 16)
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
@@ -266,7 +266,7 @@ struct NowPlayingView: View {
                             queueButton
                             downloadButton
                         }
-                        .scaleEffect(0.9)
+                        .scaleEffect(isSE ? 0.8 : 0.9)
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -282,7 +282,7 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer() // Push everything to bottom
             
-            VStack(spacing: isShortCanvas ? 20 : 32) {
+            VStack(spacing: isSE ? 12 : (isShortCanvas ? 20 : 32)) {
                 if playback.isLyricsMode {
                     // Inline Lyrics State
                     HStack {
@@ -360,7 +360,7 @@ struct NowPlayingView: View {
                     ))
                 }
             }
-            .padding(.bottom, isIdle ? (isShortCanvas ? 40 : 60) : 32)
+            .padding(.bottom, isIdle ? (isShortCanvas ? (isSE ? 16 : 40) : 60) : (isSE ? 16 : 32))
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
         .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
@@ -385,9 +385,9 @@ struct NowPlayingView: View {
         // Play/Pause
         Button { playback.togglePlayPause(); resetIdleTimer() } label: {
             ZStack {
-                Circle().fill(Color.white).frame(width: 48, height: 48)
+                Circle().fill(Color.white).frame(width: isSE ? 40 : 48, height: isSE ? 40 : 48)
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18)).foregroundColor(.black)
+                    .font(.system(size: isSE ? 16 : 18)).foregroundColor(.black)
             }
         }
         .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")

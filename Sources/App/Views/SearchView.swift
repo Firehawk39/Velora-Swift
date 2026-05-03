@@ -50,12 +50,29 @@ struct SearchView: View {
             self.tracks = []; self.albums = []; self.artists = []
             return
         }
+        
+        // 1. Instant Local Search
+        let localTracks = LocalMetadataStore.shared.searchTracks(query: trimmed).map { pt in
+            Track(id: pt.id, title: pt.title, album: pt.album, artist: pt.artist, 
+                  duration: pt.duration ?? 0, coverArt: pt.coverArt, 
+                  artistId: pt.artistId, albumId: pt.albumId, suffix: pt.suffix)
+        }
+        
+        if !localTracks.isEmpty {
+            self.tracks = localTracks
+            // We don't set isLoading = false yet because we still want remote results for albums/artists
+        }
+        
         isLoading = true
         client.search(query: trimmed) { foundTracks, foundAlbums, foundArtists in
-            self.tracks = foundTracks
-            self.albums = foundAlbums
-            self.artists = foundArtists
-            self.isLoading = false
+            DispatchQueue.main.async {
+                // Merge results, prioritizing remote but keeping local enriched data if needed
+                // For now, we'll just replace with remote as it's the "source of truth" for the current server state
+                self.tracks = foundTracks
+                self.albums = foundAlbums
+                self.artists = foundArtists
+                self.isLoading = false
+            }
         }
     }
 }

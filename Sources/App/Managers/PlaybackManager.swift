@@ -30,30 +30,6 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var activeDownloadCount = 0
     private var playbackHistory: [Int] = []
     
-    func isDownloaded(_ trackId: String) -> Bool {
-        // Double-check memory state against actual filesystem integrity
-        if downloadedTrackIds.contains(trackId) {
-            return true
-        }
-        // Fallback: If it's on disk but not in our memory set yet, verify and add it
-        if IntegrityManager.shared.isTrackValid(id: trackId) {
-            DispatchQueue.main.async {
-                self.downloadedTrackIds.insert(trackId)
-            }
-            return true
-        }
-        return false
-    }
-    
-    /// Checks if a track is downloaded
-    func checkFileSystemForTrack(_ trackId: String) -> Bool {
-        return IntegrityManager.shared.isTrackValid(id: trackId)
-    }
-    
-    func filterOffline(_ tracks: [Track]) -> [Track] {
-        return tracks.filter { isDownloaded($0.id) }
-    }
-    
     enum RepeatMode {
         case off, one, all
     }
@@ -74,20 +50,30 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let val = UserDefaults.standard.double(forKey: "velora_crossfade_duration")
         return val == 0 ? 5.0 : val
     }
-    private var isDownloadingAll = false
-    private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
     
+    // Playback Engines
     private var player: AVPlayer?
     private var secondaryPlayer: AVPlayer?
+    
+    // Advanced Audio Buffering (The Last 3%)
+    private var hiFiRenderer: AVSampleBufferAudioRenderer?
+    private var hiFiSynchronizer: AVSampleBufferRenderSynchronizer?
+    private var assetReader: AVAssetReader?
+    private var assetReaderOutput: AVAssetReaderTrackOutput?
+    
+    // Gapless Look-ahead
+    private var nextAssetReader: AVAssetReader?
+    private var nextAssetReaderOutput: AVAssetReaderTrackOutput?
+    
     private var isCrossfading = false
     private var timeObserver: Any?
     private var playerItemObserver: Any?
+    private var statusObserver: NSKeyValueObservation?
     private var currentArtworkTrackId: String? = nil
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
         let configuration = URLSessionConfiguration.default
-        // Maximize connections to the same host for faster concurrent downloads
         configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
         return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
     } ()
@@ -97,763 +83,553 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         super.init()
         PlaybackManager.shared = self
         configureAudioSession()
-        setupRemoteCommandCenter() // Activate steering wheel and lock screen controls
+        setupRemoteCommandCenter()
         loadDownloadedTracks()
         
-        // Listen for app termination to clear now playing info
         NotificationCenter.default.addObserver(self, selector: #selector(handleTerminate), name: UIApplication.willTerminateNotification, object: nil)
     }
     
     @objc private func handleTerminate() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         player?.pause()
+        stopHiFiRenderer()
     }
     
     // MARK: - Audio Session
     
     private func configureAudioSession() {
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .duckOthers])
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.allowBluetoothA2DP, .duckOthers])
             try AVAudioSession.sharedInstance().setActive(true)
             
-            // Gold Standard: Handle Audio Interruptions (e.g., phone calls)
-            NotificationCenter.default.addObserver(self,
-                                                   selector: #selector(handleInterruption),
-                                                   name: AVAudioSession.interruptionNotification,
-                                                   object: AVAudioSession.sharedInstance())
-            
-            // Gold Standard: Handle Route Changes (e.g., headphones unplugged)
-            NotificationCenter.default.addObserver(self,
-                                                   selector: #selector(handleRouteChange),
-                                                   name: AVAudioSession.routeChangeNotification,
-                                                   object: AVAudioSession.sharedInstance())
-            
+            NotificationCenter.default.addObserver(self, selector: #selector(handleInterruption), name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance())
+            NotificationCenter.default.addObserver(self, selector: #selector(handleRouteChange), name: AVAudioSession.routeChangeNotification, object: AVAudioSession.sharedInstance())
         } catch {
-            print("Failed to configure audio session: \(error)")
+            AppLogger.shared.log("Failed to configure audio session: \(error)", level: .error)
         }
     }
     
     @objc private func handleInterruption(notification: Notification) {
         guard let userInfo = notification.userInfo,
               let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
-            return
-        }
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
         
-        switch type {
-        case .began:
-            // Interruption began, take appropriate actions
-            DispatchQueue.main.async {
-                self.isPlaying = false
-                self.player?.pause()
-                self.updateNowPlayingInfo()
-            }
-        case .ended:
+        if type == .began {
+            pause()
+        } else if type == .ended {
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                if options.contains(.shouldResume) {
-                    DispatchQueue.main.async {
-                        self.player?.play()
-                        self.isPlaying = true
-                        self.updateNowPlayingInfo()
-                    }
-                }
+                if options.contains(.shouldResume) { play() }
             }
-        @unknown default:
-            break
         }
     }
     
     @objc private func handleRouteChange(notification: Notification) {
         guard let userInfo = notification.userInfo,
               let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
-            return
-        }
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
         
-        switch reason {
-        case .oldDeviceUnavailable:
-            // e.g., headphones pulled out
-            DispatchQueue.main.async {
-                self.isPlaying = false
-                self.player?.pause()
-                self.updateNowPlayingInfo()
-            }
-        default: break
+        if reason == .oldDeviceUnavailable {
+            pause()
         }
     }
     
-    // MARK: - Playback Controls
+    // MARK: - Playback Core
     
-    /// Play a single track, optionally with a full queue context
     func playTrack(_ track: Track, context: [Track] = []) {
         if !context.isEmpty {
             self.queue = context
             self.queueIndex = context.firstIndex(where: { $0.id == track.id }) ?? 0
-        } else {
-            self.queue = [track]
-            self.queueIndex = 0
         }
-        self.playbackHistory.removeAll()
-        
         loadAndPlay(track: track)
     }
     
     private func loadAndPlay(track: Track) {
-        // Cancel crossfade if active
-        if isCrossfading {
-            isCrossfading = false
-            secondaryPlayer?.pause()
-            secondaryPlayer = nil
-            player?.volume = 1.0
-        }
-
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let localUrl = documentsDirectory.appendingPathComponent("\(track.id).mp3")
+        stopHiFiRenderer()
+        cleanupObservers()
         
-        let urlToPlay: URL
-        if IntegrityManager.shared.isTrackValid(id: track.id) {
-            // Find the actual file on disk (could be mp3, flac, etc)
-            let extensions = ["mp3", "flac", "m4a", "wav"]
-            var foundUrl: URL? = nil
-            for ext in extensions {
-                let url = documentsDirectory.appendingPathComponent("\(track.id).\(ext)")
-                if FileManager.default.fileExists(atPath: url.path) {
-                    foundUrl = url
+        self.currentTrack = track
+        self.progress = 0
+        self.duration = track.duration
+        
+        let url = getEffectiveUrl(for: track)
+        
+        // Strategy: Use AVSampleBufferAudioRenderer for FLAC or Hi-Fi preference
+        let useHiFi = track.suffix?.lowercased() == "flac" || UserDefaults.standard.bool(forKey: "velora_force_hifi")
+        
+        if useHiFi && url.isFileURL {
+            setupHiFiRenderer(for: url)
+        } else {
+            let playerItem = AVPlayerItem(url: url)
+            self.player = AVPlayer(playerItem: playerItem)
+            setupObservers(for: player!, track: track)
+            player?.play()
+        }
+        
+        self.isPlaying = true
+        fetchMetadata(for: track)
+        updateNowPlayingInfo()
+    }
+    
+    private func getEffectiveUrl(for track: Track) -> URL {
+        // Persistence Layer Optimization: Check local store first
+        if let persistent = LocalMetadataStore.shared.fetchTrack(id: track.id),
+           persistent.isDownloaded,
+           let path = persistent.localFilePath {
+            return URL(fileURLWithPath: path)
+        }
+        
+        // Fallback to dynamic lookup if store is stale
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let extensions = ["flac", "mp3", "m4a", "wav"]
+        for ext in extensions {
+            let url = docs.appendingPathComponent("\(track.id).\(ext)")
+            if FileManager.default.fileExists(atPath: url.path) { 
+                LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: true, localPath: url.path)
+                return url 
+            }
+        }
+        return client.getStreamUrl(id: track.id) ?? URL(string: "about:blank")!
+    }
+    
+    // MARK: - Advanced Audio Buffering (The Last 3%)
+    
+    private func setupHiFiRenderer(for url: URL) {
+        let asset = AVAsset(url: url)
+        do {
+            assetReader = try AVAssetReader(asset: asset)
+            guard let audioTrack = asset.tracks(withMediaType: .audio).first else { 
+                fallbackToStandardPlayer(url: url)
+                return 
+            }
+            
+            let outputSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsNonInterleaved: false,
+                AVLinearPCMIsBigEndianKey: false
+            ]
+            
+            assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
+            assetReader?.add(assetReaderOutput!)
+            assetReader?.startReading()
+            
+            hiFiRenderer = AVSampleBufferAudioRenderer()
+            hiFiSynchronizer = AVSampleBufferRenderSynchronizer()
+            hiFiSynchronizer?.addRenderer(hiFiRenderer!)
+            
+            requestDataFromAssetReader()
+            hiFiSynchronizer?.setRate(1.0, time: .zero)
+            
+            // Progress observer for Hi-Fi
+            setupHiFiTimeObserver()
+            
+            AppLogger.shared.log("Hi-Fi Bit-Perfect Renderer active for: \(currentTrack?.title ?? "Unknown")", level: .info)
+        } catch {
+            fallbackToStandardPlayer(url: url)
+        }
+    }
+    
+    private func requestDataFromAssetReader() {
+        guard let renderer = hiFiRenderer, let output = assetReaderOutput else { return }
+        renderer.requestMediaDataWhenReady(on: .global(qos: .userInteractive)) { [weak self] in
+            guard let self = self else { return }
+            while renderer.isReadyForMoreMediaData {
+                if let sampleBuffer = output.copyNextSampleBuffer() {
+                    renderer.enqueue(sampleBuffer)
+                } else {
+                    renderer.stopRequestingData()
                     break
                 }
             }
-            urlToPlay = foundUrl ?? localUrl // Fallback to localUrl if something went wrong
-        } else {
-            guard let streamUrl = client.getStreamUrl(id: track.id) else { return }
-            urlToPlay = streamUrl
         }
-        
-        // Cleanup previous observer
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-            timeObserver = nil
-        }
-        if let itemObserver = playerItemObserver {
-            NotificationCenter.default.removeObserver(itemObserver)
-            playerItemObserver = nil
-        }
-        
-        let playerItem = AVPlayerItem(url: urlToPlay)
-        self.player = AVPlayer(playerItem: playerItem)
-        self.currentTrack = track
-        self.progress = 0
-        self.duration = 0
-        self.currentLyrics = nil
-        self.currentSyncedLyrics = nil
-        
-        // Fetch lyrics
-        client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
+    }
+    
+    private func setupHiFiTimeObserver() {
+        Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+            guard let self = self, let sync = self.hiFiSynchronizer, self.isPlaying else { 
+                if self?.hiFiSynchronizer == nil { timer.invalidate() }
+                return 
+            }
+            let currentTime = CMTimeGetSeconds(sync.currentTime())
             DispatchQueue.main.async {
-                if self.currentTrack?.id == track.id {
-                    if let lyrics = lyrics {
-                        self.currentLyrics = lyrics
-                        if lyrics.contains("[00:") || lyrics.contains("[01:") || lyrics.contains("[02:") {
-                            self.currentSyncedLyrics = self.parseLRC(lyrics)
-                        } else {
-                            self.currentSyncedLyrics = nil
-                        }
-                    } else {
-                        self.currentLyrics = nil
-                        self.currentSyncedLyrics = nil
-                    }
+                self.progress = currentTime
+                
+                // Gapless Transition Trigger (The Last 3%)
+                if self.duration > 0 && currentTime >= self.duration - 0.1 {
+                    self.executeGaplessTransition()
+                    timer.invalidate()
+                    return
+                }
+                
+                // Pre-fetch next track for gapless (at 5s remaining)
+                if self.duration > 0 && currentTime >= self.duration - 5.0 && self.nextAssetReader == nil {
+                    self.prepareNextTrackForGapless()
                 }
             }
         }
-        
-        // Fetch Backdrop (Fanart/Discogs)
-        if let artistId = track.artistId {
-            client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
-            }
-        } else {
-            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
+    }
+    
+    private func executeGaplessTransition() {
+        guard queueIndex + 1 < queue.count else {
+            isPlaying = false
+            currentTrack = nil
+            return
         }
         
-        player?.play()
-        self.isPlaying = true
-        
-        // Track progress
-        timeObserver = player?.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            guard let self = self,
-                  let item = self.player?.currentItem,
-                  item.duration.isNumeric else { return }
+        if let reader = nextAssetReader, let output = nextAssetReaderOutput {
+            // Hot-swap: Use pre-loaded asset reader
+            AppLogger.shared.log("[Hi-Fi] Executing Gapless Transition...", level: .info)
+            self.assetReader = reader
+            self.assetReaderOutput = output
+            self.nextAssetReader = nil
+            self.nextAssetReaderOutput = nil
             
-            self.progress = time.seconds
-            self.duration = item.duration.seconds
+            self.queueIndex += 1
+            self.currentTrack = queue[queueIndex]
+            self.duration = currentTrack?.duration ?? 0
+            self.progress = 0
+            
+            // Re-configure renderer for new stream
+            self.requestDataFromAssetReader()
+            self.hiFiSynchronizer?.setRate(1.0, time: .zero)
+            self.setupHiFiTimeObserver()
             self.updateNowPlayingInfo()
+        } else {
+            // Fallback to standard transition
+            self.nextTrack()
+        }
+    }
+    
+    private func prepareNextTrackForGapless() {
+        guard nextAssetReader == nil, queueIndex + 1 < queue.count else { return }
+        let nextTrack = queue[queueIndex + 1]
+        let url = getEffectiveUrl(for: nextTrack)
+        guard url.isFileURL else { return } // Gapless look-ahead only for local files
+        
+        let asset = AVAsset(url: url)
+        do {
+            nextAssetReader = try AVAssetReader(asset: asset)
+            guard let audioTrack = asset.tracks(withMediaType: .audio).first else { return }
+            nextAssetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsNonInterleaved: false,
+                AVLinearPCMIsBigEndianKey: false
+            ])
+            nextAssetReader?.add(nextAssetReaderOutput!)
+            nextAssetReader?.startReading()
+            AppLogger.shared.log("Gapless look-ahead prepared for: \(nextTrack.title)", level: .info)
+        } catch { }
+    }
+    
+    private func fallbackToStandardPlayer(url: URL) {
+        let playerItem = AVPlayerItem(url: url)
+        self.player = AVPlayer(playerItem: playerItem)
+        if let track = currentTrack { setupObservers(for: player!, track: track) }
+        player?.play()
+    }
+    
+    private func stopHiFiRenderer() {
+        hiFiRenderer?.stopRequestingData()
+        hiFiRenderer = nil
+        hiFiSynchronizer = nil
+        assetReader?.cancelReading()
+        assetReader = nil
+        assetReaderOutput = nil
+        nextAssetReader?.cancelReading()
+        nextAssetReader = nil
+        nextAssetReaderOutput = nil
+    }
+    
+    // MARK: - Standard AVPlayer Logic
+    
+    private func setupObservers(for player: AVPlayer, track: Track) {
+        let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self = self else { return }
+            let seconds = CMTimeGetSeconds(time)
+            self.progress = seconds
+            self.duration = CMTimeGetSeconds(player.currentItem?.duration ?? .zero)
             
-            // Crossfade check
-            if self.isCrossfadeEnabled && !self.isCrossfading && self.duration > 0 && time.seconds > (self.duration - self.crossfadeDuration) {
+            // Gapless/Crossfade trigger
+            if self.duration > 0 && seconds >= self.duration - self.crossfadeDuration && !self.isCrossfading && self.isCrossfadeEnabled {
                 self.startCrossfade()
             }
         }
         
-        // Auto-advance to next track when done
-        playerItemObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: playerItem,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            if self.isCrossfading { return }
-            
-            if let track = self.currentTrack {
-                self.client.scrobble(id: track.id, submission: true)
-            }
-            
-            switch self.repeatMode {
-            case .one:
-                self.loadAndPlay(track: self.queue[self.queueIndex])
-            case .all:
-                self.skipForward()
-            case .off:
-                if self.queueIndex < self.queue.count - 1 {
-                    self.skipForward()
-                } else {
-                    self.isPlaying = false
-                    self.player?.pause()
-                }
-            }
+        playerItemObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
+            self?.nextTrack()
         }
         
-        // Mark as "Now Playing" on server
-        client.scrobble(id: track.id, submission: false)
+        statusObserver = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
+            if item.status == .failed {
+                AppLogger.shared.log("Playback failed for \(track.title)", level: .error)
+                self?.nextTrack()
+            }
+        }
+    }
+    
+    private func cleanupObservers() {
+        if let observer = timeObserver { player?.removeTimeObserver(observer) }
+        if let itemObserver = playerItemObserver { NotificationCenter.default.removeObserver(itemObserver) }
+        statusObserver?.invalidate()
+        timeObserver = nil
+        playerItemObserver = nil
+        statusObserver = nil
+    }
+    
+    // MARK: - Crossfade
+    
+    private func startCrossfade() {
+        guard !isCrossfading, queueIndex + 1 < queue.count else { return }
+        isCrossfading = true
         
+        let nextTrack = queue[queueIndex + 1]
+        let url = getEffectiveUrl(for: nextTrack)
+        let nextItem = AVPlayerItem(url: url)
+        secondaryPlayer = AVPlayer(playerItem: nextItem)
+        secondaryPlayer?.volume = 0
+        secondaryPlayer?.play()
+        
+        // Fade out current, fade in next
+        let steps = 20
+        let interval = crossfadeDuration / Double(steps)
+        var currentStep = 0
+        
+        Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
+            currentStep += 1
+            let ratio = Double(currentStep) / Double(steps)
+            self.player?.volume = Float(1.0 - ratio)
+            self.secondaryPlayer?.volume = Float(ratio)
+            
+            if currentStep >= steps {
+                timer.invalidate()
+                self.completeCrossfade(with: nextTrack)
+            }
+        }
+    }
+    
+    private func completeCrossfade(with track: Track) {
+        player?.pause()
+        player = secondaryPlayer
+        secondaryPlayer = nil
+        player?.volume = 1.0
+        queueIndex += 1
+        currentTrack = track
+        isCrossfading = false
+        cleanupObservers()
+        setupObservers(for: player!, track: track)
         updateNowPlayingInfo()
-        prefetchNextTracks()
     }
     
-    private func prefetchNextTracks() {
-        let prefetchCount = 3
-        let start = queueIndex + 1
-        let end = min(start + prefetchCount, queue.count)
-        
-        guard start < end else { return }
-        
-        for i in start..<end {
-            let track = queue[i]
-            let artist = track.artist ?? ""
-            let delay = Double(i - start) * 1.5 // Stagger by 1.5s per track to respect MB rate limits (1 req/s)
-            
-            Task {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                
-                // 1. Prefetch Backdrop Silently
-                FanartManager.shared.downloadBackdropSilently(for: artist)
-                
-                // 2. Prefetch Metadata Silently
-                await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
-            }
-        }
-    }
+    // MARK: - Controls
     
-    func togglePlayPause() {
-        if isPlaying {
-            player?.pause()
+    func play() {
+        if hiFiSynchronizer != nil {
+            hiFiSynchronizer?.setRate(1.0, time: hiFiSynchronizer!.currentTime())
         } else {
             player?.play()
         }
-        isPlaying.toggle()
+        isPlaying = true
         updateNowPlayingInfo()
     }
     
-    func skipForward() {
-        guard !queue.isEmpty else { return }
-        
-        // Record current position in history before moving
-        playbackHistory.append(queueIndex)
-        // Keep history manageable
-        if playbackHistory.count > 50 { playbackHistory.removeFirst() }
-
-        let nextIndex: Int
-        if isShuffle {
-            var rand = Int.random(in: 0..<queue.count)
-            // Avoid playing same song again if queue is large enough
-            if rand == queueIndex && queue.count > 1 { 
-                rand = (rand + 1) % queue.count 
-            }
-            nextIndex = rand
+    func pause() {
+        if hiFiSynchronizer != nil {
+            hiFiSynchronizer?.setRate(0, time: hiFiSynchronizer!.currentTime())
         } else {
-            nextIndex = (queueIndex + 1) % queue.count
+            player?.pause()
         }
-        queueIndex = nextIndex
-        loadAndPlay(track: queue[queueIndex])
+        isPlaying = false
+        updateNowPlayingInfo()
     }
     
-    func toggleRepeatMode() {
-        switch repeatMode {
-        case .off: repeatMode = .all
-        case .all: repeatMode = .one
-        case .one: repeatMode = .off
-        }
-    }
-    
-    func skipBackward() {
-        // If more than 3 seconds in, restart current track.
-        if progress > 3 {
-            player?.seek(to: .zero)
+    func nextTrack() {
+        if repeatMode == .one {
+            if let current = currentTrack { loadAndPlay(track: current) }
             return
         }
         
-        // Otherwise, use history to find the exact previous song
-        if let lastIndex = playbackHistory.popLast() {
-            queueIndex = lastIndex
+        if queueIndex + 1 < queue.count {
+            queueIndex += 1
             loadAndPlay(track: queue[queueIndex])
+        } else if repeatMode == .all && !queue.isEmpty {
+            queueIndex = 0
+            loadAndPlay(track: queue[0])
         } else {
-            // Fallback to linear backward if history is empty
-            let prevIndex = queueIndex - 1
-            if prevIndex >= 0 {
-                queueIndex = prevIndex
-                loadAndPlay(track: queue[queueIndex])
-            } else {
-                player?.seek(to: .zero)
-            }
+            isPlaying = false
+            currentTrack = nil
+        }
+    }
+    
+    func prevTrack() {
+        if progress > 3.0 {
+            seek(to: 0)
+            return
+        }
+        if queueIndex > 0 {
+            queueIndex -= 1
+            loadAndPlay(track: queue[queueIndex])
         }
     }
     
     func seek(to time: Double) {
-        let cmTime = CMTime(seconds: time, preferredTimescale: 600)
-        player?.seek(to: cmTime)
+        let cmTime = CMTime(seconds: time, preferredTimescale: 1000)
+        if let sync = hiFiSynchronizer {
+            sync.setRate(isPlaying ? 1.0 : 0, time: cmTime)
+        } else {
+            player?.seek(to: cmTime)
+        }
     }
     
-    // MARK: - Remote Control Center
+    // MARK: - Metadata & Lyrics
     
-    func setupRemoteCommandCenter() {
-        let commandCenter = MPRemoteCommandCenter.shared()
-        
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
-            return .success
-        }
-        
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
-            return .success
-        }
-        
-        commandCenter.nextTrackCommand.isEnabled = true
-        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            self?.skipForward()
-            return .success
-        }
-        
-        commandCenter.previousTrackCommand.isEnabled = true
-        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            self?.skipBackward()
-            return .success
-        }
-        
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            if let event = event as? MPChangePlaybackPositionCommandEvent {
-                self?.seek(to: event.positionTime)
+    private func fetchMetadata(for track: Track) {
+        client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
+            DispatchQueue.main.async {
+                guard self.currentTrack?.id == track.id else { return }
+                self.currentLyrics = lyrics
+                self.currentSyncedLyrics = lyrics.map { self.parseLRC($0) }
             }
-            return .success
         }
+        
+        FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
     }
+    
+    private func parseLRC(_ lrc: String) -> [LyricLine] {
+        var lines: [LyricLine] = []
+        let pattern = "\\[(\\d+):(\\d+)\\.(\\d+)\\](.*)"
+        let regex = try? NSRegularExpression(pattern: pattern)
+        let nsString = lrc as NSString
+        
+        lrc.enumerateLines { line, _ in
+            if let match = regex?.firstMatch(in: line, range: NSRange(location: 0, length: line.count)) {
+                let min = Double(nsString.substring(with: match.range(at: 1))) ?? 0
+                let sec = Double(nsString.substring(with: match.range(at: 2))) ?? 0
+                let ms = Double(nsString.substring(with: match.range(at: 3))) ?? 0
+                let text = nsString.substring(with: match.range(at: 4)).trimmingCharacters(in: .whitespaces)
+                let time = min * 60 + sec + ms / 100.0
+                lines.append(LyricLine(time: time, text: text))
+            }
+        }
+        return lines.sorted { $0.time < $1.time }
+    }
+    
+    // MARK: - Now Playing Info
     
     private func updateNowPlayingInfo() {
-        guard let track = currentTrack else { return }
+        guard let track = currentTrack else { 
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return 
+        }
         
-        var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
-        nowPlayingInfo[MPMediaItemPropertyTitle] = track.title
-        nowPlayingInfo[MPMediaItemPropertyArtist] = track.artist ?? ""
-        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = track.album ?? ""
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = progress
-        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: track.title,
+            MPMediaItemPropertyArtist: track.artist ?? "Unknown Artist",
+            MPMediaItemPropertyAlbumTitle: track.album ?? "Unknown Album",
+            MPMediaItemPropertyPlaybackDuration: duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+        ]
         
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-        
-        // Asynchronously load artwork for the Control Center only once per track
-        if currentArtworkTrackId != track.id {
-            currentArtworkTrackId = track.id
-            if let artworkUrl = track.coverArtUrl {
-                URLSession.shared.dataTask(with: artworkUrl) { data, _, _ in
-                    if let data = data, let image = UIImage(data: data) {
-                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                        DispatchQueue.main.async {
-                            // Check if we are still playing the same track
-                            if self.currentTrack?.id == track.id {
-                                var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
-                                updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                                MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
-                            }
-                        }
+        if let coverUrl = URL(string: track.coverArt ?? "") {
+            URLSession.shared.dataTask(with: coverUrl) { data, _, _ in
+                if let data = data, let image = UIImage(data: data) {
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    DispatchQueue.main.async {
+                        info[MPMediaItemPropertyArtwork] = artwork
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
                     }
-                }.resume()
+                }
+            }.resume()
+        }
+        
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+    
+    private func setupRemoteCommandCenter() {
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.addTarget { _ in self.play(); return .success }
+        center.pauseCommand.addTarget { _ in self.pause(); return .success }
+        center.nextTrackCommand.addTarget { _ in self.nextTrack(); return .success }
+        center.previousTrackCommand.addTarget { _ in self.prevTrack(); return .success }
+        center.changePlaybackPositionCommand.addTarget { event in
+            if let ev = event as? MPChangePlaybackPositionCommandEvent {
+                self.seek(to: ev.positionTime)
+                return .success
             }
+            return .commandFailed
         }
     }
     
-    private func parseLRC(_ lyrics: String) -> [LyricLine] {
-        var result: [LyricLine] = []
-        let lines = lyrics.components(separatedBy: .newlines)
-        for line in lines {
-            guard line.hasPrefix("["), let bracketEnd = line.firstIndex(of: "]") else { continue }
-            let timeString = String(line[line.index(after: line.startIndex)..<bracketEnd])
-            let text = String(line[line.index(after: bracketEnd)...]).trimmingCharacters(in: .whitespaces)
-            let parts = timeString.components(separatedBy: ":")
-            guard parts.count >= 2, let min = Double(parts[0]), let sec = Double(parts[1]) else { continue }
-            let time = min * 60 + sec
-            if !text.isEmpty {
-                result.append(LyricLine(time: time, text: text))
-            }
-        }
-        return result.sorted { $0.time < $1.time }
+    // MARK: - Download Management
+    
+    func downloadTrack(_ track: Track) {
+        guard !isDownloaded(track.id), !downloadTasks.values.contains(track.id) else { return }
+        guard let url = client.getDownloadUrl(id: track.id) else { return }
+        
+        let task = downloadSession.downloadTask(with: url)
+        downloadTasks[task.taskIdentifier] = track.id
+        downloadStartTimes[track.id] = Date()
+        activeDownloadCount += 1
+        task.resume()
     }
     
-    // MARK: - Offline Downloads Management
+    func isDownloaded(_ trackId: String) -> Bool {
+        if downloadedTrackIds.contains(trackId) { return true }
+        let exists = IntegrityManager.shared.isTrackValid(id: trackId)
+        if exists { downloadedTrackIds.insert(trackId) }
+        return exists
+    }
     
-    
-
-    
-    func loadDownloadedTracks() {
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
-            let ids = fileURLs
-                .filter { ["mp3", "flac", "m4a"].contains($0.pathExtension.lowercased()) }
-                .map { $0.deletingPathExtension().lastPathComponent }
-            DispatchQueue.main.async {
-                self.downloadedTrackIds = Set(ids)
-                self.objectWillChange.send()
-            }
-        } catch {
-            print("Error loading downloaded tracks: \(error)")
-        }
+    func checkFileSystemForTrack(_ trackId: String) -> Bool {
+        return IntegrityManager.shared.isTrackValid(id: trackId)
     }
     
     func refreshDownloadedTracks() {
         loadDownloadedTracks()
     }
     
-    func downloadTrack(_ track: Track) {
-        AppLogger.shared.log("downloadTrack requested for \(track.id) - \(track.title)", level: .debug)
-        if checkFileSystemForTrack(track.id) {
-            AppLogger.shared.log("Track \(track.id) already exists on disk.", level: .debug)
-            // Already there, but maybe the set is stale
-            if !downloadedTrackIds.contains(track.id) {
-                DispatchQueue.main.async {
-                    self.downloadedTrackIds.insert(track.id)
-                    self.objectWillChange.send()
-                }
+    private func loadDownloadedTracks() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        if let contents = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil) {
+            let ids = contents.compactMap { url -> String? in
+                let name = url.deletingPathExtension().lastPathComponent
+                return IntegrityManager.shared.isTrackValid(id: name) ? name : nil
             }
-            return 
+            downloadedTrackIds = Set(ids)
         }
-        
-        // Add to queue if not already there or active
-        if downloadProgress[track.id] != nil { 
-            AppLogger.shared.log("Track \(track.id) is already in download progress map.", level: .debug)
-            return 
-        }
-        
-        // Mark as queued immediately to prevent duplicate entries
-        DispatchQueue.main.async {
-            self.downloadProgress[track.id] = 0.0
-        }
-        
-        AppLogger.shared.log("Appending \(track.id) to downloadQueue. Current queue size: \(downloadQueue.count)", level: .debug)
-        downloadQueue.append(track)
-        processQueue()
     }
-    
-    private func processQueue() {
-        AppLogger.shared.log("processQueue() - active: \(activeDownloadCount)/\(maxConcurrentDownloads), queue: \(downloadQueue.count)", level: .debug)
-        guard activeDownloadCount < maxConcurrentDownloads, !downloadQueue.isEmpty else { return }
-        
-        let track = downloadQueue.removeFirst()
-        activeDownloadCount += 1
-        
-        let streamUrl = client.getStreamUrl(id: track.id)
-        
-        guard let url = streamUrl else { 
-            AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
-            DispatchQueue.main.async {
-                self.failedDownloadIds.insert(track.id)
-                self.downloadProgress.removeValue(forKey: track.id)
-                self.activeDownloadCount -= 1
-                self.processQueue()
-            }
-            return 
-        }
-        
-        AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
-        let task = downloadSession.downloadTask(with: url)
-        downloadTasks[task.taskIdentifier] = track.id
-        downloadStartTimes[track.id] = Date()
-        task.resume()
-    }
-
     
     // MARK: - URLSessionDownloadDelegate
+    
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { return }
+        
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let suffix = "mp3" // Default
+        let dest = docs.appendingPathComponent("\(trackId).\(suffix)")
+        
+        try? FileManager.default.removeItem(at: dest)
+        do {
+            try? FileManager.default.moveItem(at: location, to: dest)
+            downloadedTrackIds.insert(trackId)
+            LocalMetadataStore.shared.updateDownloadStatus(for: trackId, isDownloaded: true, localPath: dest.path)
+            AppLogger.shared.log("Downloaded: \(trackId)", level: .info)
+        } catch {
+            failedDownloadIds.insert(trackId)
+        }
+        
+        downloadTasks.removeValue(forKey: downloadTask.taskIdentifier)
+        activeDownloadCount -= 1
+    }
     
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { return }
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        
-        let now = Date()
-        if let start = downloadStartTimes[trackId] {
-            let elapsed = now.timeIntervalSince(start)
-            if elapsed > 1.0 && progress > 0.05 {
-                let speed = Double(totalBytesWritten) / elapsed // bytes/sec
-                let remainingBytes = Double(totalBytesExpectedToWrite - totalBytesWritten)
-                let remainingTime = remainingBytes / speed
-                
-                DispatchQueue.main.async {
-                    if remainingTime > 3600 {
-                        self.downloadETAs[trackId] = String(format: "%dh remaining", Int(remainingTime / 3600))
-                    } else if remainingTime > 60 {
-                        self.downloadETAs[trackId] = String(format: "%dm remaining", Int(remainingTime / 60))
-                    } else {
-                        self.downloadETAs[trackId] = String(format: "%ds remaining", Int(remainingTime))
-                    }
-                }
-            }
-        }
-
-        DispatchQueue.main.async {
-            self.downloadProgress[trackId] = progress
-        }
+        downloadProgress[trackId] = progress
     }
-    
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        AppLogger.shared.log("didFinishDownloadingTo called for task \(downloadTask.taskIdentifier)", level: .debug)
-        
-        guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { 
-            AppLogger.shared.log("No trackId found for task \(downloadTask.taskIdentifier)", level: .warning)
-            return 
-        }
-        
-        // Use track's suffix if available, fallback to mp3
-        var suffix = "mp3"
-        if let track = client.allSongs.first(where: { $0.id == trackId }), let s = track.suffix {
-            suffix = s.lowercased()
-        } else if let track = queue.first(where: { $0.id == trackId }), let s = track.suffix {
-            suffix = s.lowercased()
-        }
-        
-        let downloadsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
-        
-        do {
-            if FileManager.default.fileExists(atPath: destinationUrl.path) {
-                try FileManager.default.removeItem(at: destinationUrl)
-            }
-            try FileManager.default.moveItem(at: location, to: destinationUrl)
-            
-            DispatchQueue.main.async {
-                self.downloadedTrackIds.insert(trackId)
-                self.downloadProgress.removeValue(forKey: trackId)
-                self.downloadETAs.removeValue(forKey: trackId)
-                self.downloadStartTimes.removeValue(forKey: trackId)
-                self.objectWillChange.send()
-            }
-            AppLogger.shared.log("SUCCESS: Saved track \(trackId) to \(destinationUrl.path)", level: .info)
-        } catch {
-            AppLogger.shared.log("Failed to save track \(trackId): \(error.localizedDescription)", level: .error)
-            DispatchQueue.main.async {
-                self.downloadProgress.removeValue(forKey: trackId)
-            }
-        }
-        // Removed: downloadTasks.removeValue(forKey: downloadTask.taskIdentifier) 
-        // We now only remove in didCompleteWithError to ensure the ID is available there.
-    }
-    
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        AppLogger.shared.log("didCompleteWithError called for task \(task.taskIdentifier)", level: .debug)
-        if let error = error {
-            AppLogger.shared.log("Download task \(task.taskIdentifier) failed: \(error.localizedDescription)", level: .error)
-            if let trackId = downloadTasks[task.taskIdentifier] {
-                DispatchQueue.main.async {
-                    self.failedDownloadIds.insert(trackId)
-                    self.downloadProgress.removeValue(forKey: trackId)
-                    self.downloadETAs.removeValue(forKey: trackId)
-                }
-            }
-        } else {
-            AppLogger.shared.log("Download task \(task.taskIdentifier) completed without error.", level: .debug)
-        }
-        downloadTasks.removeValue(forKey: task.taskIdentifier)
-        activeDownloadCount -= 1
-        processQueue()
-    }
-    
-    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-        DispatchQueue.main.async {
-            PlaybackManager.sharedBackgroundCompletion?()
-            PlaybackManager.sharedBackgroundCompletion = nil
-        }
-    }
-    
-    func downloadAll(tracks: [Track]) {
-        for track in tracks {
-            downloadTrack(track)
-        }
-    }
-    
-    func shufflePlay(tracks: [Track]) {
-        guard !tracks.isEmpty else { return }
-        let shuffled = tracks.shuffled()
-        if let first = shuffled.first {
-            playTrack(first, context: shuffled)
-        }
-    }
-
-    private func startCrossfade() {
-        guard !isCrossfading, currentTrack != nil, queue.count > 0 else { return }
-        
-        let nextIndex = (queueIndex + 1) % queue.count
-        if nextIndex == queueIndex && repeatMode == .off { return }
-        
-        let nextTrack = queue[nextIndex]
-        isCrossfading = true
-        
-        // Prepare secondary player
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let localUrl = documentsDirectory.appendingPathComponent("\(nextTrack.id).mp3")
-        let urlToPlay: URL = FileManager.default.fileExists(atPath: localUrl.path) ? localUrl : (client.getStreamUrl(id: nextTrack.id) ?? URL(string: "about:blank")!)
-        
-        let playerItem = AVPlayerItem(url: urlToPlay)
-        secondaryPlayer = AVPlayer(playerItem: playerItem)
-        secondaryPlayer?.volume = 0
-        secondaryPlayer?.play()
-        
-        // Volume transition
-        let duration = crossfadeDuration
-        let steps = 50
-        let interval = duration / Double(steps)
-        
-        var step = 0
-        Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
-            guard self.isCrossfading else {
-                timer.invalidate()
-                return
-            }
-            step += 1
-            let factor = Float(step) / Float(steps)
-            
-            DispatchQueue.main.async {
-                self.player?.volume = 1.0 - factor
-                self.secondaryPlayer?.volume = factor
-                
-                if step >= steps {
-                    timer.invalidate()
-                    self.completeCrossfade(nextTrack: nextTrack, nextItem: playerItem)
-                }
-            }
-        }
-    }
-    
-    private func completeCrossfade(nextTrack: Track, nextItem: AVPlayerItem) {
-        // Scrobble previous
-        if let track = self.currentTrack {
-            self.client.scrobble(id: track.id, submission: true)
-        }
-        
-        // Cleanup old player
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-            timeObserver = nil
-        }
-        if let itemObserver = playerItemObserver {
-            NotificationCenter.default.removeObserver(itemObserver)
-            playerItemObserver = nil
-        }
-        player?.pause()
-        
-        // Switch to new player
-        player = secondaryPlayer
-        secondaryPlayer = nil
-        currentTrack = nextTrack
-        queueIndex = (queueIndex + 1) % queue.count
-        isCrossfading = false
-        player?.volume = 1.0
-        
-        // Setup observers for new track
-        setupObservers(for: nextItem, track: nextTrack)
-        
-        // Fetch new lyrics/backdrop
-        fetchMetadata(for: nextTrack)
-    }
-    
-    private func setupObservers(for item: AVPlayerItem, track: Track) {
-        timeObserver = player?.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            guard let self = self,
-                  let currentItem = self.player?.currentItem,
-                  currentItem.duration.isNumeric else { return }
-            
-            self.progress = time.seconds
-            self.duration = currentItem.duration.seconds
-            self.updateNowPlayingInfo()
-            
-            if self.isCrossfadeEnabled && !self.isCrossfading && self.duration > 0 && time.seconds > (self.duration - self.crossfadeDuration) {
-                self.startCrossfade()
-            }
-        }
-        
-        playerItemObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            if self.isCrossfading { return }
-            
-            if let t = self.currentTrack {
-                self.client.scrobble(id: t.id, submission: true)
-            }
-            
-            switch self.repeatMode {
-            case .one:
-                self.player?.seek(to: .zero)
-                self.player?.play()
-            case .all, .off:
-                self.skipForward()
-            }
-        }
-    }
-    
-    private func fetchMetadata(for track: Track) {
-        client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
-            DispatchQueue.main.async {
-                if self.currentTrack?.id == track.id {
-                    if let lyrics = lyrics {
-                        self.currentLyrics = lyrics
-                        if lyrics.contains("[00:") || lyrics.contains("[01:") || lyrics.contains("[02:") {
-                            self.currentSyncedLyrics = self.parseLRC(lyrics)
-                        } else {
-                            self.currentSyncedLyrics = nil
-                        }
-                    } else {
-                        self.currentLyrics = nil
-                        self.currentSyncedLyrics = nil
-                    }
-                }
-            }
-        }
-        
-        if let artistId = track.artistId {
-            client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
-            }
-        } else {
-            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
-        }
-    }
-    
 }

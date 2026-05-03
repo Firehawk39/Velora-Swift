@@ -58,8 +58,8 @@ struct AppHeader: View {
         }) {
             HStack(spacing: 0) {
                 Text("Velora.")
-                    .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 42.0).weight(.bold))
-                    .kerning(-1.2)
+                    .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 22 : 32) : 42.0).weight(.bold))
+                    .kerning(ScreenTier.isSE ? -0.8 : -1.2)
                     .foregroundColor(headerFG)
                 
                 if let subtitle = subtitle {
@@ -140,13 +140,13 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(ScreenTier.isPhone ? 6 : 8)
+        .padding(ScreenTier.isSE ? 4 : (ScreenTier.isPhone ? 6 : 8))
         .background(
             isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
             (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(ScreenTier.isPhone ? 0.9 : 0.95) // Slightly smaller on everything
+        .scaleEffect(ScreenTier.isSE ? 0.85 : (ScreenTier.isPhone ? 0.9 : 0.95)) // Even smaller on SE
     }
 }
 
@@ -170,10 +170,10 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: ScreenTier.isPhone ? 15 : 16, weight: isActive ? .bold : .medium))
+                .font(.system(size: ScreenTier.isSE ? 13 : (ScreenTier.isPhone ? 15 : 16), weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, ScreenTier.isSE ? 10 : 16)
+                .padding(.vertical, ScreenTier.isSE ? 6 : 8)
                 .background(
                     isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
                 )

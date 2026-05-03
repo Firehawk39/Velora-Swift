@@ -89,19 +89,21 @@ extension NavidromeClient {
     // MARK: - Fetch Albums
 
     func fetchAlbums() {
-        guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "alphabeticalByArtist", "size": "20"]) else { return }
+        guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "alphabeticalByArtist", "size": "100"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let items = decoded.subsonicResponse?.albumList?.album ?? decoded.subsonicResponse?.albumList2?.album ?? []
+                let parsedAlbums = items.map { sub in
+                    Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
+                          artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
+                          songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
+                          coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
+                }
                 DispatchQueue.main.async {
-                    self.albums = items.map { sub in
-                        Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
-                              artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
-                              songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
-                    }
+                    self.albums = parsedAlbums
+                    LocalMetadataStore.shared.saveAlbums(parsedAlbums)
                 }
             } catch { print("Error decoding albums: \(error)") }
         }.resume()
@@ -129,6 +131,7 @@ extension NavidromeClient {
                 }
                 DispatchQueue.main.async { 
                     self.artists = parsed 
+                    LocalMetadataStore.shared.saveArtists(parsed)
                     completion?(parsed)
                 }
             } catch { 
@@ -155,7 +158,10 @@ extension NavidromeClient {
                     t.playCount = s.playCount
                     return t
                 }
-                DispatchQueue.main.async { completion(tracks) }
+                DispatchQueue.main.async { 
+                    completion(tracks)
+                    LocalMetadataStore.shared.saveTracks(tracks)
+                }
             } catch { DispatchQueue.main.async { completion([]) } }
         }.resume()
     }
@@ -228,24 +234,37 @@ extension NavidromeClient {
     }
 
     // MARK: - Search
-
+    
+    /// High-performance search that queries the local persistence layer first for instant results.
     func search(query: String, completion: @escaping ([Track], [Album], [Artist]) -> Void) {
-        guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
-            completion([], [], []); return
+        // 1. Instant local search (Persistence Layer Optimization)
+        let localTracks = LocalMetadataStore.shared.searchTracks(query: query).map { p in
+            var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
+                  duration: p.duration ?? 0, coverArt: p.coverArt ?? "",
+                  artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
+            t.isStarred = p.isStarred
+            t.playCount = p.playCount
+            return t
         }
+        
+        let localArtists = LocalMetadataStore.shared.searchArtists(query: query).map { p in
+            Artist(id: p.id, name: p.name, coverArt: p.coverArt)
+        }
+        
+        // If we have local results, return them immediately for UI responsiveness
+        if !localTracks.isEmpty || !localArtists.isEmpty {
+            DispatchQueue.main.async {
+                completion(localTracks, [], localArtists)
+            }
+        }
+        
+        // 2. Background remote search to catch anything not yet synced
+        guard let url = buildUrl(method: "search3.view", params: ["query": query]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion([], [], []); return }
+            guard error == nil, let data = data else { return }
             do {
                 let r = try JSONDecoder().decode(SubsonicResponse.self, from: data).subsonicResponse?.searchResult3
-                let tracks = (r?.song ?? []).map { s in
-                    var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
-                    t.isStarred = s.starred != nil
-                    t.playCount = s.playCount
-                    return t
-                }
+                let tracks = (r?.song ?? []).map { self.mapSubsonicSongToTrack($0) }
                 let albums = (r?.album ?? []).map { sub in
                     Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
                           artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
@@ -255,8 +274,16 @@ extension NavidromeClient {
                 let artists = (r?.artist ?? []).map { sub in
                     Artist(id: sub.id, name: sub.name, coverArt: self.getCoverArtUrl(id: sub.id))
                 }
-                DispatchQueue.main.async { completion(tracks, albums, artists) }
-            } catch { DispatchQueue.main.async { completion([], [], []) } }
+                
+                DispatchQueue.main.async {
+                    completion(tracks, albums, artists)
+                    
+                    // Proactively save results to local store
+                    LocalMetadataStore.shared.saveTracks(tracks)
+                    LocalMetadataStore.shared.saveArtists(artists)
+                    LocalMetadataStore.shared.saveAlbums(albums)
+                }
+            } catch { }
         }.resume()
     }
 
@@ -292,7 +319,10 @@ extension NavidromeClient {
                     t.playCount = s.playCount
                     return t
                 }
-                DispatchQueue.main.async { completion(tracks) }
+                DispatchQueue.main.async { 
+                    completion(tracks)
+                    LocalMetadataStore.shared.saveTracks(tracks)
+                }
             } catch { DispatchQueue.main.async { completion([]) } }
         }.resume()
     }
@@ -347,183 +377,143 @@ extension NavidromeClient {
         
         // 1. Check if "Lossless" playlist exists
         if let existing = playlists.first(where: { $0.name == "Lossless" }) {
-            // Update it with missing tracks
-            // For simplicity, we just "Add" all. Subsonic createPlaylist with existing name usually overwrites or we can just create a new one.
-            // Better: updatePlaylist with all flacIds
             updatePlaylist(id: existing.id, songIdsToAdd: flacIds) { _ in
                 print("Synced \(flacIds.count) tracks to existing Lossless playlist.")
             }
         } else {
-            // Create it
             createPlaylist(name: "Lossless", songIds: flacIds) { success in
                 if success { print("Created new Lossless playlist with \(flacIds.count) tracks.") }
             }
         }
     }
 
-    // MARK: - All Songs
-
-    func fetchAllSongs(size: Int = 2000) {
-        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": String(size)]) else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
-            do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let songs = (decoded.subsonicResponse?.randomSongs?.song ?? decoded.subsonicResponse?.randomSongs2?.song ?? []).map { s in
-                    var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
-                    t.isStarred = s.starred != nil
-                    t.playCount = s.playCount
-                    return t
-                }
-                
-                if !songs.isEmpty {
-                    DispatchQueue.main.async { 
-                        self.allSongs = songs 
-                        self.syncLosslessPlaylist()
-                    }
-                } else {
-                    self.fetchAlphabeticalSongs()
-                }
-            } catch { 
-                print("Error decoding random songs: \(error)")
-                self.fetchAlphabeticalSongs()
-            }
-        }.resume()
-    }
-
-    private func fetchAlphabeticalSongs() {
-        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "500"]) else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
-            do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { s in
-                    Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
-                }
-                DispatchQueue.main.async { 
-                    self.allSongs = songs 
-                    self.syncLosslessPlaylist()
-                }
-            } catch { print("Search fallback failed: \(error)") }
-        }.resume()
-    }
-
-    // MARK: - Lyrics
-
-    func fetchLyrics(artist: String, title: String, completion: @escaping (String?) -> Void) {
-        guard let url = buildUrl(method: "getLyrics.view", params: ["artist": artist, "title": title]) else {
-            completion(nil); return
-        }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion(nil); return }
-            do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let lyrics = decoded.subsonicResponse?.lyrics?.value
-                DispatchQueue.main.async { completion(lyrics) }
-            } catch { DispatchQueue.main.async { completion(nil) } }
-        }.resume()
-    }
-
-    // MARK: - Scrobbling
-
-    func scrobble(id: String, submission: Bool) {
-        guard let url = buildUrl(method: "scrobble.view", params: [
-            "id": id,
-            "time": "\(Int(Date().timeIntervalSince1970 * 1000))",
-            "submission": submission ? "true" : "false"
-        ]) else { return }
-        URLSession.shared.dataTask(with: url) { _, _, error in
-            if let error = error { print("Scrobble error: \(error)") }
-        }.resume()
-    }
-
-    func reportNowPlaying(id: String) { scrobble(id: id, submission: false) }
-
-    // MARK: - Batch Fetch
-
-    func fetchEverything() {
-        fetchRecentlyPlayed()
-        fetchAlbums()
-        fetchArtists()
-        fetchPlaylists()
-        fetchAllSongs()
-    }
-
-
-    // MARK: - Cache Management
-
-    func clearCache() {
-        DispatchQueue.main.async {
-            self.artists.removeAll()
-            self.albums.removeAll()
-            self.allSongs.removeAll()
-            self.playlists.removeAll()
-            self.recentlyPlayed.removeAll()
-        }
-        URLCache.shared.removeAllCachedResponses()
-        let fileManager = FileManager.default
-        let tempDir = fileManager.temporaryDirectory
-        if let contents = try? fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil) {
-            contents.forEach { try? fileManager.removeItem(at: $0) }
-        }
-        
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let backdropDir = docs.appendingPathComponent("Backdrops")
-        let portraitDir = docs.appendingPathComponent("ArtistPortraits")
-        let metadataDir = docs.appendingPathComponent("Metadata")
-        
-        for dir in [backdropDir, portraitDir, metadataDir] {
-            if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
-                contents.forEach { try? fileManager.removeItem(at: $0) }
-            }
-        }
-        
-        fetchRecentlyPlayed()
-        fetchAlbums()
-        fetchArtists()
-        fetchPlaylists()
-        fetchAllSongs()
+    // MARK: - All Songs (Adaptive Batching)
+    
+    /// Fetches all songs in the library using adaptive batching to prevent memory spikes.
+    func fetchAllSongs() {
+        self.allSongs.removeAll()
+        // Start with a conservative batch size for older devices (SE 1st gen)
+        let initialBatchSize = ProcessInfo.processInfo.processorCount <= 2 ? 300 : 1000
+        fetchSongsPage(offset: 0, batchSize: initialBatchSize)
     }
     
-    func getMediaCacheSize() -> String {
-        var totalSize: Int64 = 0
-        let fileManager = FileManager.default
+    private func fetchSongsPage(offset: Int, batchSize: Int) {
+        guard let url = buildUrl(method: "search3.view", params: [
+            "query": "",
+            "songCount": "\(batchSize)",
+            "songOffset": "\(offset)"
+        ]) else { return }
         
-        totalSize += Int64(URLCache.shared.currentDiskUsage)
-        
-        let tempDir = fileManager.temporaryDirectory
-        if let enumerator = fileManager.enumerator(at: tempDir, includingPropertiesForKeys: [.fileSizeKey]) {
-            for case let fileURL as URL in enumerator {
-                if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                    totalSize += Int64(fileSize)
-                }
-            }
-        }
-        
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let backdropDir = docs.appendingPathComponent("Backdrops")
-        let portraitDir = docs.appendingPathComponent("ArtistPortraits")
-        let metadataDir = docs.appendingPathComponent("Metadata")
-        
-        for dir in [backdropDir, portraitDir, metadataDir] {
-            if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
-                for case let fileURL as URL in enumerator {
-                    if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                        totalSize += Int64(fileSize)
+        let startTime = Date()
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            let duration = Date().timeIntervalSince(startTime)
+            guard error == nil, let data = data else { 
+                // Retry with smaller batch on error
+                if batchSize > 100 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.fetchSongsPage(offset: offset, batchSize: batchSize / 2)
                     }
                 }
+                return 
             }
+            
+            do {
+                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+                let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { self.mapSubsonicSongToTrack($0) }
+                
+                if !songs.isEmpty {
+                    DispatchQueue.main.async {
+                        self.allSongs.append(contentsOf: songs)
+                        LocalMetadataStore.shared.saveTracks(songs)
+                        
+                        // Adaptive logic: Target 1.5s per request for stability on older hardware
+                        var nextBatchSize = batchSize
+                        if duration < 0.8 && batchSize < 2000 {
+                            nextBatchSize += 200
+                        } else if duration > 3.0 && batchSize > 200 {
+                            nextBatchSize -= 200
+                        }
+                        
+                        self.fetchSongsPage(offset: offset + batchSize, batchSize: nextBatchSize)
+                    }
+                } else {
+                    // Finished fetching all pages
+                    DispatchQueue.main.async {
+                        self.syncLosslessPlaylist()
+                        AppLogger.shared.log("[Sync] Finished fetching all \(self.allSongs.count) songs.", level: .info)
+                    }
+                }
+            } catch {
+                print("Error decoding songs page at offset \(offset): \(error)")
+                if batchSize > 100 {
+                    self.fetchSongsPage(offset: offset, batchSize: batchSize / 2)
+                }
+            }
+        }.resume()
+    }
+
+    /// Fetches all tracks for AI auditing with adaptive limits and full pagination support.
+    func fetchAllTracks(completion: @escaping ([Track]) -> Void) {
+        if !allSongs.isEmpty {
+            completion(allSongs)
+            return
         }
         
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useMB, .useGB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: totalSize)
+        var collectedTracks: [Track] = []
+        let initialBatchSize = ProcessInfo.processInfo.processorCount <= 2 ? 400 : 800
+        
+        func fetchInternal(offset: Int, currentBatch: Int) {
+            guard let url = buildUrl(method: "search3.view", params: [
+                "query": "",
+                "songCount": "\(currentBatch)",
+                "songOffset": "\(offset)"
+            ]) else {
+                completion(collectedTracks)
+                return
+            }
+            
+            let startTime = Date()
+            URLSession.shared.dataTask(with: url) { data, _, error in
+                let duration = Date().timeIntervalSince(startTime)
+                guard error == nil, let data = data else {
+                    completion(collectedTracks); return
+                }
+                
+                do {
+                    let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+                    let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { self.mapSubsonicSongToTrack($0) }
+                    
+                    if !songs.isEmpty {
+                        collectedTracks.append(contentsOf: songs)
+                        LocalMetadataStore.shared.saveTracks(songs)
+                        
+                        var nextBatchSize = currentBatch
+                        if duration < 0.7 && currentBatch < 1500 {
+                            nextBatchSize += 200
+                        } else if duration > 2.0 && currentBatch > 200 {
+                            nextBatchSize -= 200
+                        }
+                        
+                        fetchInternal(offset: offset + currentBatch, currentBatch: nextBatchSize)
+                    } else {
+                        DispatchQueue.main.async { completion(collectedTracks) }
+                    }
+                } catch {
+                    DispatchQueue.main.async { completion(collectedTracks) }
+                }
+            }.resume()
+        }
+        
+        fetchInternal(offset: 0, currentBatch: initialBatchSize)
+    }
+    
+    private func mapSubsonicSongToTrack(_ s: SubsonicSong) -> Track {
+        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
+              artist: s.artist ?? "", duration: s.duration ?? 0,
+              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+        t.isStarred = s.starred != nil
+        t.playCount = s.playCount ?? 0
+        return t
     }
 }
