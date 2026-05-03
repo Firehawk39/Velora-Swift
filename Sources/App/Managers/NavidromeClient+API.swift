@@ -544,4 +544,29 @@ extension NavidromeClient {
         t.playCount = s.playCount ?? 0
         return t
     }
+
+    // MARK: - Cache Size
+
+    /// Returns a human-readable string describing the total size of locally cached media files.
+    func getMediaCacheSize() -> String {
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let mediaDir = docs.appendingPathComponent("Media")
+        
+        guard fm.fileExists(atPath: mediaDir.path) else { return "0 MB" }
+        
+        var totalSize: Int64 = 0
+        if let enumerator = fm.enumerator(at: mediaDir, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles]) {
+            for case let fileURL as URL in enumerator {
+                if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                    totalSize += Int64(size)
+                }
+            }
+        }
+        
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: totalSize)
+    }
 }
