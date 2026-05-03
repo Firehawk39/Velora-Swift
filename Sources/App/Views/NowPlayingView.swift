@@ -61,51 +61,13 @@ struct NowPlayingView: View {
         GeometryReader { proxy in
             ZStack {
                 // Dynamic Ambient Background
-                Group {
-                    if let backdrop = fanart.currentBackdrop {
-                        Image(uiImage: backdrop)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                            .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                            .opacity(isIdle ? 0.45 : 0.35)
-                    } else if let track = playback.currentTrack, let url = track.coverArtUrl {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width, height: proxy.size.height)
-                                .blur(radius: 15) // Subtle blur for ambient feel when backdrop is missing
-                                .opacity(isIdle ? 0.4 : 0.3)
-                        } placeholder: {
-                            Color.black
-                        }
-                    } else {
-                        Color.black
-                    }
-                }
-                .id("bg-\(playback.currentTrack?.id ?? "none")") // Force refresh on track change
-                .overlay(
-                    // Combined Vignette: Dark edges + Vertical fade
-                    ZStack {
-                        RadialGradient(
-                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
-                            center: .center,
-                            startRadius: 200,
-                            endRadius: proxy.size.width * 0.8
-                        )
-                        LinearGradient(
-                            gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
-                )
-                .ignoresSafeArea(.all)
-                .animation(.easeInOut(duration: 0.6), value: isIdle)
-                .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
-                .allowsHitTesting(false)
-                .drawingGroup()
+                dynamicAmbientBackground(proxy: proxy)
+                    .overlay(ambientVignette(proxy: proxy))
+                    .ignoresSafeArea(.all)
+                    .animation(.easeInOut(duration: 0.6), value: isIdle)
+                    .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
+                    .allowsHitTesting(false)
+                    .drawingGroup()
 
 
 
@@ -186,6 +148,52 @@ struct NowPlayingView: View {
             refreshMetadata()
         }
         .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func dynamicAmbientBackground(proxy: GeometryProxy) -> some View {
+        Group {
+            if let backdrop = fanart.currentBackdrop {
+                Image(uiImage: backdrop)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                    .opacity(isIdle ? 0.45 : 0.35)
+            } else if let track = playback.currentTrack, let url = track.coverArtUrl {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .blur(radius: 15) // Subtle blur for ambient feel when backdrop is missing
+                        .opacity(isIdle ? 0.4 : 0.3)
+                } placeholder: {
+                    Color.black
+                }
+            } else {
+                Color.black
+            }
+        }
+        .id("bg-\(playback.currentTrack?.id ?? "none")") // Force refresh on track change
+    }
+
+    @ViewBuilder
+    private func ambientVignette(proxy: GeometryProxy) -> some View {
+        // Combined Vignette: Dark edges + Vertical fade
+        ZStack {
+            RadialGradient(
+                gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                center: .center,
+                startRadius: 200,
+                endRadius: proxy.size.width * 0.8
+            )
+            LinearGradient(
+                gradient: Gradient(colors: [.black.opacity(isIdle ? 0.2 : 0.5), .clear, .black.opacity(isIdle ? 0.4 : 0.8)]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
     }
 
     private func startIdleTimer() {

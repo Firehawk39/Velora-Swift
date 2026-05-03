@@ -664,10 +664,9 @@ private struct PlaylistDetailView: View {
     
     @State private var viewMode: LibraryView.ViewMode = .list
     @State private var sortMode: LibraryView.SortMode = .alphabetical
-    @State private var sortMode: LibraryView.SortMode = .alphabetical
 
     var body: some View {
-        let filtered = showOfflineOnly ? playback.filterOffline(tracks) : tracks
+        let filtered = playback.showOfflineOnly ? playback.filterOffline(tracks) : tracks
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
