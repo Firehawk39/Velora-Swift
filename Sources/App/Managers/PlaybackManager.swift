@@ -147,6 +147,15 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         loadAndPlay(track: track)
     }
     
+    func shufflePlay(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        isShuffle = true
+        let shuffled = tracks.shuffled()
+        if let first = shuffled.first {
+            playTrack(first, context: shuffled)
+        }
+    }
+    
     private func loadAndPlay(track: Track) {
         stopHiFiRenderer()
         cleanupObservers()

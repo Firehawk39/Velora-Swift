@@ -71,34 +71,7 @@ struct NowPlayingView: View {
 
 
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        VStack(spacing: 0) {
-                            if isCompact && !isLandscape {
-                                portraitLayout(proxy: proxy)
-                            } else {
-                                tabletLayout(proxy: proxy)
-                            }
-                        }
-                        .frame(height: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
-                        
-                        metadataCards
-                            .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
-                            .padding(.top, 40)
-                            .padding(.bottom, 100)
-                            .opacity(isIdle ? 0.0 : 1.0)
-                            .offset(y: isIdle ? 20 : 0)
-                            .allowsHitTesting(!isIdle)
-                            .animation(.easeInOut(duration: 0.7), value: isIdle)
-                    }
-                    .padding(.top, isIdle ? 0 : headerHeight + 20)
-                    .padding(.bottom, 50) // Extra bottom clearance
-                    .contentShape(Rectangle()) // Ensures the entire area is scroll-reactive
-                    .onTapGesture {
-                        if isIdle { resetIdleTimer() }
-                    }
-                }
-                .scrollDisabledIfAvailable(isIdle) // Lock scrolling when in idle state
+                mainScrollContent(proxy: proxy)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
@@ -283,6 +256,38 @@ struct NowPlayingView: View {
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
         .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
+    }
+
+    @ViewBuilder
+    private func mainScrollContent(proxy: GeometryProxy) -> some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    if isCompact && !isLandscape {
+                        portraitLayout(proxy: proxy)
+                    } else {
+                        tabletLayout(proxy: proxy)
+                    }
+                }
+                .frame(height: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
+                
+                metadataCards
+                    .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
+                    .padding(.top, 40)
+                    .padding(.bottom, 100)
+                    .opacity(isIdle ? 0.0 : 1.0)
+                    .offset(y: isIdle ? 20 : 0)
+                    .allowsHitTesting(!isIdle)
+                    .animation(.easeInOut(duration: 0.7), value: isIdle)
+            }
+            .padding(.top, isIdle ? 0 : headerHeight + 20)
+            .padding(.bottom, 50) // Extra bottom clearance
+            .contentShape(Rectangle()) // Ensures the entire area is scroll-reactive
+            .onTapGesture {
+                if isIdle { resetIdleTimer() }
+            }
+        }
+        .scrollDisabledIfAvailable(isIdle) // Lock scrolling when in idle state
     }
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
