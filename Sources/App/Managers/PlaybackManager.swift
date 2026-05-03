@@ -469,13 +469,29 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func prevTrack() {
-        if progress > 3.0 {
+        if progress > 5.0 {
             seek(to: 0)
-            return
-        }
-        if queueIndex > 0 {
+        } else if queueIndex > 0 {
             queueIndex -= 1
             loadAndPlay(track: queue[queueIndex])
+        } else {
+            seek(to: 0)
+        }
+    }
+    
+    func togglePlayPause() {
+        if isPlaying {
+            pause()
+        } else {
+            play()
+        }
+    }
+    
+    func toggleRepeatMode() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
         }
     }
     

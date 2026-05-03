@@ -376,7 +376,7 @@ struct NowPlayingView: View {
         .hoverEffect()
 
         // Previous
-        Button { playback.skipBackward(); resetIdleTimer() } label: {
+        Button { playback.prevTrack(); resetIdleTimer() } label: {
             Image(systemName: "backward.fill").font(.system(size: 20)).foregroundColor(.white)
         }
         .accessibilityLabel("Previous Track")
@@ -394,7 +394,7 @@ struct NowPlayingView: View {
         .hoverEffect()
 
         // Next
-        Button { playback.skipForward(); resetIdleTimer() } label: {
+        Button { playback.nextTrack(); resetIdleTimer() } label: {
             Image(systemName: "forward.fill").font(.system(size: 20)).foregroundColor(.white)
         }
         .accessibilityLabel("Next Track")
