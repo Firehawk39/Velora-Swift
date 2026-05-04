@@ -93,9 +93,12 @@ struct HomeView: View {
                             ForEach(client.albums.prefix(isCompact ? 6 : 8)) { album in
                                 AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 220, cardH: ScreenTier.isPhone ? 100 : 140)
                                     .onTapGesture {
-                                        client.fetchAlbumTracks(albumId: album.id) { tracks in
+                                        Task {
+                                            let tracks = await client.fetchAlbumTracks(albumId: album.id)
                                             if let first = tracks.first {
-                                                playback.playTrack(first, context: tracks)
+                                                await MainActor.run {
+                                                    playback.playTrack(first, context: tracks)
+                                                }
                                             }
                                         }
                                     }
@@ -117,7 +120,6 @@ struct HomeView: View {
             }
         }
     }
-}
 }
 
 private struct SectionHeader: View {

@@ -224,7 +224,8 @@ struct SettingsView: View {
                     }
                     
                     // 6. Dismiss after short delay
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    await MainActor.run {
                         showSettings = false
                     }
                 } else {

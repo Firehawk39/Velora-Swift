@@ -384,20 +384,25 @@ struct ArtistDetailView: View {
             self.artistLifeSpan = localArtist.lifeSpan
         }
         
-        client.fetchArtistData(artistId: artistId) { tracks, albums, bio, mbid in
-            self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
-            self.favoriteSongs = tracks.filter { $0.isStarred }
-            self.albums = albums
+        Task {
+            let (tracks, albums, bio, mbid) = await client.fetchArtistData(artistId: artistId)
             
-            // Only update bio if not already set or if it's nil
-            if self.biography == nil {
-                self.biography = bio
+            await MainActor.run {
+                self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
+                self.favoriteSongs = tracks.filter { $0.isStarred }
+                self.albums = albums
+                
+                // Only update bio if not already set or if it's nil
+                if self.biography == nil {
+                    self.biography = bio
+                }
+                
+                self.isLoading = false
             }
             
-            self.isLoading = false
-            
-            client.fetchArtists { artists in
-                self.relatedArtists = Array(artists.shuffled().prefix(6)).filter { $0.id != artistId }
+            let related = await client.fetchArtists()
+            await MainActor.run {
+                self.relatedArtists = Array(related.shuffled().prefix(6)).filter { $0.id != artistId }
             }
         }
     }
@@ -437,10 +442,12 @@ struct ArtistPortraitView: View {
         .frame(width: size, height: size)
         .clipShape(Circle())
         .onAppear {
-            fanart.fetchArtistPortrait(for: artistName) { img in
-                if let img = img {
-                    withAnimation(.easeInOut(duration: 0.5)) {
-                        self.portraitImage = img
+            Task {
+                if let img = await fanart.fetchArtistPortrait(for: artistName) {
+                    await MainActor.run {
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            self.portraitImage = img
+                        }
                     }
                 }
             }
