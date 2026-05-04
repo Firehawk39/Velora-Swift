@@ -552,11 +552,10 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     private func fetchMetadata(for track: Track) {
         client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
-            DispatchQueue.main.async {
-                guard self.currentTrack?.id == track.id else { return }
-                self.currentLyrics = lyrics
-                self.currentSyncedLyrics = lyrics.map { self.parseLRC($0) }
-            }
+            // NavidromeClient already calls back on main; guard stale track
+            guard self.currentTrack?.id == track.id else { return }
+            self.currentLyrics = lyrics
+            self.currentSyncedLyrics = lyrics.map { self.parseLRC($0) }
         }
         
         FanartManager.shared.fetchBackdrop(for: track.artist ?? "")

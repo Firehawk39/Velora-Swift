@@ -58,6 +58,25 @@ class NavidromeClient: ObservableObject {
         buildUrl(method: "getCoverArt.view", params: ["id": id, "size": "500"])?.absoluteString ?? ""
     }
 
+    func getDownloadUrl(id: String) -> URL? {
+        buildUrl(method: "download.view", params: ["id": id])
+    }
+
+    /// Fetches synced (LRC) or plain lyrics via the Subsonic getLyrics endpoint.
+    func fetchLyrics(artist: String, title: String, completion: @escaping (String?) -> Void) {
+        guard let url = buildUrl(method: "getLyrics.view", params: ["artist": artist, "title": title]) else {
+            completion(nil); return
+        }
+        URLSession.shared.dataTask(with: url) { data, _, error in
+            guard error == nil, let data = data else { completion(nil); return }
+            do {
+                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+                let value = decoded.subsonicResponse?.lyrics?.value
+                DispatchQueue.main.async { completion(value) }
+            } catch { DispatchQueue.main.async { completion(nil) } }
+        }.resume()
+    }
+
     func logout() {
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
         UserDefaults.standard.removeObject(forKey: "velora_server_url")
