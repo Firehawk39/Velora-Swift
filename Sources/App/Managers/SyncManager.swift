@@ -146,7 +146,7 @@ final class SyncManager: ObservableObject {
                 if !hasValid {
                     metadataStatus = "Syncing Info: \(artist.name)"
                     FanartManager.shared.downloadBackdropSilently(for: artist.name)
-                    FanartManager.shared.fetchArtistPortrait(for: artist.name) { _ in }
+                    _ = await FanartManager.shared.fetchArtistPortrait(for: artist.name)
                     await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
                 }
                 
