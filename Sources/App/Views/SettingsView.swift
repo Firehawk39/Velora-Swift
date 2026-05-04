@@ -202,8 +202,10 @@ struct SettingsView: View {
         client.configure(url: serverUrl, user: username, pass: password)
         
         // 2. Perform actual verification with server
-        client.ping { success, errorMessage in
-            DispatchQueue.main.async {
+        Task {
+            let (success, errorMessage) = await client.ping()
+            
+            await MainActor.run {
                 if success {
                     status = .connected
                     
