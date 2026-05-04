@@ -399,6 +399,7 @@ private struct LibraryMenuView: View {
         case .lowResArt: return "photo.fill"
         case .missingMetadata: return "person.text.rectangle.fill"
         case .missingBackdrop: return "panorama.fill"
+        case .unknownMetadata: return "questionmark.circle.fill"
         }
     }
 }
