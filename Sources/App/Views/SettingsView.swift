@@ -205,33 +205,29 @@ struct SettingsView: View {
         Task {
             let (success, errorMessage) = await client.ping()
             
-            await MainActor.run {
-                if success {
-                    status = .connected
-                    
-                    // 3. Persist configuration only on success
-                    UserDefaults.standard.set(serverUrl, forKey: "velora_server_url")
-                    UserDefaults.standard.set(username, forKey: "velora_username")
-                    
-                    // 4. Securely save password in Keychain
-                    if let passData = password.data(using: .utf8) {
-                        KeychainHelper.shared.save(passData, service: "velora-password", account: username)
-                    }
-                    
-                    // 5. Trigger initial data sync
-                    Task {
-                        await client.syncLibrary()
-                    }
-                    
-                    // 6. Dismiss after short delay
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    await MainActor.run {
-                        showSettings = false
-                    }
-                } else {
-                    status = .error
-                    print("Login failed: \(errorMessage ?? "Unknown error")")
+            if success {
+                status = .connected
+                
+                // 3. Persist configuration only on success
+                UserDefaults.standard.set(serverUrl, forKey: "velora_server_url")
+                UserDefaults.standard.set(username, forKey: "velora_username")
+                
+                // 4. Securely save password in Keychain
+                if let passData = password.data(using: .utf8) {
+                    KeychainHelper.shared.save(passData, service: "velora-password", account: username)
                 }
+                
+                // 5. Trigger initial data sync
+                Task {
+                    await client.syncLibrary()
+                }
+                
+                // 6. Dismiss after short delay
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                showSettings = false
+            } else {
+                status = .error
+                print("Login failed: \(errorMessage ?? "Unknown error")")
             }
         }
     }
