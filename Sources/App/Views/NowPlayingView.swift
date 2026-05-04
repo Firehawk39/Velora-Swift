@@ -761,15 +761,14 @@ struct NowPlayingView: View {
         
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
-            playback.client.fetchArtistInfo(artistId: artistId) { bio, mbid in
-                DispatchQueue.main.async {
+            Task {
+                let (bio, mbid) = await playback.client.fetchArtistInfoAsync(artistId: artistId)
+                await MainActor.run {
                     // Update MB manager
                     mb.fetchAboutArtist(artistName: artistName, mbid: mbid)
                     
                     if let bio = bio {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            mb.currentArtistInfo?.biography = bio
-                        }
+                        mb.currentArtistInfo?.biography = bio
                     }
                     
                     // If we got a fresh MBID, update fanart too (though usually it's already there)
