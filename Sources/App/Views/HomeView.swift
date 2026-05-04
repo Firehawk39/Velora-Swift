@@ -112,10 +112,11 @@ struct HomeView: View {
                 Spacer().frame(height: 48)
             }
             .padding(.top, 4)
-        .onAppear {
-            if client.recentTracks.isEmpty {
-                Task {
-                    await client.fetchRecentlyPlayed()
+            .onAppear {
+                if client.recentTracks.isEmpty {
+                    Task {
+                        await client.fetchRecentlyPlayed()
+                    }
                 }
             }
         }

@@ -77,19 +77,24 @@ class MusicBrainzManager: ObservableObject {
         }
     }
     
-    func fetchAboutArtist(artistName: String, mbid: String? = nil) {
-        Task {
-            if let mbid = mbid, !mbid.isEmpty {
+    func fetchAboutArtistAsync(artistName: String, mbid: String? = nil) async {
+        if let mbid = mbid, !mbid.isEmpty {
+            await fetchArtistWithMBID(mbid: mbid, name: artistName)
+        } else {
+            if let mbid = await resolveMBIDAsync(for: artistName) {
                 await fetchArtistWithMBID(mbid: mbid, name: artistName)
             } else {
-                if let mbid = await resolveMBIDAsync(for: artistName) {
-                    await fetchArtistWithMBID(mbid: mbid, name: artistName)
-                } else {
-                    await MainActor.run {
-                        self.currentArtistInfo = ArtistInfo(name: artistName, biography: "No biography available.")
-                    }
+                await MainActor.run {
+                    self.currentArtistInfo = ArtistInfo(name: artistName, biography: "No biography available.")
                 }
             }
+        }
+    }
+    
+    // Maintain legacy signature for UI compatibility if needed, but mark as Task-wrapped
+    func fetchAboutArtist(artistName: String, mbid: String? = nil) {
+        Task {
+            await fetchAboutArtistAsync(artistName: artistName, mbid: mbid)
         }
     }
     
@@ -148,31 +153,40 @@ class MusicBrainzManager: ObservableObject {
         }
     }
     
-    func fetchAboutAlbum(albumName: String, artistName: String, mbid: String? = nil) {
-        Task {
-            if let mbid = mbid, !mbid.isEmpty {
-                await fetchAlbumWithMBID(mbid: mbid, name: albumName)
-            } else {
-                if let resolved = await resolveAlbumMBIDAsync(album: albumName, artist: artistName) {
-                    await fetchAlbumWithMBID(mbid: resolved, name: albumName)
-                }
+    func fetchAboutAlbumAsync(albumName: String, artistName: String, mbid: String? = nil) async {
+        if let mbid = mbid, !mbid.isEmpty {
+            await fetchAlbumWithMBID(mbid: mbid, name: albumName)
+        } else {
+            if let resolved = await resolveAlbumMBIDAsync(album: albumName, artist: artistName) {
+                await fetchAlbumWithMBID(mbid: resolved, name: albumName)
             }
         }
     }
     
-    func fetchReleaseDetailsAsync(mbid: String) async -> (label: String?, releaseDate: String?) {
-        let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?inc=labels&fmt=json"
-        guard let url = URL(string: urlString) else { return (nil, nil) }
+    func fetchAboutAlbum(albumName: String, artistName: String, mbid: String? = nil) {
+        Task {
+            await fetchAboutAlbumAsync(albumName: albumName, artistName: artistName, mbid: mbid)
+        }
+    }
+    
+    func fetchReleaseDetailsAsync(mbid: String) async -> (title: String?, artist: String?, album: String?, label: String?, releaseDate: String?) {
+        let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?inc=artist-credits+labels&fmt=json"
+        guard let url = URL(string: urlString) else { return (nil, nil, nil, nil, nil) }
         
         guard let data = await performThrottledRequest(url: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return (nil, nil)
+            return (nil, nil, nil, nil, nil)
         }
+        
+        let title = json["title"] as? String
+        let album = title // In MusicBrainz, release title is effectively the album name
+        let artistCredits = json["artist-credit"] as? [[String: Any]]
+        let artist = artistCredits?.first?["name"] as? String
         
         let label = (json["label-info"] as? [[String: Any]])?.first.flatMap { ($0["label"] as? [String: Any])?["name"] as? String }
         let firstReleaseDate = json["date"] as? String
         
-        return (label, firstReleaseDate)
+        return (title, artist, album, label, firstReleaseDate)
     }
     
     private func fetchAlbumWithMBID(mbid: String, name: String) async {
@@ -235,13 +249,7 @@ class MusicBrainzManager: ObservableObject {
         return nil
     }
     
-    // Maintain legacy method for compatibility if needed, but point to async version
-    func resolveMBID(for artist: String, completion: @escaping (String?) -> Void) {
-        Task {
-            let result = await resolveMBIDAsync(for: artist)
-            completion(result)
-        }
-    }
+
     
     private enum ResolutionStep {
         case exactMusicBrainz
@@ -367,9 +375,15 @@ class MusicBrainzManager: ObservableObject {
         return result.isEmpty ? name : result
     }
     
-    func resolveAlbumMBIDAsync(album: String, artist: String) async -> String? {
-        let query = "release:\"\(album)\" AND artist:\"\(artist)\""
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    func resolveAlbumMBIDAsync(album: String, artist: String, query: String? = nil) async -> String? {
+        let searchQuery: String
+        if let q = query, !q.isEmpty {
+            searchQuery = q
+        } else {
+            searchQuery = "release:\"\(album)\" AND artist:\"\(artist)\""
+        }
+        
+        let encoded = searchQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://musicbrainz.org/ws/2/release/?query=\(encoded)&fmt=json"
         guard let url = URL(string: urlString) else { return nil }
         

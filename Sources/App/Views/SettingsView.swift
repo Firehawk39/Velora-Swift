@@ -762,7 +762,7 @@ struct AppSettingsView: View {
                                                     await AIManager.shared.fixLibraryIssues()
                                                 }
                                             }) {
-                                                VStack(spacing: 8) {
+                                                VStack(spacing: 10) {
                                                     HStack {
                                                         Text(AIManager.shared.isProcessing ? "Fixing Issues..." : "Fix All Issues")
                                                             .fontWeight(.bold)
@@ -774,9 +774,20 @@ struct AppSettingsView: View {
                                                     }
                                                     
                                                     if AIManager.shared.isProcessing {
+                                                        // Overall progress bar
                                                         ProgressView(value: AIManager.shared.fixProgress)
                                                             .progressViewStyle(LinearProgressViewStyle(tint: .purple))
                                                             .scaleEffect(x: 1, y: 0.5, anchor: .center)
+                                                        
+                                                        // Per-stage breakdown
+                                                        VStack(spacing: 6) {
+                                                            AIStageRow(label: "Genre Prediction", emoji: "🎵", progress: AIManager.shared.genreProgress)
+                                                            AIStageRow(label: "Album Year",       emoji: "📅", progress: AIManager.shared.yearProgress)
+                                                            AIStageRow(label: "Artist Metadata",  emoji: "🎤", progress: AIManager.shared.artistProgress)
+                                                            AIStageRow(label: "Backdrop Fetch",   emoji: "🖼️", progress: AIManager.shared.backdropProgress)
+                                                            AIStageRow(label: "Cover Art",        emoji: "💿", progress: AIManager.shared.artProgress)
+                                                        }
+                                                        .padding(.top, 4)
                                                     }
                                                 }
                                                 .padding()
@@ -875,6 +886,40 @@ struct AppSettingsView: View {
         NavidromeClient.shared.configure(url: finalUrl, user: finalUser, pass: finalPass)
         Task {
             await NavidromeClient.shared.syncLibrary()
+        }
+    }
+}
+
+// MARK: - AI Stage Row
+
+/// A single row in the AI fix progress panel.
+/// Shows a label + emoji with a mini progress bar.
+/// - `progress` is `nil` = not started (hidden), 0.0–1.0 = in progress, 1.0 = complete (shows checkmark).
+struct AIStageRow: View {
+    let label: String
+    let emoji: String
+    let progress: Double?
+
+    var body: some View {
+        if let p = progress {
+            HStack(spacing: 8) {
+                Text(emoji)
+                    .font(.system(size: 12))
+                Text(label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.purple.opacity(0.85))
+                Spacer()
+                if p >= 1.0 {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.green)
+                } else {
+                    ProgressView(value: p)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                        .frame(width: 60)
+                        .scaleEffect(x: 1, y: 0.6, anchor: .center)
+                }
+            }
         }
     }
 }

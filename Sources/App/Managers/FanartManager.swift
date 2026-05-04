@@ -110,29 +110,7 @@ class FanartManager: ObservableObject {
                 }
             }
             
-            // 1. Check Cache
-            if let cached = getCachedBackdrop(for: artist) {
-                AppLogger.shared.log("[Fanart] Cache hit for \(artist)")
-                await MainActor.run {
-                    if isNewArtist {
-                        withAnimation(.easeInOut(duration: 0.6)) {
-                            self.currentBackdrop = cached
-                        }
-                    } else {
-                        self.currentBackdrop = cached
-                    }
-                }
-                return
-            }
-            
-            // 2. Resolve MBID if needed
-            guard let resolvedMBID = mbid ?? (await MusicBrainzManager.shared.resolveMBIDAsync(for: artist)) else {
-                AppLogger.shared.log("[Fanart] Could not resolve MBID for \(artist)", level: .warning)
-                return
-            }
-            
-            // 3. Fetch from Fanart
-            if let image = await fetchImageAsync(mbid: resolvedMBID, artistName: artist, type: .background) {
+            if let image = await fetchBackdropAsync(for: artist, mbid: mbid) {
                 await MainActor.run {
                     if self.currentArtistName == artist {
                         withAnimation(.easeInOut(duration: 0.8)) {

@@ -222,6 +222,21 @@ class LocalMetadataStore {
         try? context.save()
     }
     
+    func updateBackdropStatus(for artistName: String, hasBackdrop: Bool) {
+        guard let context = context else { return }
+        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.artist == artistName })
+        
+        do {
+            let tracks = try context.fetch(fetchDescriptor)
+            for track in tracks {
+                track.hasCustomBackdrop = hasBackdrop
+            }
+            try context.save()
+        } catch {
+            print("Error updating backdrop status for \(artistName): \(error)")
+        }
+    }
+    
     func updateAlbumCustomArt(for albumId: String, url: String) {
         updateCustomArtBatch(results: [(trackIds: [], albumId: albumId, url: url)])
     }
@@ -238,6 +253,22 @@ class LocalMetadataStore {
             }
         } catch {
             print("Error updating download status: \(error)")
+        }
+    }
+
+    func updateTrackMetadata(for trackId: String, title: String? = nil, artist: String? = nil, album: String? = nil) {
+        guard let context = context else { return }
+        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == trackId })
+        
+        do {
+            if let persistent = try context.fetch(fetchDescriptor).first {
+                if let title = title { persistent.title = title }
+                if let artist = artist { persistent.artist = artist }
+                if let album = album { persistent.album = album }
+                try context.save()
+            }
+        } catch {
+            print("Error updating track metadata: \(error)")
         }
     }
     

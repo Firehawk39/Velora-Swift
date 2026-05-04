@@ -15,6 +15,7 @@ enum IssueType: String, Hashable, CaseIterable {
     case lowResArt = "Low-Res Art"
     case missingMetadata = "Missing Metadata"
     case missingBackdrop = "Missing Backdrop"
+    case unknownMetadata = "Unknown Metadata"
 }
 
 struct AuditResult: Identifiable {
