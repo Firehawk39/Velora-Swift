@@ -4,6 +4,7 @@ struct LibraryView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager
     @EnvironmentObject var sync: SyncManager
+    @EnvironmentObject var aiManager: AIManager
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     @Environment(\.horizontalSizeClass) var hSizeClass
@@ -280,7 +281,116 @@ private struct LibraryMenuView: View {
                     .padding(.horizontal, hPad)
                 }
                 .padding(.top, 30)
+
+                // MARK: - AI Audit & Enrichment
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "sparkles").foregroundColor(.red).font(.system(size: isCompact ? 18 : 20))
+                        Text("AI Studio").font(.system(size: isCompact ? 22 : 24, weight: .bold))
+                        Spacer()
+                        if aiManager.isProcessing {
+                            LoadingCircle(size: 20, strokeWidth: 2.5, accentColor: .red)
+                        }
+                    }
+                    .padding(.horizontal, hPad)
+
+                    VStack(alignment: .leading, spacing: 20) {
+                        if !aiManager.auditStatus.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(aiManager.auditStatus)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(.red)
+                                
+                                if aiManager.isProcessing && aiManager.fixProgress > 0 {
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            Capsule().fill(Color.red.opacity(0.1))
+                                            Capsule().fill(Color.red)
+                                                .frame(width: geo.size.width * CGFloat(aiManager.fixProgress))
+                                        }
+                                    }
+                                    .frame(height: 6)
+                                }
+                            }
+                            .padding(.horizontal, hPad)
+                        }
+
+                        if !aiManager.auditResults.isEmpty && !aiManager.isProcessing {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(aiManager.auditResults) { result in
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            HStack {
+                                                Image(systemName: iconForIssue(result.type))
+                                                    .foregroundColor(.red)
+                                                Text("\(result.count)")
+                                                    .font(.system(size: 16, weight: .bold))
+                                            }
+                                            Text(result.type.rawValue)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor(.gray)
+                                        }
+                                        .padding(12)
+                                        .frame(width: 110, alignment: .leading)
+                                        .background(RoundedRectangle(cornerRadius: 16).fill(isDarkMode ? Color.white.opacity(0.05) : Color.white))
+                                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.red.opacity(0.1), lineWidth: 1))
+                                    }
+                                }
+                                .padding(.horizontal, hPad)
+                            }
+                        }
+
+                        HStack(spacing: 12) {
+                            Button(action: {
+                                Task { await aiManager.runLibraryAudit() }
+                            }) {
+                                Text(aiManager.auditResults.isEmpty ? "Audit Library" : "Re-Audit")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(isDarkMode ? .white : .black)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                            }
+                            .disabled(aiManager.isProcessing)
+
+                            if !aiManager.auditResults.isEmpty || aiManager.isProcessing {
+                                Button(action: {
+                                    Task { await aiManager.fixLibraryIssues() }
+                                }) {
+                                    HStack(spacing: 8) {
+                                        if !aiManager.isProcessing {
+                                            Image(systemName: "wand.and.stars")
+                                        }
+                                        Text(aiManager.isProcessing ? "Optimizing..." : "Enrich All")
+                                    }
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(aiManager.isProcessing ? Color.gray : Color.red)
+                                    .clipShape(Capsule())
+                                }
+                                .disabled(aiManager.isProcessing)
+                            }
+                        }
+                        .padding(.horizontal, hPad)
+                    }
+                    .padding(.vertical, 24)
+                    .background(RoundedRectangle(cornerRadius: 24).fill(isDarkMode ? Color.white.opacity(0.02) : Color.black.opacity(0.02)))
+                    .padding(.horizontal, hPad)
+                }
+                .padding(.top, 20)
             }
+        }
+    }
+
+    private func iconForIssue(_ type: IssueType) -> String {
+        switch type {
+        case .missingGenre: return "tag.fill"
+        case .missingYear: return "calendar"
+        case .lowResArt: return "photo.fill"
+        case .missingMetadata: return "person.text.rectangle.fill"
+        case .missingBackdrop: return "panorama.fill"
         }
     }
 }

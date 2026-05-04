@@ -108,6 +108,7 @@ struct ContentView: View {
         .environmentObject(client)
         .environmentObject(playback)
         .environmentObject(SyncManager.shared)
+        .environmentObject(AIManager.shared)
         .preferredColorScheme((isDarkMode || activeTab == "now-playing") ? .dark : .light)
         .statusBarHidden(true)
         .onAppear { 

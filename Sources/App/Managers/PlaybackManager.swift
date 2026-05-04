@@ -79,7 +79,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private lazy var downloadSession: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
-        return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+        // Use a background queue for delegate calls to prevent main-thread congestion during bulk sync
+        return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     } ()
     
     init(client: NavidromeClient) {
@@ -261,12 +262,12 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     private func setupHiFiTimeObserver() {
         Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
-            guard let self = self, let sync = self.hiFiSynchronizer, self.isPlaying else { 
-                if self?.hiFiSynchronizer == nil { timer.invalidate() }
-                return 
-            }
-            let currentTime = CMTimeGetSeconds(sync.currentTime())
-            DispatchQueue.main.async {
+            Task { @MainActor in
+                guard let self = self, let sync = self.hiFiSynchronizer, self.isPlaying else { 
+                    if self?.hiFiSynchronizer == nil { timer.invalidate() }
+                    return 
+                }
+                let currentTime = CMTimeGetSeconds(sync.currentTime())
                 self.progress = currentTime
                 
                 // Gapless Transition Trigger (The Last 3%)
@@ -278,6 +279,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 
                 // Pre-fetch next track for gapless (at 5s remaining)
                 if self.duration > 0 && currentTime >= self.duration - 5.0 && self.nextAssetReader == nil {
+                    AppLogger.shared.log("[Gapless] 5s remaining - Preparing look-ahead...", level: .info)
                     self.prepareNextTrackForGapless()
                 }
             }
@@ -412,15 +414,21 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let interval = crossfadeDuration / Double(steps)
         var currentStep = 0
         
-        Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
-            currentStep += 1
-            let ratio = Double(currentStep) / Double(steps)
-            self.player?.volume = Float(1.0 - ratio)
-            self.secondaryPlayer?.volume = Float(ratio)
-            
-            if currentStep >= steps {
-                timer.invalidate()
-                self.completeCrossfade(with: nextTrack)
+        Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self = self else { 
+                    timer.invalidate()
+                    return 
+                }
+                currentStep += 1
+                let ratio = Double(currentStep) / Double(steps)
+                self.player?.volume = Float(1.0 - ratio)
+                self.secondaryPlayer?.volume = Float(ratio)
+                
+                if currentStep >= steps {
+                    timer.invalidate()
+                    self.completeCrossfade(with: nextTrack)
+                }
             }
         }
     }
@@ -529,13 +537,13 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private func startSeeking(forward: Bool) {
         stopSeeking()
         // Standard seeking: Move 2 seconds every 0.2s (10x speed)
-        // This is smoother for AVPlayer than 0.1s updates
+        // Timer is scheduled on the MainActor RunLoop; use assumeIsolated to satisfy the compiler.
         seekTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            let delta = forward ? 2.0 : -2.0
-            let newTime = max(0, min(self.duration, self.progress + delta))
-            self.seek(to: newTime)
-            DispatchQueue.main.async {
+            Task { @MainActor in
+                guard let self = self else { return }
+                let delta = forward ? 2.0 : -2.0
+                let newTime = max(0, min(self.duration, self.progress + delta))
+                self.seek(to: newTime)
                 self.progress = newTime
             }
         }
@@ -615,25 +623,39 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private func setupRemoteCommandCenter() {
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.isEnabled = true
-        center.playCommand.addTarget { _ in self.play(); return .success }
+        center.playCommand.addTarget { _ in 
+            Task { @MainActor in self.play() }
+            return .success 
+        }
         
         center.pauseCommand.isEnabled = true
-        center.pauseCommand.addTarget { _ in self.pause(); return .success }
+        center.pauseCommand.addTarget { _ in 
+            Task { @MainActor in self.pause() }
+            return .success 
+        }
         
         center.nextTrackCommand.isEnabled = true
-        center.nextTrackCommand.addTarget { _ in self.nextTrack(); return .success }
+        center.nextTrackCommand.addTarget { _ in 
+            Task { @MainActor in self.nextTrack() }
+            return .success 
+        }
         
         center.previousTrackCommand.isEnabled = true
-        center.previousTrackCommand.addTarget { _ in self.prevTrack(); return .success }
+        center.previousTrackCommand.addTarget { _ in 
+            Task { @MainActor in self.prevTrack() }
+            return .success 
+        }
         
         // Seek commands for holding buttons
         center.seekForwardCommand.isEnabled = true
         center.seekForwardCommand.addTarget { [weak self] event in
             guard let self = self, let ev = event as? MPSeekCommandEvent else { return .commandFailed }
-            if ev.type == .beginSeeking {
-                self.startSeeking(forward: true)
-            } else {
-                self.stopSeeking()
+            Task { @MainActor in
+                if ev.type == .beginSeeking {
+                    self.startSeeking(forward: true)
+                } else {
+                    self.stopSeeking()
+                }
             }
             return .success
         }
@@ -641,10 +663,12 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         center.seekBackwardCommand.isEnabled = true
         center.seekBackwardCommand.addTarget { [weak self] event in
             guard let self = self, let ev = event as? MPSeekCommandEvent else { return .commandFailed }
-            if ev.type == .beginSeeking {
-                self.startSeeking(forward: false)
-            } else {
-                self.stopSeeking()
+            Task { @MainActor in
+                if ev.type == .beginSeeking {
+                    self.startSeeking(forward: false)
+                } else {
+                    self.stopSeeking()
+                }
             }
             return .success
         }
@@ -652,25 +676,31 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         // Skip commands for quick jumps (sometimes triggered by steering wheel "double click" or menu)
         center.skipForwardCommand.isEnabled = true
         center.skipForwardCommand.preferredIntervals = [15.0]
-        center.skipForwardCommand.addTarget { event in
-            self.seek(to: self.progress + 15.0)
+        center.skipForwardCommand.addTarget { [weak self] event in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.seek(to: self.progress + 15.0)
+            }
             return .success
         }
         
         center.skipBackwardCommand.isEnabled = true
         center.skipBackwardCommand.preferredIntervals = [15.0]
-        center.skipBackwardCommand.addTarget { event in
-            self.seek(to: self.progress - 15.0)
+        center.skipBackwardCommand.addTarget { [weak self] event in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.seek(to: self.progress - 15.0)
+            }
             return .success
         }
         
         center.changePlaybackPositionCommand.isEnabled = true
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            if let ev = event as? MPChangePlaybackPositionCommandEvent {
+            guard let ev = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            Task { @MainActor in
                 self?.seek(to: ev.positionTime)
-                return .success
             }
-            return .commandFailed
+            return .success
         }
     }
     

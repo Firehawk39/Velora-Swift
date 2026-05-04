@@ -311,6 +311,13 @@ struct AppSettingsView: View {
     @AppStorage("velora_crossfade_duration") private var crossfadeDuration: Double = 5.0
     @State private var showLogs: Bool = false
 
+    // AI Engine Keys
+    @State private var geminiKey: String = ""
+    @State private var discogsKey: String = ""
+    @AppStorage("velora_ai_enrichment_enabled") private var isAIEnrichmentEnabled: Bool = false
+    @State private var showGeminiKey: Bool = false
+    @State private var showDiscogsKey: Bool = false
+
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")
     let accentFg   = Color(hex: "#0b1b32")
@@ -636,6 +643,154 @@ struct AppSettingsView: View {
                         .cornerRadius(16)
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
 
+                        // AI Engine Section
+                        VStack(alignment: .leading, spacing: 20) {
+                            Text("AI Engine")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+
+                            VStack(spacing: 20) {
+                                FloatingLabelField(
+                                    label: "Google Gemini API Key",
+                                    placeholder: "Enter API Key",
+                                    text: $geminiKey,
+                                    isDark: isDark,
+                                    borderCol: borderCol,
+                                    labelCol: labelCol,
+                                    isSecure: !showGeminiKey,
+                                    trailingIcon: showGeminiKey ? "eye.slash" : "eye",
+                                    onTrailingTap: { showGeminiKey.toggle() }
+                                )
+                                .onChange(of: geminiKey) { newValue in
+                                    if let data = newValue.data(using: .utf8) {
+                                        KeychainHelper.shared.save(data, service: "velora-gemini-key", account: "default")
+                                    }
+                                }
+
+                                FloatingLabelField(
+                                    label: "Discogs Token",
+                                    placeholder: "Enter Personal Access Token",
+                                    text: $discogsKey,
+                                    isDark: isDark,
+                                    borderCol: borderCol,
+                                    labelCol: labelCol,
+                                    isSecure: !showDiscogsKey,
+                                    trailingIcon: showDiscogsKey ? "eye.slash" : "eye",
+                                    onTrailingTap: { showDiscogsKey.toggle() }
+                                )
+                                .onChange(of: discogsKey) { newValue in
+                                    if let data = newValue.data(using: .utf8) {
+                                        KeychainHelper.shared.save(data, service: "velora-discogs-token", account: "default")
+                                    }
+                                }
+
+                                Toggle(isOn: $isAIEnrichmentEnabled) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("AI Library Enrichment")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text("Use AI to fix missing metadata and moods")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                .tint(accentBg)
+                            }
+                            .padding()
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            
+                            if isAIEnrichmentEnabled {
+                                VStack(spacing: 12) {
+                                    Button(action: {
+                                        Task {
+                                            await AIManager.shared.runLibraryAudit()
+                                        }
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "sparkles")
+                                                .font(.system(size: 20))
+                                                .foregroundColor(.purple)
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(AIManager.shared.isProcessing ? "Analyzing Library..." : "Run AI Audit")
+                                                    .font(.system(size: 16, weight: .medium))
+                                                    .foregroundColor(isDark ? .white : .black)
+                                                Text(AIManager.shared.auditStatus.isEmpty ? "Find metadata gaps and mood insights" : AIManager.shared.auditStatus)
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(.gray)
+                                                    .lineLimit(1)
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            if AIManager.shared.isProcessing && AIManager.shared.fixProgress == 0 {
+                                                LoadingCircle(size: 24, strokeWidth: 3, accentColor: .purple)
+                                            } else {
+                                                Image(systemName: "arrow.clockwise").font(.system(size: 14)).foregroundColor(.gray)
+                                            }
+                                        }
+                                        .padding()
+                                        .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                        .cornerRadius(16)
+                                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                    }
+
+                                    if !AIManager.shared.auditResults.isEmpty {
+                                        VStack(alignment: .leading, spacing: 10) {
+                                            ForEach(AIManager.shared.auditResults) { result in
+                                                HStack {
+                                                    Image(systemName: "exclamationmark.triangle.fill")
+                                                        .foregroundColor(.orange)
+                                                        .font(.system(size: 12))
+                                                    Text(result.description)
+                                                        .font(.system(size: 13))
+                                                        .foregroundColor(isDark ? .white.opacity(0.7) : .black.opacity(0.7))
+                                                }
+                                            }
+                                            
+                                            Button(action: {
+                                                Task {
+                                                    await AIManager.shared.fixLibraryIssues()
+                                                }
+                                            }) {
+                                                VStack(spacing: 8) {
+                                                    HStack {
+                                                        Text(AIManager.shared.isProcessing ? "Fixing Issues..." : "Fix All Issues")
+                                                            .fontWeight(.bold)
+                                                        Spacer()
+                                                        if AIManager.shared.isProcessing {
+                                                            Text("\(Int(AIManager.shared.fixProgress * 100))%")
+                                                                .font(.system(size: 12, design: .monospaced))
+                                                        }
+                                                    }
+                                                    
+                                                    if AIManager.shared.isProcessing {
+                                                        ProgressView(value: AIManager.shared.fixProgress)
+                                                            .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                                                            .scaleEffect(x: 1, y: 0.5, anchor: .center)
+                                                    }
+                                                }
+                                                .padding()
+                                                .frame(maxWidth: .infinity)
+                                                .background(Color.purple.opacity(0.2))
+                                                .foregroundColor(.purple)
+                                                .cornerRadius(12)
+                                            }
+                                            .disabled(AIManager.shared.isProcessing && AIManager.shared.fixProgress == 0)
+                                        }
+                                        .padding()
+                                        .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                                        .cornerRadius(16)
+                                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                    }
+                                }
+                            }
+                        }
+
                         // Danger Zone
                         VStack(alignment: .leading, spacing: 20) {
                             Button(action: {
@@ -678,8 +833,18 @@ struct AppSettingsView: View {
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .center)
             }
-            .onAppear {
-                DispatchQueue.global(qos: .background).async {
+                .onAppear {
+                    // Load keys from Keychain
+                    if let geminiData = KeychainHelper.shared.read(service: "velora-gemini-key", account: "default"),
+                       let key = String(data: geminiData, encoding: .utf8) {
+                        self.geminiKey = key
+                    }
+                    if let discogsData = KeychainHelper.shared.read(service: "velora-discogs-token", account: "default"),
+                       let token = String(data: discogsData, encoding: .utf8) {
+                        self.discogsKey = token
+                    }
+
+                    DispatchQueue.global(qos: .background).async {
                     let size = client.getMediaCacheSize()
                     DispatchQueue.main.async {
                         self.cacheSize = size

@@ -20,6 +20,7 @@ final class PersistentTrack {
     var lastAuditDate: Date?
     var hasCustomBackdrop: Bool = false
     var localBackdropPath: String?
+    var customCoverArt: String?
     
     // Persistence Layer Optimization (The Last 3%)
     var isDownloaded: Bool = false
@@ -85,6 +86,7 @@ final class PersistentAlbum {
     var duration: Int?
     var coverArt: String?
     var releaseYear: Int?
+    var customCoverArt: String?
     
     init(album: Album) {
         self.id = album.id
@@ -213,20 +215,28 @@ class LocalMetadataStore {
     }
     
     func updateAIMetadata(for trackId: String, genre: String?, atmosphere: String?) {
+        updateAIMetadataBatch(results: [EnrichedMetadata(id: trackId, genre: genre ?? "", mood: atmosphere ?? "", release_year: 0, style: nil, description: nil)])
+    }
+    
+    func updateAIMetadataBatch(results: [EnrichedMetadata]) {
         guard let context = context else { return }
         
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == trackId })
-        
-        do {
-            if let persistent = try context.fetch(fetchDescriptor).first {
-                persistent.aiGenrePrediction = genre
-                persistent.aiAtmosphere = atmosphere
-                persistent.lastAuditDate = Date()
-                try context.save()
+        for result in results {
+            guard let id = result.id else { continue }
+            let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == id })
+            
+            do {
+                if let persistent = try context.fetch(fetchDescriptor).first {
+                    persistent.aiGenrePrediction = result.genre
+                    persistent.aiAtmosphere = result.mood
+                    persistent.lastAuditDate = Date()
+                }
+            } catch {
+                print("Error updating AI metadata for \(id): \(error)")
             }
-        } catch {
-            print("Error updating AI metadata: \(error)")
         }
+        
+        try? context.save()
     }
     
     func updateArtistInfo(for artistId: String, bio: String?, mbid: String?) {
@@ -247,16 +257,57 @@ class LocalMetadataStore {
     }
 
     func updateAlbumYear(for albumId: String, year: Int) {
+        updateAlbumYearBatch(results: [(id: albumId, year: year)])
+    }
+    
+    func updateAlbumYearBatch(results: [(id: String, year: Int)]) {
         guard let context = context else { return }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == albumId })
-        do {
-            if let persistent = try context.fetch(fetchDescriptor).first {
-                persistent.releaseYear = year
-                try context.save()
+        
+        for result in results {
+            let id = result.id
+            let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == id })
+            do {
+                if let persistent = try context.fetch(fetchDescriptor).first {
+                    persistent.releaseYear = result.year
+                }
+            } catch {
+                print("Error updating album year for \(id): \(error)")
             }
-        } catch {
-            print("Error updating album year: \(error)")
         }
+        
+        try? context.save()
+    }
+
+    func updateCustomArt(for trackId: String, url: String) {
+        updateCustomArtBatch(results: [(trackIds: [trackId], albumId: nil, url: url)])
+    }
+    
+    func updateCustomArtBatch(results: [(trackIds: [String], albumId: String?, url: String)]) {
+        guard let context = context else { return }
+        
+        for result in results {
+            // Update the album if provided
+            if let albumId = result.albumId {
+                let albumFetch = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == albumId })
+                if let persistentAlbum = (try? context.fetch(albumFetch))?.first {
+                    persistentAlbum.customCoverArt = result.url
+                }
+            }
+            
+            // Update all tracks
+            for trackId in result.trackIds {
+                let trackFetch = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == trackId })
+                if let persistentTrack = (try? context.fetch(trackFetch))?.first {
+                    persistentTrack.customCoverArt = result.url
+                }
+            }
+        }
+        
+        try? context.save()
+    }
+    
+    func updateAlbumCustomArt(for albumId: String, url: String) {
+        updateCustomArtBatch(results: [(trackIds: [], albumId: albumId, url: url)])
     }
     
     func updateDownloadStatus(for trackId: String, isDownloaded: Bool, localPath: String?) {
@@ -296,6 +347,18 @@ class LocalMetadataStore {
         guard let context = context else { return [] }
         let fetchDescriptor = FetchDescriptor<PersistentAlbum>(sortBy: [SortDescriptor(\.name)])
         return (try? context.fetch(fetchDescriptor)) ?? []
+    }
+    
+    func fetchArtist(name: String) -> PersistentArtist? {
+        guard let context = context else { return nil }
+        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { $0.name == name })
+        return try? context.fetch(fetchDescriptor).first
+    }
+    
+    func fetchAlbum(name: String, artistName: String) -> PersistentAlbum? {
+        guard let context = context else { return nil }
+        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.name == name && $0.artist == artistName })
+        return try? context.fetch(fetchDescriptor).first
     }
     
     func searchTracks(query: String) -> [PersistentTrack] {

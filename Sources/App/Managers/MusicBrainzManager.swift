@@ -196,6 +196,14 @@ class MusicBrainzManager: ObservableObject {
         }
     }
     
+    func resolveMBIDAsync(for artist: String) async -> String? {
+        await withCheckedContinuation { continuation in
+            resolveMBID(for: artist) { mbid in
+                continuation.resume(returning: mbid)
+            }
+        }
+    }
+    
     private enum ResolutionStep {
         case exactMusicBrainz
         case looseMusicBrainz

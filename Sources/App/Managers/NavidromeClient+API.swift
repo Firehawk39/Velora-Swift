@@ -252,6 +252,19 @@ extension NavidromeClient {
         }.resume()
     }
 
+    func fetchArtistInfoAsync(artistId: String) async -> (String?, String?) {
+        guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { return (nil, nil) }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+            let info = decoded.subsonicResponse?.artistInfo ?? decoded.subsonicResponse?.artistInfo2
+            return (info?.biography, info?.musicBrainzId)
+        } catch {
+            AppLogger.shared.log("Navidrome: Error fetching artist info: \(error)", level: .error)
+            return (nil, nil)
+        }
+    }
+
     // MARK: - Search
     
     /// High-performance search that queries the local persistence layer first for instant results.
