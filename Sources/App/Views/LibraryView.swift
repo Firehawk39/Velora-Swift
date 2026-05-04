@@ -227,6 +227,7 @@ struct LibraryView: View {
 
 private struct LibraryMenuView: View {
     @EnvironmentObject var client: NavidromeClient
+    @EnvironmentObject var aiManager: AIManager
     @Binding var activeCategory: String?
     let menuItems: [(id: String, label: String, icon: String)]
     let isDarkMode: Bool
