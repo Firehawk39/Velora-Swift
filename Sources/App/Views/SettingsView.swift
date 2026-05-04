@@ -217,7 +217,9 @@ struct SettingsView: View {
                     }
                     
                     // 5. Trigger initial data sync
-                    client.fetchEverything()
+                    Task {
+                        await client.syncLibrary()
+                    }
                     
                     // 6. Dismiss after short delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -868,6 +870,8 @@ struct AppSettingsView: View {
         let finalPass = passwordData.flatMap { String(data: $0, encoding: .utf8) } ?? "u4vTyG7BcBxR-9-"
         
         NavidromeClient.shared.configure(url: finalUrl, user: finalUser, pass: finalPass)
-        NavidromeClient.shared.fetchEverything()
+        Task {
+            await NavidromeClient.shared.syncLibrary()
+        }
     }
 }

@@ -210,7 +210,9 @@ struct ContentView: View {
         let finalPass = "u4vTyG7BcBxR-9-"
         
         client.configure(url: finalUrl, user: finalUser, pass: finalPass)
-        client.fetchEverything()
+        Task {
+            await client.syncLibrary()
+        }
         showSettings = false
     }
 }

@@ -123,14 +123,8 @@ final class SyncManager: ObservableObject {
         
         Task {
             // Load data if needed
-            if client.artists.isEmpty { client.fetchArtists() }
-            if client.albums.isEmpty { client.fetchAlbums() }
-            
-            // Poll for data briefly
-            for _ in 0..<10 {
-                if !client.artists.isEmpty && !client.albums.isEmpty { break }
-                try? await Task.sleep(nanoseconds: 500_000_000)
-            }
+            if client.artists.isEmpty { _ = await client.fetchArtists() }
+            if client.albums.isEmpty { await client.fetchAlbums() }
             
             let artists = client.artists
             let albums = client.albums
@@ -195,11 +189,7 @@ final class SyncManager: ObservableObject {
         
         Task {
             if client.allSongs.isEmpty {
-                client.fetchAllSongs()
-                for _ in 0..<20 {
-                    if !client.allSongs.isEmpty { break }
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                }
+                await client.syncLibrary()
             }
             
             let tracks = client.allSongs

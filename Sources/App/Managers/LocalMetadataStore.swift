@@ -1,104 +1,6 @@
 import Foundation
 import SwiftData
 
-/// Persistent storage model for track metadata, including AI-enriched content.
-@Model
-final class PersistentTrack {
-    @Attribute(.unique) var id: String
-    var title: String
-    var artist: String?
-    var album: String?
-    var duration: Int?
-    var coverArt: String?
-    var artistId: String?
-    var albumId: String?
-    var suffix: String?
-    
-    // AI-Enriched Metadata
-    var aiGenrePrediction: String?
-    var aiAtmosphere: String?
-    var lastAuditDate: Date?
-    var hasCustomBackdrop: Bool = false
-    var localBackdropPath: String?
-    var customCoverArt: String?
-    
-    // Persistence Layer Optimization (The Last 3%)
-    var isDownloaded: Bool = false
-    var localFilePath: String?
-    
-    // Analytics
-    var playCount: Int = 0
-    var lastPlayedAt: Date?
-    var isStarred: Bool = false
-    
-    init(track: Track) {
-        self.id = track.id
-        self.title = track.title
-        self.artist = track.artist
-        self.album = track.album
-        self.duration = track.duration
-        self.coverArt = track.coverArt
-        self.artistId = track.artistId
-        self.albumId = track.albumId
-        self.suffix = track.suffix
-        self.isStarred = track.isStarred
-        self.playCount = track.playCount ?? 0
-        
-        // Initial check for file existence
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let extensions = ["flac", "mp3", "m4a", "wav"]
-        for ext in extensions {
-            let url = docs.appendingPathComponent("\(track.id).\(ext)")
-            if FileManager.default.fileExists(atPath: url.path) {
-                self.isDownloaded = true
-                self.localFilePath = url.path
-                break
-            }
-        }
-    }
-}
-
-/// Persistent storage model for artist metadata.
-@Model
-final class PersistentArtist {
-    @Attribute(.unique) var id: String
-    var name: String
-    var coverArt: String?
-    var musicBrainzId: String?
-    var biography: String?
-    var lastAuditDate: Date?
-    
-    init(artist: Artist) {
-        self.id = artist.id
-        self.name = artist.name
-        self.coverArt = artist.coverArt
-    }
-}
-
-/// Persistent storage model for album metadata.
-@Model
-final class PersistentAlbum {
-    @Attribute(.unique) var id: String
-    var name: String
-    var artist: String?
-    var artistId: String?
-    var songCount: Int?
-    var duration: Int?
-    var coverArt: String?
-    var releaseYear: Int?
-    var customCoverArt: String?
-    
-    init(album: Album) {
-        self.id = album.id
-        self.name = album.name
-        self.artist = album.artist
-        self.artistId = album.artistId
-        self.songCount = album.songCount
-        self.duration = album.duration
-        self.coverArt = album.coverArt
-    }
-}
-
 /// Centralized manager for SwiftData operations.
 /// High-performance local cache for AI-enriched metadata.
 @MainActor
@@ -172,6 +74,11 @@ class LocalMetadataStore {
                 if let existing = try context.fetch(fetchDescriptor).first {
                     existing.name = artist.name
                     existing.coverArt = artist.coverArt
+                    
+                    // Update enriched fields only if the incoming model has them (unlikely for Navidrome sync, but good for future)
+                    if let area = artist.area { existing.area = area }
+                    if let type = artist.type { existing.type = type }
+                    if let lifeSpan = artist.lifeSpan { existing.lifeSpan = lifeSpan }
                 } else {
                     let newArtist = PersistentArtist(artist: artist)
                     context.insert(newArtist)
@@ -196,6 +103,10 @@ class LocalMetadataStore {
                     existing.name = album.name
                     existing.artist = album.artist
                     existing.coverArt = album.coverArt
+                    
+                    if let year = album.releaseYear { existing.releaseYear = year }
+                    if let label = album.recordLabel { existing.recordLabel = label }
+                    if let frd = album.firstReleaseDate { existing.firstReleaseDate = frd }
                 } else {
                     let newAlbum = PersistentAlbum(album: album)
                     context.insert(newAlbum)
@@ -239,7 +150,7 @@ class LocalMetadataStore {
         try? context.save()
     }
     
-    func updateArtistInfo(for artistId: String, bio: String?, mbid: String?) {
+    func updateArtistInfo(for artistId: String, bio: String?, mbid: String?, area: String? = nil, type: String? = nil, lifeSpan: String? = nil) {
         guard let context = context else { return }
         
         let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { $0.id == artistId })
@@ -248,6 +159,9 @@ class LocalMetadataStore {
             if let persistent = try context.fetch(fetchDescriptor).first {
                 if let bio = bio { persistent.biography = bio }
                 if let mbid = mbid { persistent.musicBrainzId = mbid }
+                if let area = area { persistent.area = area }
+                if let type = type { persistent.type = type }
+                if let lifeSpan = lifeSpan { persistent.lifeSpan = lifeSpan }
                 persistent.lastAuditDate = Date()
                 try context.save()
             }
@@ -256,11 +170,11 @@ class LocalMetadataStore {
         }
     }
 
-    func updateAlbumYear(for albumId: String, year: Int) {
-        updateAlbumYearBatch(results: [(id: albumId, year: year)])
+    func updateAlbumYear(for albumId: String, year: Int, label: String? = nil, firstReleaseDate: String? = nil) {
+        updateAlbumYearBatch(results: [(id: albumId, year: year, label: label, firstReleaseDate: firstReleaseDate)])
     }
     
-    func updateAlbumYearBatch(results: [(id: String, year: Int)]) {
+    func updateAlbumYearBatch(results: [(id: String, year: Int, label: String?, firstReleaseDate: String?)]) {
         guard let context = context else { return }
         
         for result in results {
@@ -269,6 +183,8 @@ class LocalMetadataStore {
             do {
                 if let persistent = try context.fetch(fetchDescriptor).first {
                     persistent.releaseYear = result.year
+                    if let label = result.label { persistent.recordLabel = label }
+                    if let frd = result.firstReleaseDate { persistent.firstReleaseDate = frd }
                 }
             } catch {
                 print("Error updating album year for \(id): \(error)")
@@ -355,9 +271,21 @@ class LocalMetadataStore {
         return try? context.fetch(fetchDescriptor).first
     }
     
+    func fetchArtistById(id: String) -> PersistentArtist? {
+        guard let context = context else { return nil }
+        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { $0.id == id })
+        return try? context.fetch(fetchDescriptor).first
+    }
+    
     func fetchAlbum(name: String, artistName: String) -> PersistentAlbum? {
         guard let context = context else { return nil }
         let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.name == name && $0.artist == artistName })
+        return try? context.fetch(fetchDescriptor).first
+    }
+    
+    func fetchAlbumById(id: String) -> PersistentAlbum? {
+        guard let context = context else { return nil }
+        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == id })
         return try? context.fetch(fetchDescriptor).first
     }
     
@@ -439,7 +367,7 @@ class LocalMetadataStore {
         guard let context = context else { return [] }
         let fetchDescriptor = FetchDescriptor<PersistentArtist>(
             predicate: #Predicate<PersistentArtist> { artist in
-                artist.biography == nil || artist.musicBrainzId == nil
+                artist.biography == nil || artist.musicBrainzId == nil || artist.area == nil
             }
         )
         return (try? context.fetch(fetchDescriptor)) ?? []

@@ -28,15 +28,24 @@ class MusicBrainzManager: ObservableObject {
     private var mbidCache: [String: String] = [:]
     private let mbidCacheLock = NSLock()
     
-    // Throttling Queue for MusicBrainz (1 request per second limit)
-    private var requestQueue: [(URL, (Data?) -> Void)] = []
-    private let queueLock = NSLock()
-    private var isProcessingQueue = false
-    private let minRequestInterval: TimeInterval = 1.1
-    private var lastRequestTime: Date = .distantPast
+    // Throttling for MusicBrainz (1 request per second limit)
+    private actor Throttler {
+        private var lastRequestTime: Date = .distantPast
+        private let minRequestInterval: TimeInterval = 1.1
+        
+        func wait() async {
+            let now = Date()
+            let timeSinceLast = now.timeIntervalSince(lastRequestTime)
+            let waitTime = max(0, minRequestInterval - timeSinceLast)
+            
+            if waitTime > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+            }
+            lastRequestTime = Date()
+        }
+    }
     
-    // Persistent storage for name-to-MBID mappings
-    private var nameToMBIDCache: [String: String] = [:]
+    private let throttler = Throttler()
     
     init() {
         loadCache()
@@ -68,102 +77,133 @@ class MusicBrainzManager: ObservableObject {
     }
     
     func fetchAboutArtist(artistName: String, mbid: String? = nil) {
-        if let mbid = mbid, !mbid.isEmpty {
-            fetchArtistWithMBID(mbid: mbid, name: artistName)
-        } else {
-            resolveMBID(for: artistName) { [weak self] resolvedMBID in
-                if let mbid = resolvedMBID {
-                    self?.fetchArtistWithMBID(mbid: mbid, name: artistName)
+        Task {
+            if let mbid = mbid, !mbid.isEmpty {
+                await fetchArtistWithMBID(mbid: mbid, name: artistName)
+            } else {
+                if let mbid = await resolveMBIDAsync(for: artistName) {
+                    await fetchArtistWithMBID(mbid: mbid, name: artistName)
                 } else {
-                    DispatchQueue.main.async {
-                        self?.currentArtistInfo = ArtistInfo(name: artistName, biography: "No biography available.")
+                    await MainActor.run {
+                        self.currentArtistInfo = ArtistInfo(name: artistName, biography: "No biography available.")
                     }
                 }
             }
         }
     }
     
-    private func fetchArtistWithMBID(mbid: String, name: String) {
+    func fetchArtistDetailsAsync(mbid: String) async -> (type: String?, area: String?, lifeSpan: String?) {
+        let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json"
+        guard let url = URL(string: urlString) else { return (nil, nil, nil) }
+        
+        guard let data = await performThrottledRequest(url: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (nil, nil, nil)
+        }
+        
+        let type = json["type"] as? String
+        let area = (json["area"] as? [String: Any])?["name"] as? String
+        let lifeSpanObj = json["life-span"] as? [String: Any]
+        let begin = lifeSpanObj?["begin"] as? String
+        let end = lifeSpanObj?["end"] as? String
+        var lifeSpan: String? = nil
+        if let b = begin {
+            lifeSpan = b + (end != nil ? " – \(end!)" : " – Present")
+        }
+        
+        return (type, area, lifeSpan)
+    }
+    
+    private async func fetchArtistWithMBID(mbid: String, name: String) {
         let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?inc=aliases+genres+annotation&fmt=json"
         guard let url = URL(string: urlString) else { return }
         
-        performMusicBrainzRequest(url: url) { [weak self] data in
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            
-            let genres = (json["genres"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
-            let bioSnippet = (json["annotation"] as? [String: Any])?["text"] as? String ?? ""
-            
-            let type = json["type"] as? String
-            let area = (json["area"] as? [String: Any])?["name"] as? String
-            let lifeSpanObj = json["life-span"] as? [String: Any]
-            let begin = lifeSpanObj?["begin"] as? String
-            let end = lifeSpanObj?["end"] as? String
-            var lifeSpan: String? = nil
-            if let b = begin {
-                lifeSpan = b + (end != nil ? " – \(end!)" : " – Present")
-            }
-            
-            DispatchQueue.main.async {
-                self?.currentArtistInfo = ArtistInfo(
-                    name: name,
-                    biography: bioSnippet.isEmpty ? "Biographical data is being resolved..." : bioSnippet,
-                    genres: genres,
-                    mbid: mbid,
-                    type: type,
-                    area: area,
-                    lifeSpan: lifeSpan
-                )
-            }
+        guard let data = await performThrottledRequest(url: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        
+        let genres = (json["genres"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
+        let bioSnippet = (json["annotation"] as? [String: Any])?["text"] as? String ?? ""
+        
+        let type = json["type"] as? String
+        let area = (json["area"] as? [String: Any])?["name"] as? String
+        let lifeSpanObj = json["life-span"] as? [String: Any]
+        let begin = lifeSpanObj?["begin"] as? String
+        let end = lifeSpanObj?["end"] as? String
+        var lifeSpan: String? = nil
+        if let b = begin {
+            lifeSpan = b + (end != nil ? " – \(end!)" : " – Present")
+        }
+        
+        await MainActor.run {
+            self.currentArtistInfo = ArtistInfo(
+                name: name,
+                biography: bioSnippet.isEmpty ? "Biographical data is being resolved..." : bioSnippet,
+                genres: genres,
+                mbid: mbid,
+                type: type,
+                area: area,
+                lifeSpan: lifeSpan
+            )
         }
     }
     
     func fetchAboutAlbum(albumName: String, artistName: String, mbid: String? = nil) {
-        if let mbid = mbid, !mbid.isEmpty {
-            fetchAlbumWithMBID(mbid: mbid, name: albumName)
-        } else {
-            resolveAlbumMBID(album: albumName, artist: artistName) { [weak self] resolved in
-                if let mbid = resolved {
-                    self?.fetchAlbumWithMBID(mbid: mbid, name: albumName)
+        Task {
+            if let mbid = mbid, !mbid.isEmpty {
+                await fetchAlbumWithMBID(mbid: mbid, name: albumName)
+            } else {
+                if let resolved = await resolveAlbumMBIDAsync(album: albumName, artist: artistName) {
+                    await fetchAlbumWithMBID(mbid: resolved, name: albumName)
                 }
             }
         }
     }
     
-    private func fetchAlbumWithMBID(mbid: String, name: String) {
+    func fetchReleaseDetailsAsync(mbid: String) async -> (label: String?, releaseDate: String?) {
+        let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?inc=labels&fmt=json"
+        guard let url = URL(string: urlString) else { return (nil, nil) }
+        
+        guard let data = await performThrottledRequest(url: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (nil, nil)
+        }
+        
+        let label = (json["label-info"] as? [[String: Any]])?.first.flatMap { ($0["label"] as? [String: Any])?["name"] as? String }
+        let firstReleaseDate = json["date"] as? String
+        
+        return (label, firstReleaseDate)
+    }
+    
+    private async func fetchAlbumWithMBID(mbid: String, name: String) {
         let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?inc=genres+annotation&fmt=json"
         guard let url = URL(string: urlString) else { return }
         
-        performMusicBrainzRequest(url: url) { [weak self] data in
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            
-            let genres = (json["genres"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
-            let label = (json["label-info"] as? [[String: Any]])?.first.flatMap { ($0["label"] as? [String: Any])?["name"] as? String }
-            let firstReleaseDate = json["date"] as? String
-            let annotation = (json["annotation"] as? [String: Any])?["text"] as? String
-            
-            DispatchQueue.main.async {
-                self?.currentAlbumInfo = AlbumInfo(
-                    name: name,
-                    genres: genres,
-                    mbid: mbid,
-                    label: label,
-                    firstReleaseDate: firstReleaseDate,
-                    annotation: annotation
-                )
-            }
+        guard let data = await performThrottledRequest(url: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        
+        let genres = (json["genres"] as? [[String: Any]])?.compactMap { $0["name"] as? String } ?? []
+        let label = (json["label-info"] as? [[String: Any]])?.first.flatMap { ($0["label"] as? [String: Any])?["name"] as? String }
+        let firstReleaseDate = json["date"] as? String
+        let annotation = (json["annotation"] as? [String: Any])?["text"] as? String
+        
+        await MainActor.run {
+            self.currentAlbumInfo = AlbumInfo(
+                name: name,
+                genres: genres,
+                mbid: mbid,
+                label: label,
+                firstReleaseDate: firstReleaseDate,
+                annotation: annotation
+            )
         }
     }
     
     // MARK: - Robust MBID Resolution
     
-    @discardableResult
-    func resolveMBID(for artist: String, completion: @escaping (String?) -> Void) -> URLSessionDataTask? {
+    func resolveMBIDAsync(for artist: String) async -> String? {
         // 1. Check persistent cache first
         if let cached = nameToMBIDCache[artist] {
-            completion(cached)
-            return nil
+            return cached
         }
         
         let primary = extractPrimaryArtist(artist)
@@ -172,35 +212,33 @@ class MusicBrainzManager: ObservableObject {
         self.mbidCacheLock.lock()
         if let cached = mbidCache[primary.lowercased()] {
             self.mbidCacheLock.unlock()
-            completion(cached)
-            return nil
+            return cached
         }
         self.mbidCacheLock.unlock()
 
         AppLogger.shared.log("[MBID] Resolving robustly: \"\(artist)\" -> Primary: \"\(primary)\"", level: .info)
         
         // Use a recursive search strategy
-        return performMBIDResolution(primary: primary, step: .exactMusicBrainz) { mbid in
-            if let mbid = mbid {
-                self.mbidCacheLock.lock()
-                self.mbidCache[primary.lowercased()] = mbid
-                self.mbidCacheLock.unlock()
-                
-                // Also update persistent cache
-                DispatchQueue.main.async {
-                    self.nameToMBIDCache[artist] = mbid
-                    self.saveCache()
-                }
+        if let mbid = await performMBIDResolutionAsync(primary: primary, step: .exactMusicBrainz) {
+            self.mbidCacheLock.lock()
+            self.mbidCache[primary.lowercased()] = mbid
+            self.mbidCacheLock.unlock()
+            
+            // Also update persistent cache
+            await MainActor.run {
+                self.nameToMBIDCache[artist] = mbid
+                self.saveCache()
             }
-            completion(mbid)
+            return mbid
         }
+        return nil
     }
     
-    func resolveMBIDAsync(for artist: String) async -> String? {
-        await withCheckedContinuation { continuation in
-            resolveMBID(for: artist) { mbid in
-                continuation.resume(returning: mbid)
-            }
+    // Maintain legacy method for compatibility if needed, but point to async version
+    func resolveMBID(for artist: String, completion: @escaping (String?) -> Void) {
+        Task {
+            let result = await resolveMBIDAsync(for: artist)
+            completion(result)
         }
     }
     
@@ -210,148 +248,101 @@ class MusicBrainzManager: ObservableObject {
         case theAudioDB
     }
     
-    @discardableResult
-    private func performMBIDResolution(primary: String, step: ResolutionStep, completion: @escaping (String?) -> Void) -> URLSessionDataTask? {
+    private func performMBIDResolutionAsync(primary: String, step: ResolutionStep) async -> String? {
         switch step {
         case .exactMusicBrainz:
             let query = "artist:\"\(primary)\""
-            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-                completion(nil)
-                return nil
-            }
+            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
             let urlString = "https://musicbrainz.org/ws/2/artist?query=\(encodedQuery)&fmt=json"
-            return queryMusicBrainz(urlString: urlString, primary: primary) { mbid in
-                if let mbid = mbid {
-                    completion(mbid)
-                } else {
-                    _ = self.performMBIDResolution(primary: primary, step: .looseMusicBrainz, completion: completion)
-                }
+            if let mbid = await queryMusicBrainzAsync(urlString: urlString, primary: primary) {
+                return mbid
+            } else {
+                return await performMBIDResolutionAsync(primary: primary, step: .looseMusicBrainz)
             }
             
         case .looseMusicBrainz:
             let query = primary
-            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-                completion(nil)
-                return nil
-            }
+            guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
             let urlString = "https://musicbrainz.org/ws/2/artist?query=\(encodedQuery)&fmt=json"
-            return queryMusicBrainz(urlString: urlString, primary: primary) { mbid in
-                if let mbid = mbid {
-                    completion(mbid)
-                } else {
-                    _ = self.performMBIDResolution(primary: primary, step: .theAudioDB, completion: completion)
-                }
+            if let mbid = await queryMusicBrainzAsync(urlString: urlString, primary: primary) {
+                return mbid
+            } else {
+                return await performMBIDResolutionAsync(primary: primary, step: .theAudioDB)
             }
             
         case .theAudioDB:
             let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
             let urlString = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=\(encoded)"
+            guard let url = URL(string: urlString) else { return nil }
             
-            let task = URLSession.shared.dataTask(with: URL(string: urlString)!) { data, _, _ in
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let artists = json["artists"] as? [[String: Any]],
                       let first = artists.first,
                       let mbid = first["strMusicBrainzID"] as? String, !mbid.isEmpty else {
-                    completion(nil)
-                    return
+                    return nil
                 }
                 AppLogger.shared.log("[MBID] Resolved via TheAudioDB fallback: \(mbid)")
-                completion(mbid)
-            }
-            task.resume()
-            return task
-        }
-    }
-    
-    private func queryMusicBrainz(urlString: String, primary: String, completion: @escaping (String?) -> Void) -> URLSessionDataTask? {
-        guard let url = URL(string: urlString) else { completion(nil); return nil }
-        
-        return self.performMusicBrainzRequest(url: url) { data in
-            guard let data = data else { completion(nil); return }
-            
-            do {
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let artists = json["artists"] as? [[String: Any]] {
-                    
-                    // Filter for best match
-                    let bestMatch = artists.first { art in
-                        let name = (art["name"] as? String)?.lowercased() ?? ""
-                        return name == primary.lowercased()
-                    } ?? artists.first { art in
-                        let score = Int(art["score"] as? String ?? "0") ?? 0
-                        return score > 90
-                    } ?? artists.first
-                    
-                    if let mbid = bestMatch?["id"] as? String {
-                        completion(mbid)
-                    } else {
-                        completion(nil)
-                    }
-                } else {
-                    completion(nil)
-                }
+                return mbid
             } catch {
-                completion(nil)
+                return nil
             }
         }
     }
-     @discardableResult
-    private func performMusicBrainzRequest(url: URL, retryCount: Int = 0, completion: @escaping (Data?) -> Void) -> URLSessionDataTask? {
-        queueLock.lock()
-        requestQueue.append((url, completion))
-        queueLock.unlock()
-        
-        processRequestQueue()
-        return nil // Return nil as we are now async queued
-    }
     
-    private func processRequestQueue() {
-        queueLock.lock()
-        guard !isProcessingQueue, !requestQueue.isEmpty else {
-            queueLock.unlock()
-            return
-        }
+    private func queryMusicBrainzAsync(urlString: String, primary: String) async -> String? {
+        guard let url = URL(string: urlString) else { return nil }
         
-        isProcessingQueue = true
-        let (url, completion) = requestQueue.removeFirst()
-        queueLock.unlock()
+        guard let data = await performThrottledRequest(url: url) else { return nil }
         
-        // Ensure at least 1.1s between requests
-        let now = Date()
-        let timeSinceLast = now.timeIntervalSince(lastRequestTime)
-        let waitTime = max(0, minRequestInterval - timeSinceLast)
-        
-        DispatchQueue.global().asyncAfter(deadline: .now() + waitTime) {
-            self.lastRequestTime = Date()
-            self.executeActualRequest(url: url, retryCount: 0, completion: completion)
-        }
+        do {
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let artists = json["artists"] as? [[String: Any]] {
+                
+                // Filter for best match
+                let bestMatch = artists.first { art in
+                    let name = (art["name"] as? String)?.lowercased() ?? ""
+                    return name == primary.lowercased()
+                } ?? artists.first { art in
+                    let score = Int(art["score"] as? String ?? "0") ?? 0
+                    return score > 90
+                } ?? artists.first
+                
+                return bestMatch?["id"] as? String
+            }
+        } catch { }
+        return nil
     }
-    
-    private func executeActualRequest(url: URL, retryCount: Int, completion: @escaping (Data?) -> Void) {
+
+    private func performThrottledRequest(url: URL, retryCount: Int = 0) async -> Data? {
+        await throttler.wait()
+        
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
             
-            if let http = response as? HTTPURLResponse, http.statusCode == 503 && retryCount < 3 {
-                let backoff = pow(2.0, Double(retryCount))
-                AppLogger.shared.log("[MBID] 503 Rate Limited. Retrying in \(backoff)s...", level: .warning)
-                DispatchQueue.global().asyncAfter(deadline: .now() + backoff) {
-                    self.executeActualRequest(url: url, retryCount: retryCount + 1, completion: completion)
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 503 && retryCount < 3 {
+                    let backoff = pow(2.0, Double(retryCount))
+                    AppLogger.shared.log("[MBID] 503 Rate Limited. Retrying in \(backoff)s...", level: .warning)
+                    try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+                    return await performThrottledRequest(url: url, retryCount: retryCount + 1)
                 }
-                return
+                
+                if http.statusCode != 200 {
+                    AppLogger.shared.log("[MBID] HTTP Error \(http.statusCode) for \(url.absoluteString)", level: .error)
+                    return nil
+                }
             }
             
-            completion(data)
-            
-            // Move to next in queue
-            self.queueLock.lock()
-            self.isProcessingQueue = false
-            self.queueLock.unlock()
-            self.processRequestQueue()
-        }.resume()
+            return data
+        } catch {
+            AppLogger.shared.log("[MBID] Network error: \(error.localizedDescription)", level: .error)
+            return nil
+        }
     }
 
     private func extractPrimaryArtist(_ name: String) -> String {
@@ -375,64 +366,39 @@ class MusicBrainzManager: ObservableObject {
         return result.isEmpty ? name : result
     }
     
-    private func resolveAlbumMBID(album: String, artist: String, completion: @escaping (String?) -> Void) {
+    func resolveAlbumMBIDAsync(album: String, artist: String) async -> String? {
         let query = "release:\"\(album)\" AND artist:\"\(artist)\""
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://musicbrainz.org/ws/2/release/?query=\(encoded)&fmt=json"
-        guard let url = URL(string: urlString) else { completion(nil); return }
+        guard let url = URL(string: urlString) else { return nil }
         
-        performMusicBrainzRequest(url: url) { data in
-            if let data = data,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let releases = json["releases"] as? [[String: Any]],
-               let first = releases.first {
-                completion(first["id"] as? String)
-            } else {
-                completion(nil)
-            }
+        if let data = await performThrottledRequest(url: url),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let releases = json["releases"] as? [[String: Any]],
+           let first = releases.first {
+            return first["id"] as? String
         }
+        return nil
     }
 
     // MARK: - Silent Bulk Fetchers
 
     func downloadMetadataSilently(for artistName: String) async {
-        return await withCheckedContinuation { continuation in
-            resolveMBID(for: artistName) { mbid in
-                guard let mbid = mbid else {
-                    continuation.resume()
-                    return
-                }
-                
-                Task {
-                    let fileUrl = self.getMetadataUrl(for: artistName)
-                    if self.fileManager.fileExists(atPath: fileUrl.path) {
-                        continuation.resume()
-                        return
-                    }
+        guard let mbid = await resolveMBIDAsync(for: artistName) else { return }
+        
+        let fileUrl = self.getMetadataUrl(for: artistName)
+        if self.fileManager.fileExists(atPath: fileUrl.path) { return }
 
-                    let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
-                    guard let url = URL(string: urlString) else { continuation.resume(); return }
-                    
-                    do {
-                        let data = await withCheckedContinuation { innerCont in
-                            _ = self.performMusicBrainzRequest(url: url) { data in
-                                innerCont.resume(returning: data)
-                            }
-                        }
-                        
-                        guard let data = data,
-                              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
-                            continuation.resume(); return 
-                        }
-                        
-                        let annotation = await self.fetchAnnotationAsync(entityMBID: mbid)
-                        json["annotation"] = annotation
-                        if let savedData = try? JSONSerialization.data(withJSONObject: json) {
-                            try? savedData.write(to: fileUrl)
-                        }
-                    }
-                    continuation.resume()
-                }
+        let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
+        guard let url = URL(string: urlString) else { return }
+        
+        if let data = await performThrottledRequest(url: url),
+           var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            
+            let annotation = await self.fetchAnnotationAsync(entityMBID: mbid)
+            json["annotation"] = annotation
+            if let savedData = try? JSONSerialization.data(withJSONObject: json) {
+                try? savedData.write(to: fileUrl)
             }
         }
     }
@@ -441,18 +407,13 @@ class MusicBrainzManager: ObservableObject {
         let urlString = "https://musicbrainz.org/ws/2/annotation/?query=entity:\(entityMBID)&fmt=json"
         guard let url = URL(string: urlString) else { return nil }
         
-        return await withCheckedContinuation { continuation in
-            _ = self.performMusicBrainzRequest(url: url) { data in
-                if let data = data,
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let annotations = json["annotations"] as? [[String: Any]],
-                   let first = annotations.first {
-                    continuation.resume(returning: first["text"] as? String)
-                } else {
-                    continuation.resume(returning: nil)
-                }
-            }
+        if let data = await performThrottledRequest(url: url),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let annotations = json["annotations"] as? [[String: Any]],
+           let first = annotations.first {
+            return first["text"] as? String
         }
+        return nil
     }
     
     // MARK: - Album Metadata Helpers
@@ -467,46 +428,20 @@ class MusicBrainzManager: ObservableObject {
     func downloadAlbumMetadataSilently(albumName: String, artistName: String) async {
         if hasAlbumMetadata(albumName: albumName, artistName: artistName) { return }
         
-        return await withCheckedContinuation { continuation in
-            resolveAlbumMBID(album: albumName, artist: artistName) { [weak self] mbid in
-                guard let self = self, let mbid = mbid else {
-                    continuation.resume()
-                    return
-                }
-                
-                let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=genres"
-                guard let url = URL(string: urlString) else { continuation.resume(); return }
-                
-                _ = self.performMusicBrainzRequest(url: url) { data in
-                    if let data = data {
-                        let safeAlbum = albumName.replacingOccurrences(of: "/", with: "_")
-                        let safeArtist = artistName.replacingOccurrences(of: "/", with: "_")
-                        let fileUrl = self.metadataDir.appendingPathComponent("album_\(safeArtist)_\(safeAlbum).json")
-                        try? data.write(to: fileUrl)
-                    }
-                    continuation.resume()
-                }
+        if let mbid = await resolveAlbumMBIDAsync(album: albumName, artist: artistName) {
+            let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=genres"
+            guard let url = URL(string: urlString) else { return }
+            
+            if let data = await performThrottledRequest(url: url) {
+                let safeAlbum = albumName.replacingOccurrences(of: "/", with: "_")
+                let safeArtist = artistName.replacingOccurrences(of: "/", with: "_")
+                let fileUrl = self.metadataDir.appendingPathComponent("album_\(safeArtist)_\(safeAlbum).json")
+                try? data.write(to: fileUrl)
             }
         }
     }
 }
 
-
-struct ArtistInfo {
-    let name: String
-    var biography: String
-    var genres: [String] = []
-    var mbid: String? = nil
-    var type: String? = nil
-    var area: String? = nil
-    var lifeSpan: String? = nil
 }
 
-struct AlbumInfo {
-    let name: String
-    var genres: [String] = []
-    var mbid: String? = nil
-    var label: String? = nil
-    var firstReleaseDate: String? = nil
-    var annotation: String? = nil
-}
+

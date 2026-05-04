@@ -49,7 +49,9 @@ struct LibraryView: View {
         .animation(.easeInOut(duration: 0.2), value: activeCategory)
         .task {
             if client.allSongs.isEmpty {
-                client.fetchEverything()
+                Task {
+                    await client.syncLibrary()
+                }
             }
         }
     }
@@ -356,22 +358,27 @@ private struct LibraryMenuView: View {
 
                             if !aiManager.auditResults.isEmpty || aiManager.isProcessing {
                                 Button(action: {
-                                    Task { await aiManager.fixLibraryIssues() }
+                                    if aiManager.isProcessing {
+                                        aiManager.stopProcessing()
+                                    } else {
+                                        Task { await aiManager.fixLibraryIssues() }
+                                    }
                                 }) {
                                     HStack(spacing: 8) {
                                         if !aiManager.isProcessing {
                                             Image(systemName: "wand.and.stars")
+                                        } else {
+                                            Image(systemName: "stop.fill")
                                         }
-                                        Text(aiManager.isProcessing ? "Optimizing..." : "Enrich All")
+                                        Text(aiManager.isProcessing ? "Stop" : "Enrich All")
                                     }
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 44)
-                                    .background(aiManager.isProcessing ? Color.gray : Color.red)
+                                    .background(aiManager.isProcessing ? Color.orange : Color.red)
                                     .clipShape(Capsule())
                                 }
-                                .disabled(aiManager.isProcessing)
                             }
                         }
                         .padding(.horizontal, hPad)

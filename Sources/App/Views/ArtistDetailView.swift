@@ -16,6 +16,9 @@ struct ArtistDetailView: View {
     @State private var favoriteSongs: [Track] = []
     @State private var albums: [Album] = []
     @State private var biography: String? = nil
+    @State private var artistArea: String? = nil
+    @State private var artistType: String? = nil
+    @State private var artistLifeSpan: String? = nil
     @State private var relatedArtists: [Artist] = []
     @State private var isLoading: Bool = true
     
@@ -321,7 +324,39 @@ struct ArtistDetailView: View {
                     .foregroundColor(.gray)
                     .padding(.horizontal, isCompact ? 24 : 48)
             }
+            
+            // Enriched Metadata Badges
+            if artistArea != nil || artistType != nil || artistLifeSpan != nil {
+                HStack(spacing: 16) {
+                    if let area = artistArea {
+                        metadataBadge(label: "Origin", value: area)
+                    }
+                    if let type = artistType {
+                        metadataBadge(label: "Type", value: type)
+                    }
+                    if let life = artistLifeSpan {
+                        metadataBadge(label: "Active", value: life)
+                    }
+                }
+                .padding(.horizontal, isCompact ? 24 : 48)
+                .padding(.top, 8)
+            }
         }
+    }
+    
+    private func metadataBadge(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label.uppercased())
+                .font(.system(size: 10, weight: .black))
+                .foregroundColor(.gray)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(isDarkMode ? .white : .black)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(isDarkMode ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+        .cornerRadius(12)
     }
     
     private var backButton: some View {
@@ -340,11 +375,25 @@ struct ArtistDetailView: View {
     
     private func fetchArtistData() {
         isLoading = true
+        
+        // 1. Try local data first for instant response
+        if let localArtist = LocalMetadataStore.shared.fetchArtistById(id: artistId) {
+            self.biography = localArtist.biography
+            self.artistArea = localArtist.area
+            self.artistType = localArtist.type
+            self.artistLifeSpan = localArtist.lifeSpan
+        }
+        
         client.fetchArtistData(artistId: artistId) { tracks, albums, bio, mbid in
             self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
             self.favoriteSongs = tracks.filter { $0.isStarred }
             self.albums = albums
-            self.biography = bio
+            
+            // Only update bio if not already set or if it's nil
+            if self.biography == nil {
+                self.biography = bio
+            }
+            
             self.isLoading = false
             
             client.fetchArtists { artists in
