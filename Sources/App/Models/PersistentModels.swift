@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 
 /// Persistent storage model for track metadata, including AI-enriched content.
+@available(iOS 17.0, *)
 @Model
 final class PersistentTrack {
     @Attribute(.unique) var id: String
@@ -59,6 +60,7 @@ final class PersistentTrack {
 }
 
 /// Persistent storage model for artist metadata.
+@available(iOS 17.0, *)
 @Model
 final class PersistentArtist {
     @Attribute(.unique) var id: String
@@ -79,6 +81,7 @@ final class PersistentArtist {
 }
 
 /// Persistent storage model for album metadata.
+@available(iOS 17.0, *)
 @Model
 final class PersistentAlbum {
     @Attribute(.unique) var id: String
@@ -103,3 +106,4 @@ final class PersistentAlbum {
         self.coverArt = album.coverArt
     }
 }
+

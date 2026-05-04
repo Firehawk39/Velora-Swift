@@ -385,7 +385,7 @@ struct ArtistDetailView: View {
         }
         
         Task {
-            let (tracks, albums, bio, mbid) = await client.fetchArtistData(artistId: artistId)
+            let (tracks, albums, bio, _) = await client.fetchArtistData(artistId: artistId)
             
             await MainActor.run {
                 self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
