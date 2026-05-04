@@ -25,6 +25,7 @@ class MusicBrainzManager: ObservableObject {
     }
     
     // In-memory cache for fast lookups
+    private var nameToMBIDCache: [String: String] = [:]
     private var mbidCache: [String: String] = [:]
     private let mbidCacheLock = NSLock()
     
@@ -114,7 +115,7 @@ class MusicBrainzManager: ObservableObject {
         return (type, area, lifeSpan)
     }
     
-    private async func fetchArtistWithMBID(mbid: String, name: String) {
+    private func fetchArtistWithMBID(mbid: String, name: String) async {
         let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?inc=aliases+genres+annotation&fmt=json"
         guard let url = URL(string: urlString) else { return }
         
@@ -174,7 +175,7 @@ class MusicBrainzManager: ObservableObject {
         return (label, firstReleaseDate)
     }
     
-    private async func fetchAlbumWithMBID(mbid: String, name: String) {
+    private func fetchAlbumWithMBID(mbid: String, name: String) async {
         let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?inc=genres+annotation&fmt=json"
         guard let url = URL(string: urlString) else { return }
         
@@ -440,8 +441,6 @@ class MusicBrainzManager: ObservableObject {
             }
         }
     }
-}
-
 }
 
 

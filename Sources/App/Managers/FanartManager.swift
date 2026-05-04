@@ -214,7 +214,7 @@ class FanartManager: ObservableObject {
         if type == .background {
             let hashValue = stableHash(artistName.lowercased())
             let index = abs(hashValue) % images.count
-            selectedUrlString = images[index]["url"] as?? String ?? images[index]["url"] as? String
+            selectedUrlString = images[index]["url"] as? String ?? images[index]["url"] as? String
         } else {
             selectedUrlString = images.first?["url"] as? String
         }
