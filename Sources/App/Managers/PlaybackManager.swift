@@ -559,21 +559,15 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     // MARK: - Metadata & Lyrics
     
     private func fetchMetadata(for track: Track) {
-        Task {
+        Task { @MainActor in
             let lyrics = await client.fetchLyrics(artist: track.artist ?? "", title: track.title)
-            await MainActor.run {
-                guard self.currentTrack?.id == track.id else { return }
-                if let lyrics {
-                    self.currentLyrics = [lyrics]
-                    self.currentSyncedLyrics = [self.parseLRC(lyrics)]
-                } else {
-                    self.currentLyrics = nil
-                    self.currentSyncedLyrics = nil
-                }
-            }
+            guard self.currentTrack?.id == track.id else { return }
+            self.currentLyrics = lyrics
+            self.currentSyncedLyrics = lyrics.map { self.parseLRC($0) }
         }
         FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
     }
+
 
     
     private func parseLRC(_ lrc: String) -> [LyricLine] {
