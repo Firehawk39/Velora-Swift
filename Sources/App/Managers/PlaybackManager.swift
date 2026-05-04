@@ -8,6 +8,7 @@ struct LyricLine: Hashable {
     let text: String
 }
 
+@MainActor
 class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     static var shared: PlaybackManager?
     static var sharedBackgroundCompletion: (() -> Void)?
@@ -245,8 +246,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     private func requestDataFromAssetReader() {
         guard let renderer = hiFiRenderer, let output = assetReaderOutput else { return }
-        renderer.requestMediaDataWhenReady(on: .global(qos: .userInteractive)) { [weak self] in
-            guard let self = self else { return }
+        // Capture renderer/output locally — they're not @MainActor types, safe to use from background
+        renderer.requestMediaDataWhenReady(on: .global(qos: .userInteractive)) {
             while renderer.isReadyForMoreMediaData {
                 if let sampleBuffer = output.copyNextSampleBuffer() {
                     renderer.enqueue(sampleBuffer)
@@ -688,9 +689,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func stopAllDownloads() {
+        // Cancel all tasks asynchronously
         downloadSession.getAllTasks { tasks in
             tasks.forEach { $0.cancel() }
         }
+        // Reset state immediately on MainActor
         downloadTasks.removeAll()
         downloadProgress.removeAll()
         downloadStartTimes.removeAll()
@@ -764,30 +767,36 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     // MARK: - URLSessionDownloadDelegate
     
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { return }
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // Copy the file to a temp location before the system removes it
+        let tempDest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp3")
+        try? FileManager.default.copyItem(at: location, to: tempDest)
         
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let suffix = "mp3" // Default
-        let dest = docs.appendingPathComponent("\(trackId).\(suffix)")
-        
-        try? FileManager.default.removeItem(at: dest)
-        do {
-            try? FileManager.default.moveItem(at: location, to: dest)
-            downloadedTrackIds.insert(trackId)
-            LocalMetadataStore.shared.updateDownloadStatus(for: trackId, isDownloaded: true, localPath: dest.path)
-            AppLogger.shared.log("Downloaded: \(trackId)", level: .info)
-        } catch {
-            failedDownloadIds.insert(trackId)
+        let taskId = downloadTask.taskIdentifier
+        Task { @MainActor in
+            guard let trackId = downloadTasks[taskId] else { return }
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let dest = docs.appendingPathComponent("\(trackId).mp3")
+            try? FileManager.default.removeItem(at: dest)
+            do {
+                try FileManager.default.moveItem(at: tempDest, to: dest)
+                downloadedTrackIds.insert(trackId)
+                LocalMetadataStore.shared.updateDownloadStatus(for: trackId, isDownloaded: true, localPath: dest.path)
+                AppLogger.shared.log("Downloaded: \(trackId)", level: .info)
+            } catch {
+                failedDownloadIds.insert(trackId)
+            }
+            downloadTasks.removeValue(forKey: taskId)
+            activeDownloadCount -= 1
         }
-        
-        downloadTasks.removeValue(forKey: downloadTask.taskIdentifier)
-        activeDownloadCount -= 1
     }
     
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { return }
-        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        downloadProgress[trackId] = progress
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        let taskId = downloadTask.taskIdentifier
+        let prog = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        Task { @MainActor in
+            guard let trackId = downloadTasks[taskId] else { return }
+            downloadProgress[trackId] = prog
+        }
     }
 }
