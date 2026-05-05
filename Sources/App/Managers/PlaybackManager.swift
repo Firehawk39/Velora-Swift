@@ -170,7 +170,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         self.currentTrack = track
         self.progress = 0
-        self.duration = track.duration
+        self.duration = Double(track.duration ?? 0)
         
         let url = getEffectiveUrl(for: track)
         
@@ -259,7 +259,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 if let sampleBuffer = output.copyNextSampleBuffer() {
                     renderer.enqueue(sampleBuffer)
                 } else {
-                    renderer.stopRequestingData()
+                    renderer.stopRequestingMediaData()
                     break
                 }
             }
