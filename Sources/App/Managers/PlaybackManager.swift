@@ -309,7 +309,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             
             self.queueIndex += 1
             self.currentTrack = queue[queueIndex]
-            self.duration = currentTrack?.duration ?? 0
+            self.duration = Double(currentTrack?.duration ?? 0)
             self.progress = 0
             
             // Re-configure renderer for new stream
@@ -356,7 +356,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     private func stopHiFiRenderer() {
-        hiFiRenderer?.stopRequestingData()
+        hiFiRenderer?.stopRequestingMediaData()
         hiFiRenderer = nil
         hiFiSynchronizer = nil
         assetReader?.cancelReading()
@@ -412,6 +412,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     // MARK: - Crossfade
     
+    @MainActor
     private func startCrossfade() {
         guard !isCrossfading, queueIndex + 1 < queue.count else { return }
         isCrossfading = true
@@ -588,14 +589,15 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         var lines: [LyricLine] = []
         let pattern = "\\[(\\d+):(\\d+)\\.(\\d+)\\](.*)"
         let regex = try? NSRegularExpression(pattern: pattern)
-        let nsString = lrc as NSString
+        // Parse LRC line by line
         
         lrc.enumerateLines { line, _ in
+            let lineNS = line as NSString
             if let match = regex?.firstMatch(in: line, range: NSRange(location: 0, length: line.count)) {
-                let min = Double(nsString.substring(with: match.range(at: 1))) ?? 0
-                let sec = Double(nsString.substring(with: match.range(at: 2))) ?? 0
-                let ms = Double(nsString.substring(with: match.range(at: 3))) ?? 0
-                let text = nsString.substring(with: match.range(at: 4)).trimmingCharacters(in: .whitespaces)
+                let min = Double(lineNS.substring(with: match.range(at: 1))) ?? 0
+                let sec = Double(lineNS.substring(with: match.range(at: 2))) ?? 0
+                let ms = Double(lineNS.substring(with: match.range(at: 3))) ?? 0
+                let text = lineNS.substring(with: match.range(at: 4)).trimmingCharacters(in: .whitespaces)
                 let time = min * 60 + sec + ms / 100.0
                 lines.append(LyricLine(time: time, text: text))
             }
