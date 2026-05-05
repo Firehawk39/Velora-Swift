@@ -95,9 +95,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     @objc private func handleTerminate() {
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        player?.pause()
-        stopHiFiRenderer()
+        Task { @MainActor in
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            self.player?.pause()
+            self.stopHiFiRenderer()
+        }
     }
     
     // MARK: - Audio Session
@@ -115,27 +117,31 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     @objc private func handleInterruption(notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-        
-        if type == .began {
-            pause()
-        } else if type == .ended {
-            if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
-                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                if options.contains(.shouldResume) { play() }
+        Task { @MainActor in
+            guard let userInfo = notification.userInfo,
+                  let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+            
+            if type == .began {
+                self.pause()
+            } else if type == .ended {
+                if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) { self.play() }
+                }
             }
         }
     }
     
     @objc private func handleRouteChange(notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
-        
-        if reason == .oldDeviceUnavailable {
-            pause()
+        Task { @MainActor in
+            guard let userInfo = notification.userInfo,
+                  let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+            
+            if reason == .oldDeviceUnavailable {
+                self.pause()
+            }
         }
     }
     
@@ -366,14 +372,16 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private func setupObservers(for player: AVPlayer, track: Track) {
         let interval = CMTime(seconds: 0.5, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self = self else { return }
-            let seconds = CMTimeGetSeconds(time)
-            self.progress = seconds
-            self.duration = CMTimeGetSeconds(player.currentItem?.duration ?? .zero)
-            
-            // Gapless/Crossfade trigger
-            if self.duration > 0 && seconds >= self.duration - self.crossfadeDuration && !self.isCrossfading && self.isCrossfadeEnabled {
-                self.startCrossfade()
+            Task { @MainActor in
+                guard let self = self else { return }
+                let seconds = CMTimeGetSeconds(time)
+                self.progress = seconds
+                self.duration = CMTimeGetSeconds(player.currentItem?.duration ?? .zero)
+                
+                // Gapless/Crossfade trigger
+                if self.duration > 0 && seconds >= self.duration - self.crossfadeDuration && !self.isCrossfading && self.isCrossfadeEnabled {
+                    self.startCrossfade()
+                }
             }
         }
         
