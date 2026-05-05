@@ -220,7 +220,7 @@ class AIManager: ObservableObject {
             }
             
             if yearFound != nil || label != nil || releaseDate != nil {
-                LocalMetadataStore.shared.updateAlbumYearBatch(for: pAlbum.id, year: yearFound, label: label, releaseDate: releaseDate)
+                LocalMetadataStore.shared.updateAlbumYear(for: pAlbum.id, year: yearFound, label: label, firstReleaseDate: releaseDate)
             }
             
             processed += 1
@@ -242,7 +242,12 @@ class AIManager: ObservableObject {
             if !isProcessing { break }
             auditStatus = "Researching: \(pArtist.name)"
             
-            let mbid = pArtist.musicBrainzId ?? (await MusicBrainzManager.shared.resolveMBIDAsync(for: pArtist.name))
+            let mbid: String?
+            if let existing = pArtist.musicBrainzId {
+                mbid = existing
+            } else {
+                mbid = await MusicBrainzManager.shared.resolveMBIDAsync(for: pArtist.name)
+            }
             let (bio, fetchedMbid) = await NavidromeClient.shared.fetchArtistInfoAsync(artistId: pArtist.id)
             let finalMbid = fetchedMbid ?? mbid
             

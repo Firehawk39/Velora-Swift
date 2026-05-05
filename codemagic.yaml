@@ -22,7 +22,7 @@ workflows:
             -sdk iphoneos \
             ARCHS=arm64 \
             TARGETED_DEVICE_FAMILY="1,2" \
-            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+            IPHONEOS_DEPLOYMENT_TARGET=17.0 \
             ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
             INSTALL_PATH=/Applications \
             PRODUCT_NAME=Velora \
@@ -95,7 +95,7 @@ workflows:
                   <integer>2</integer>
               </array>
               <key>MinimumOSVersion</key>
-              <string>15.0</string>
+              <string>17.0</string>
               <key>UIRequiredDeviceCapabilities</key>
               <array>
                   <string>arm64</string>

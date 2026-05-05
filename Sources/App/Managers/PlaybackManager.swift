@@ -253,12 +253,20 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     private func requestDataFromAssetReader() {
         guard let renderer = hiFiRenderer, let output = assetReaderOutput else { return }
-        // Capture renderer/output locally — they're not @MainActor types, safe to use from background
-        // Use a local capture to avoid implicit self capture and non-Sendable warnings
-        // Although AVAssetReaderTrackOutput is non-Sendable, it is intended to be used
-        // on the queue provided to requestMediaDataWhenReady.
-        renderer.requestMediaDataWhenReady(on: .global(qos: .userInteractive)) { [weak renderer, weak output] in
-            guard let renderer = renderer, let output = output else { return }
+        
+        // AVAssetReaderTrackOutput is not Sendable, but it's safe to use on the queue 
+        // provided to requestMediaDataWhenReady. To satisfy strict concurrency,
+        // we wrap it in an @unchecked Sendable container.
+        struct SendableOutput: @unchecked Sendable {
+            let val: AVAssetReaderTrackOutput
+        }
+        
+        let wrapper = SendableOutput(val: output)
+        
+        renderer.requestMediaDataWhenReady(on: .global(qos: .userInteractive)) { [weak renderer] in
+            guard let renderer = renderer else { return }
+            let output = wrapper.val
+            
             while renderer.isReadyForMoreMediaData {
                 if let sampleBuffer = output.copyNextSampleBuffer() {
                     renderer.enqueue(sampleBuffer)

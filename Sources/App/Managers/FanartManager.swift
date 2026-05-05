@@ -129,7 +129,14 @@ class FanartManager: ObservableObject {
         }
         
         // 2. Resolve MBID
-        guard let resolvedMBID = mbid ?? (await MusicBrainzManager.shared.resolveMBIDAsync(for: artist)) else {
+        let effectiveMBID: String?
+        if let mbid = mbid {
+            effectiveMBID = mbid
+        } else {
+            effectiveMBID = await MusicBrainzManager.shared.resolveMBIDAsync(for: artist)
+        }
+        
+        guard let resolvedMBID = effectiveMBID else {
             return nil
         }
         
@@ -154,7 +161,14 @@ class FanartManager: ObservableObject {
         }
         
         // 2. Resolve MBID
-        guard let resolvedMBID = mbid ?? (await MusicBrainzManager.shared.resolveMBIDAsync(for: artist)) else {
+        let effectiveMBID: String?
+        if let mbid = mbid {
+            effectiveMBID = mbid
+        } else {
+            effectiveMBID = await MusicBrainzManager.shared.resolveMBIDAsync(for: artist)
+        }
+        
+        guard let resolvedMBID = effectiveMBID else {
             return nil
         }
         

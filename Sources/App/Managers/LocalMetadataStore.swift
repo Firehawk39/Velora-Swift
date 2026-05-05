@@ -172,11 +172,11 @@ class LocalMetadataStore {
         }
     }
 
-    func updateAlbumYear(for albumId: String, year: Int, label: String? = nil, firstReleaseDate: String? = nil) {
+    func updateAlbumYear(for albumId: String, year: Int?, label: String? = nil, firstReleaseDate: String? = nil) {
         updateAlbumYearBatch(results: [(id: albumId, year: year, label: label, firstReleaseDate: firstReleaseDate)])
     }
     
-    func updateAlbumYearBatch(results: [(id: String, year: Int, label: String?, firstReleaseDate: String?)]) {
+    func updateAlbumYearBatch(results: [(id: String, year: Int?, label: String?, firstReleaseDate: String?)]) {
         guard let context = context else { return }
         
         for result in results {
@@ -184,7 +184,7 @@ class LocalMetadataStore {
             let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == id })
             do {
                 if let persistent = try context.fetch(fetchDescriptor).first {
-                    persistent.releaseYear = result.year
+                    if let year = result.year { persistent.releaseYear = year }
                     if let label = result.label { persistent.recordLabel = label }
                     if let frd = result.firstReleaseDate { persistent.firstReleaseDate = frd }
                 }
