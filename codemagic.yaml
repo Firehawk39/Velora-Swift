@@ -1,20 +1,17 @@
 workflows:
   ios-jailbreak:
     name: Velora Jailbreak IPA (Unsigned)
-    instance_type: mac_mini_m1
-    max_build_duration: 60
-    cache:
-      cache_paths:
-        - ~/.swiftpm
+    instance_type: mac_mini_m2
+    max_build_duration: 120
     environment:
       xcode: "16"
     scripts:
+      - name: Initialize
+        script: |
+          xcode-project initialize --project Velora
+
       - name: Build
         script: |
-          set -e
-          xcode-select --print-path
-          swift package resolve --package-path .
-          swift package generate-xcodeproj --package-path . --scheme Velora
           xcodebuild -project Velora.xcodeproj \
             -scheme Velora \
             -configuration Debug \
@@ -32,6 +29,9 @@ workflows:
           zip -r build/Velora-Jailbreak.ipa Payload
           mkdir -p build/ios
           mv build/Velora-Jailbreak.ipa build/ios/
+
+    artifacts:
+      - build/ios/*.ipa
 
     artifacts:
       - build/ios/*.ipa
