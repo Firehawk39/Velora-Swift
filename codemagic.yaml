@@ -6,6 +6,10 @@ workflows:
     environment:
       xcode: latest
     scripts:
+      - name: Generate project
+        script: |
+          swift package generate-xcodeproj --package-path . --scheme Velora
+
       - name: Build iOS app
         script: |
           xcode-project build-ipa \
