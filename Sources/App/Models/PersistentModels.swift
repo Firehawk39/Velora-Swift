@@ -18,6 +18,8 @@ final class PersistentTrack {
     // AI-Enriched Metadata
     var aiGenrePrediction: String?
     var aiAtmosphere: String?
+    var aiStyle: String?
+    var aiDescription: String?
     var lastAuditDate: Date?
     var hasCustomBackdrop: Bool = false
     var localBackdropPath: String?

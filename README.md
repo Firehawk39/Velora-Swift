@@ -32,6 +32,14 @@
 - [ ] **Taste Graph:** Deep analytics of your listening habits and evolving preferences.
 - [ ] **Smart Shuffling:** AI-driven queue management that learns what you skip and what you love.
 
+## 📚 Documentation
+
+For deep dives into how Velora works, check out our technical documentation:
+
+- 🏛️ **[Project Architecture](ARCHITECTURE.md):** A detailed look at our layered design, managers, and data flow.
+- 🎨 **[Design System](DESIGN.md):** Our "Cinematic Glassmorphism" philosophy and visual guidelines.
+- 🧪 **[Development Log](DEVLOG.md):** A chronological record of the engineering decisions that shaped the app.
+
 ---
 
 ## 🛠️ Development & Deployment

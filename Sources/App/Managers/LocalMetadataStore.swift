@@ -140,6 +140,8 @@ class LocalMetadataStore {
                 if let persistent = try context.fetch(fetchDescriptor).first {
                     persistent.aiGenrePrediction = result.genre
                     persistent.aiAtmosphere = result.mood
+                    persistent.aiStyle = result.style
+                    persistent.aiDescription = result.description
                     persistent.lastAuditDate = Date()
                 }
             } catch {

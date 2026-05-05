@@ -313,7 +313,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             self.updateNowPlayingInfo()
         } else {
             // Fallback to standard transition
-            self.nextTrack()
+            Task { @MainActor in
+                self.nextTrack()
+            }
         }
     }
     
@@ -376,13 +378,17 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
         
         playerItemObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
-            self?.nextTrack()
+            Task { @MainActor in
+                self?.nextTrack()
+            }
         }
         
         statusObserver = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
             if item.status == .failed {
                 AppLogger.shared.log("Playback failed for \(track.title)", level: .error)
-                self?.nextTrack()
+                Task { @MainActor in
+                    self?.nextTrack()
+                }
             }
         }
     }

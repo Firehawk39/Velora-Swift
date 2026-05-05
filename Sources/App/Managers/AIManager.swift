@@ -428,7 +428,10 @@ extension AIManager {
           {
             "id": "string",
             "genre": "string",
-            "mood": "string"
+            "mood": "string",
+            "style": "string",
+            "release_year": "number",
+            "description": "string (one-sentence summary of the track's sound)"
           }
         ]
         
