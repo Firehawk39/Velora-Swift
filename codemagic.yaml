@@ -9,12 +9,12 @@ workflows:
     environment:
       xcode: "16"
     scripts:
-      - name: Set up and build
+      - name: Build
         script: |
-          export DEVELOPER_DIR=/Applications/Xcode-16.app/Contents/Developer
-          export PATH="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
-          swift package resolve
-          swift package generate-xcodeproj --scheme Velora
+          set -e
+          xcode-select --print-path
+          swift package resolve --package-path .
+          swift package generate-xcodeproj --package-path . --scheme Velora
           xcodebuild -project Velora.xcodeproj \
             -scheme Velora \
             -configuration Debug \
