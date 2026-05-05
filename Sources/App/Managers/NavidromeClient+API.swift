@@ -55,9 +55,7 @@ extension NavidromeClient {
                        artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
             }
             
-            await MainActor.run {
-                self.recentlyPlayed = tracks
-            }
+            self.recentlyPlayed = tracks
         } catch { 
             print("Error decoding recent songs: \(error)")
             await fetchRandomAsRecent()
@@ -83,9 +81,7 @@ extension NavidromeClient {
                        artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
             }
             
-            await MainActor.run {
-                self.recentlyPlayed = tracks
-            }
+            self.recentlyPlayed = tracks
         } catch { 
             print("Error decoding random songs as fallback: \(error)")
         }
@@ -105,10 +101,8 @@ extension NavidromeClient {
                       songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
                       coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
             }
-            await MainActor.run {
                 self.albums = parsedAlbums
                 LocalMetadataStore.shared.saveAlbums(parsedAlbums)
-            }
         } catch { print("Error decoding albums: \(error)") }
     }
 
@@ -128,10 +122,8 @@ extension NavidromeClient {
                     parsed.append(Artist(id: sub.id, name: sub.name, coverArt: self.getCoverArtUrl(id: sub.id)))
                 }
             }
-            await MainActor.run { 
                 self.artists = parsed 
                 LocalMetadataStore.shared.saveArtists(parsed)
-            }
             return parsed
         } catch { 
             print("Error decoding artists: \(error)") 

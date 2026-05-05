@@ -40,7 +40,7 @@ struct VeloraApp: App {
         WindowGroup {
             ContentView()
         }
-        .onChange(of: scenePhase) { oldPhase, newPhase in
+        .onChange(of: scenePhase) { newPhase in
             if newPhase == .background {
                 BackgroundTaskManager.shared.scheduleTasks()
             }

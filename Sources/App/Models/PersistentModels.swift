@@ -1,51 +1,84 @@
 import Foundation
-import SwiftData
+import CoreData
 
 /// Persistent storage model for track metadata, including AI-enriched content.
-@available(iOS 17.0, *)
-@Model
-final class PersistentTrack {
-    @Attribute(.unique) var id: String
-    var title: String
-    var artist: String?
-    var album: String?
-    var duration: Int?
-    var coverArt: String?
-    var artistId: String?
-    var albumId: String?
-    var suffix: String?
+@objc(PersistentTrack)
+public class PersistentTrack: NSManagedObject {
+    @NSManaged public var id: String
+    @NSManaged public var title: String
+    @NSManaged public var artist: String?
+    @NSManaged public var album: String?
+    @NSManaged public var duration: Int32
+    @NSManaged public var coverArt: String?
+    @NSManaged public var artistId: String?
+    @NSManaged public var albumId: String?
+    @NSManaged public var suffix: String?
     
     // AI-Enriched Metadata
-    var aiGenrePrediction: String?
-    var aiAtmosphere: String?
-    var aiStyle: String?
-    var aiDescription: String?
-    var lastAuditDate: Date?
-    var hasCustomBackdrop: Bool = false
-    var localBackdropPath: String?
-    var customCoverArt: String?
+    @NSManaged public var aiGenrePrediction: String?
+    @NSManaged public var aiAtmosphere: String?
+    @NSManaged public var aiStyle: String?
+    @NSManaged public var aiDescription: String?
+    @NSManaged public var lastAuditDate: Date?
+    @NSManaged public var hasCustomBackdrop: Bool
+    @NSManaged public var localBackdropPath: String?
+    @NSManaged public var customCoverArt: String?
     
-    // Persistence Layer Optimization (The Last 3%)
-    var isDownloaded: Bool = false
-    var localFilePath: String?
+    // Persistence Layer Optimization
+    @NSManaged public var isDownloaded: Bool
+    @NSManaged public var localFilePath: String?
     
     // Analytics
-    var playCount: Int = 0
-    var lastPlayedAt: Date?
-    var isStarred: Bool = false
-    
-    init(track: Track) {
+    @NSManaged public var playCount: Int32
+    @NSManaged public var lastPlayedAt: Date?
+    @NSManaged public var isStarred: Bool
+}
+
+/// Persistent storage model for artist metadata.
+@objc(PersistentArtist)
+public class PersistentArtist: NSManagedObject {
+    @NSManaged public var id: String
+    @NSManaged public var name: String
+    @NSManaged public var coverArt: String?
+    @NSManaged public var musicBrainzId: String?
+    @NSManaged public var biography: String?
+    @NSManaged public var area: String?
+    @NSManaged public var type: String?
+    @NSManaged public var lifeSpan: String?
+    @NSManaged public var lastAuditDate: Date?
+}
+
+/// Persistent storage model for album metadata.
+@objc(PersistentAlbum)
+public class PersistentAlbum: NSManagedObject {
+    @NSManaged public var id: String
+    @NSManaged public var name: String
+    @NSManaged public var artist: String?
+    @NSManaged public var artistId: String?
+    @NSManaged public var songCount: Int32
+    @NSManaged public var duration: Int32
+    @NSManaged public var coverArt: String?
+    @NSManaged public var releaseYear: Int32
+    @NSManaged public var recordLabel: String?
+    @NSManaged public var firstReleaseDate: String?
+    @NSManaged public var customCoverArt: String?
+}
+
+// MARK: - Initializers (Helpers)
+
+extension PersistentTrack {
+    func update(with track: Track) {
         self.id = track.id
         self.title = track.title
         self.artist = track.artist
         self.album = track.album
-        self.duration = track.duration
+        self.duration = Int32(track.duration ?? 0)
         self.coverArt = track.coverArt
         self.artistId = track.artistId
         self.albumId = track.albumId
         self.suffix = track.suffix
         self.isStarred = track.isStarred
-        self.playCount = track.playCount ?? 0
+        self.playCount = Int32(track.playCount ?? 0)
         
         // Initial check for file existence
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -61,56 +94,27 @@ final class PersistentTrack {
     }
 }
 
-/// Persistent storage model for artist metadata.
-@available(iOS 17.0, *)
-@Model
-final class PersistentArtist {
-    @Attribute(.unique) var id: String
-    var name: String
-    var coverArt: String?
-    var musicBrainzId: String?
-    var biography: String?
-    var area: String?
-    var type: String?
-    var lifeSpan: String?
-    var lastAuditDate: Date?
-    
-    init(artist: Artist) {
+extension PersistentArtist {
+    func update(with artist: Artist) {
         self.id = artist.id
         self.name = artist.name
         self.coverArt = artist.coverArt
     }
 }
 
-/// Persistent storage model for album metadata.
-@available(iOS 17.0, *)
-@Model
-final class PersistentAlbum {
-    @Attribute(.unique) var id: String
-    var name: String
-    var artist: String?
-    var artistId: String?
-    var songCount: Int?
-    var duration: Int?
-    var coverArt: String?
-    var releaseYear: Int?
-    var recordLabel: String?
-    var firstReleaseDate: String?
-    var customCoverArt: String?
-    
-    init(album: Album) {
+extension PersistentAlbum {
+    func update(with album: Album) {
         self.id = album.id
         self.name = album.name
         self.artist = album.artist
         self.artistId = album.artistId
-        self.songCount = album.songCount
-        self.duration = album.duration
+        self.songCount = Int32(album.songCount ?? 0)
+        self.duration = Int32(album.duration ?? 0)
         self.coverArt = album.coverArt
         self.recordLabel = album.recordLabel
         self.firstReleaseDate = album.firstReleaseDate
         if let frd = album.firstReleaseDate, let year = Int(frd.prefix(4)) {
-            self.releaseYear = year
+            self.releaseYear = Int32(year)
         }
     }
 }
-

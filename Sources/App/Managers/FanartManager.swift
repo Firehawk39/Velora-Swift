@@ -3,6 +3,7 @@ import Foundation
 
 /// Manages interaction with Fanart.tv API for artist backdrops and portraits.
 /// Features modern async/await architecture and rate limiting.
+@MainActor
 class FanartManager: ObservableObject {
     static let shared = FanartManager()
     
@@ -103,19 +104,15 @@ class FanartManager: ObservableObject {
             let isNewArtist = self.currentArtistName != artist
             if isNewArtist {
                 self.currentArtistName = artist
-                await MainActor.run {
-                    withAnimation(.easeInOut(duration: 0.4)) {
-                        self.currentBackdrop = nil
-                    }
+                withAnimation(.easeInOut(duration: 0.4)) {
+                    self.currentBackdrop = nil
                 }
             }
             
             if let image = await fetchBackdropAsync(for: artist, mbid: mbid) {
-                await MainActor.run {
-                    if self.currentArtistName == artist {
-                        withAnimation(.easeInOut(duration: 0.8)) {
-                            self.currentBackdrop = image
-                        }
+                if self.currentArtistName == artist {
+                    withAnimation(.easeInOut(duration: 0.8)) {
+                        self.currentBackdrop = image
                     }
                 }
             }

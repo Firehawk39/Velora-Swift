@@ -79,33 +79,27 @@ final class SyncManager: ObservableObject {
     
     @discardableResult
     func startDeepAudit() async -> Bool {
-        await MainActor.run {
-            isAuditing = true
-            isSyncing = true
-            auditProgress = 0.0
-            auditStatus = "Initializing Deep Audit..."
-            lastErrorMessage = nil
-        }
+        isAuditing = true
+        isSyncing = true
+        auditProgress = 0.0
+        auditStatus = "Initializing Deep Audit..."
+        lastErrorMessage = nil
         
         do {
-            let success = await performDeepAudit()
-            await MainActor.run {
-                isAuditing = false
-                if !isMetadataSyncing && !isMediaSyncing { isSyncing = false }
-                if success {
-                    lastAuditDate = Date().timeIntervalSince1970
-                    NotificationManager.shared.sendNotification(title: "Audit Complete", body: "Your library integrity has been verified.")
-                }
+            let success = try await performDeepAudit()
+            isAuditing = false
+            if !isMetadataSyncing && !isMediaSyncing { isSyncing = false }
+            if success {
+                lastAuditDate = Date().timeIntervalSince1970
+                NotificationManager.shared.sendNotification(title: "Audit Complete", body: "Your library integrity has been verified.")
             }
             return success
         } catch {
-            await MainActor.run {
-                isAuditing = false
-                if !isMetadataSyncing && !isMediaSyncing { isSyncing = false }
-                lastErrorMessage = "Audit failed: \(error.localizedDescription)"
-                auditStatus = "Failed"
-                NotificationManager.shared.sendNotification(title: "Audit Failed", body: error.localizedDescription)
-            }
+            isAuditing = false
+            if !isMetadataSyncing && !isMediaSyncing { isSyncing = false }
+            lastErrorMessage = "Audit failed: \(error.localizedDescription)"
+            auditStatus = "Failed"
+            NotificationManager.shared.sendNotification(title: "Audit Failed", body: error.localizedDescription)
             return false
         }
     }
@@ -118,7 +112,7 @@ final class SyncManager: ObservableObject {
         // Step 4 is orphaned cleanup - we count the directories we scan
         let totalItems = tracks.count + artists.count + albums.count + 4 
         if totalItems == 0 {
-            await MainActor.run { auditStatus = "Audit Complete: Database empty." }
+            auditStatus = "Audit Complete: Database empty."
             return true
         }
         
@@ -127,7 +121,7 @@ final class SyncManager: ObservableObject {
         // 1. Audit Tracks (Downloads)
         for track in tracks {
             if !isAuditing { throw SyncError.userCancelled }
-            await MainActor.run { auditStatus = "Verifying: \(track.title)" }
+            auditStatus = "Verifying: \(track.title)"
             
             if track.isDownloaded {
                 let isValid = IntegrityManager.shared.isTrackValid(id: track.id)
@@ -144,7 +138,7 @@ final class SyncManager: ObservableObject {
         // 2. Audit Artists (Portraits & Metadata)
         for artist in artists {
             if !isAuditing { throw SyncError.userCancelled }
-            await MainActor.run { auditStatus = "Verifying: \(artist.name)" }
+            auditStatus = "Verifying: \(artist.name)"
             
             let portraitUrl = FanartManager.shared.getPortraitUrl(for: artist.name)
             let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
@@ -160,7 +154,7 @@ final class SyncManager: ObservableObject {
         // 3. Audit Albums (Metadata)
         for album in albums {
             if !isAuditing { throw SyncError.userCancelled }
-            await MainActor.run { auditStatus = "Verifying: \(album.name)" }
+            auditStatus = "Verifying: \(album.name)"
             
             let artistName = album.artist ?? "Unknown Artist"
             let metadataUrl = MusicBrainzManager.shared.getAlbumMetadataUrl(albumName: album.name, artistName: artistName)
@@ -173,15 +167,13 @@ final class SyncManager: ObservableObject {
         }
         
         // 4. Cleanup Orphaned Files
-        await MainActor.run { auditStatus = "Cleaning up orphaned assets..." }
-        MusicBrainzManager.shared.verifyCacheIntegrity()
+        auditStatus = "Cleaning up orphaned assets..."
+        await MusicBrainzManager.shared.verifyCacheIntegrity()
         await cleanupOrphanedFiles(processed: &processed, totalItems: totalItems)
         
-        await MainActor.run {
-            auditStatus = "Audit Finished."
-            AppLogger.shared.log("SyncManager: Deep Audit complete. Processed \(processed) items.", level: .info)
-            self.playback?.refreshDownloadedTracks()
-        }
+        auditStatus = "Audit Finished."
+        AppLogger.shared.log("SyncManager: Deep Audit complete. Processed \(processed) items.", level: .info)
+        self.playback?.refreshDownloadedTracks()
         
         return true
     }
@@ -191,33 +183,27 @@ final class SyncManager: ObservableObject {
     @discardableResult
     func startMetadataSync() async -> Bool {
         guard let client = client else { return false }
-        await MainActor.run {
-            isMetadataSyncing = true
-            isSyncing = true
-            metadataProgress = 0.0
-            metadataStatus = "Fetching library list..."
-            lastErrorMessage = nil
-        }
+        isMetadataSyncing = true
+        isSyncing = true
+        metadataProgress = 0.0
+        metadataStatus = "Fetching library list..."
+        lastErrorMessage = nil
         
         do {
-            let success = await performMetadataSync(client: client)
-            await MainActor.run {
-                isMetadataSyncing = false
-                if !isMediaSyncing && !isAuditing { isSyncing = false }
-                if success {
-                    lastMetadataSyncDate = Date().timeIntervalSince1970
-                    NotificationManager.shared.sendNotification(title: "Metadata Synced", body: "Artist and Album info updated.")
-                }
+            let success = try await performMetadataSync(client: client)
+            isMetadataSyncing = false
+            if !isMediaSyncing && !isAuditing { isSyncing = false }
+            if success {
+                lastMetadataSyncDate = Date().timeIntervalSince1970
+                NotificationManager.shared.sendNotification(title: "Metadata Synced", body: "Artist and Album info updated.")
             }
             return success
         } catch {
-            await MainActor.run {
-                isMetadataSyncing = false
-                if !isMediaSyncing && !isAuditing { isSyncing = false }
-                lastErrorMessage = "Metadata sync failed: \(error.localizedDescription)"
-                metadataStatus = "Failed"
-                NotificationManager.shared.sendNotification(title: "Sync Failed", body: error.localizedDescription)
-            }
+            isMetadataSyncing = false
+            if !isMediaSyncing && !isAuditing { isSyncing = false }
+            lastErrorMessage = "Metadata sync failed: \(error.localizedDescription)"
+            metadataStatus = "Failed"
+            NotificationManager.shared.sendNotification(title: "Sync Failed", body: error.localizedDescription)
             return false
         }
     }
@@ -251,7 +237,7 @@ final class SyncManager: ObservableObject {
                            IntegrityManager.shared.isImageValid(at: portraitUrl)
             
             if !hasValid {
-                await MainActor.run { metadataStatus = "Syncing Info: \(artist.name)" }
+                metadataStatus = "Syncing Info: \(artist.name)"
                 FanartManager.shared.downloadBackdropSilently(for: artist.name)
                 _ = await FanartManager.shared.fetchArtistPortrait(for: artist.name)
                 await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
@@ -259,14 +245,12 @@ final class SyncManager: ObservableObject {
             }
             
             tasksCompleted += 1
-            await MainActor.run {
-                metadataProgress = tasksCompleted / totalTasks
-                
-                // ETA Update
-                let remaining = totalTasks - tasksCompleted
-                let remainingSec = Int(remaining * (hasValid ? 0.01 : 1.1))
-                metadataEtaString = remainingSec > 60 ? "\(remainingSec/60)m remaining" : "\(remainingSec)s remaining"
-            }
+            metadataProgress = tasksCompleted / totalTasks
+            
+            // ETA Update
+            let remaining = totalTasks - tasksCompleted
+            let remainingSec = Int(remaining * (hasValid ? 0.01 : 1.1))
+            metadataEtaString = remainingSec > 60 ? "\(remainingSec/60)m remaining" : "\(remainingSec)s remaining"
             if Int(tasksCompleted) % 10 == 0 { await Task.yield() }
         }
         
@@ -275,17 +259,15 @@ final class SyncManager: ObservableObject {
             if !isMetadataSyncing { throw SyncError.userCancelled }
             let artistName = album.artist ?? "Unknown Artist"
             if !MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
-                await MainActor.run { metadataStatus = "Syncing Info: \(album.name)" }
+                metadataStatus = "Syncing Info: \(album.name)"
                 await MusicBrainzManager.shared.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
                 await Task.yield()
             }
             tasksCompleted += 1
-            await MainActor.run {
-                metadataProgress = tasksCompleted / totalTasks
-            }
+            metadataProgress = tasksCompleted / totalTasks
         }
         
-        await MainActor.run { metadataStatus = "Metadata Sync Complete" }
+        metadataStatus = "Metadata Sync Complete"
         return true
     }
     
@@ -295,13 +277,11 @@ final class SyncManager: ObservableObject {
     func startMediaSync() async -> Bool {
         guard let client = client, let playback = playback, !isMediaSyncing else { return false }
         
-        await MainActor.run {
-            isMediaSyncing = true
-            isSyncing = true
-            mediaProgress = 0.0
-            mediaStatus = "Analyzing library..."
-            lastErrorMessage = nil
-        }
+        isMediaSyncing = true
+        isSyncing = true
+        mediaProgress = 0.0
+        mediaStatus = "Analyzing library..."
+        lastErrorMessage = nil
         
         do {
             // Ensure library is synced
@@ -322,12 +302,10 @@ final class SyncManager: ObservableObject {
             let alreadyDownloaded = Int(totalTracks) - totalToDownload
             
             if totalToDownload == 0 {
-                await MainActor.run {
-                    isMediaSyncing = false
-                    if !isMetadataSyncing && !isAuditing { isSyncing = false }
-                    mediaStatus = "All tracks offline."
-                    lastMediaSyncDate = Date().timeIntervalSince1970
-                }
+                isMediaSyncing = false
+                if !isMetadataSyncing && !isAuditing { isSyncing = false }
+                mediaStatus = "All tracks offline."
+                lastMediaSyncDate = Date().timeIntervalSince1970
                 return true
             }
             
@@ -341,10 +319,13 @@ final class SyncManager: ObservableObject {
             let startTime = Date()
             var lastCompletedCount = -1
             var tracksPendingRetry = Set<String>()
+            var failedCount = 0
+            var completed = 0
+            var downloadedCount = 0
             
             while isMediaSyncing {
-                let downloadedCount = tracksToDownload.filter { playback.isDownloaded(id: $0.id) }.count
-                let currentlyFailed = tracksToDownload.filter { playback.failedDownloadIds.contains($0.id) }
+                downloadedCount = tracksToDownload.filter { playback.isDownloaded(id: $0.id) }.count
+                let currentlyFailed = playback.tracks.filter { playback.failedDownloadIds.contains($0.id) }
                 
                 // Retry Logic
                 for failedTrack in currentlyFailed {
@@ -359,22 +340,20 @@ final class SyncManager: ObservableObject {
                     }
                 }
                 
-                let failedCount = tracksPendingRetry.count
-                let completed = downloadedCount + failedCount
+                failedCount = tracksPendingRetry.count
+                completed = downloadedCount + failedCount
                 
                 if completed != lastCompletedCount {
                     lastCompletedCount = completed
-                    await MainActor.run {
-                        mediaProgress = Double(alreadyDownloaded + completed) / totalTracks
-                        mediaStatus = "Downloading: \(downloadedCount)/\(totalToDownload) (\(failedCount) errors)"
-                        
-                        // ETA Calculation (Smoothed)
-                        if completed > 0 {
-                            let elapsed = Date().timeIntervalSince(startTime)
-                            let rate = Double(completed) / elapsed
-                            let remaining = Double(totalToDownload - completed) / rate
-                            mediaEtaString = remaining > 60 ? "\(Int(remaining/60))m remaining" : "\(Int(remaining))s remaining"
-                        }
+                    mediaProgress = Double(alreadyDownloaded + completed) / totalTracks
+                    mediaStatus = "Downloading: \(downloadedCount)/\(totalToDownload) (\(failedCount) errors)"
+                    
+                    // ETA Calculation (Smoothed)
+                    if completed > 0 {
+                        let elapsed = Date().timeIntervalSince(startTime)
+                        let rate = Double(completed) / elapsed
+                        let remaining = Double(totalToDownload - completed) / rate
+                        mediaEtaString = remaining > 60 ? "\(Int(remaining/60))m remaining" : "\(Int(remaining))s remaining"
                     }
                 }
                 
@@ -382,27 +361,23 @@ final class SyncManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 2_000_000_000) // Poll every 2s to allow batching
             }
             
-            await MainActor.run {
-                isMediaSyncing = false
-                if !isMetadataSyncing && !isAuditing { isSyncing = false }
-                mediaStatus = completed == downloadedCount ? "Media Sync Complete" : "Sync Finished (\(failedCount) failed)"
-                lastMediaSyncDate = Date().timeIntervalSince1970
-                
-                if failedCount == 0 {
-                    NotificationManager.shared.sendNotification(title: "Library Offline", body: "All tracks downloaded successfully.")
-                } else {
-                    NotificationManager.shared.sendNotification(title: "Library Partial", body: "\(failedCount) tracks could not be downloaded.")
-                }
+            isMediaSyncing = false
+            if !isMetadataSyncing && !isAuditing { isSyncing = false }
+            mediaStatus = completed == downloadedCount ? "Media Sync Complete" : "Sync Finished (\(failedCount) failed)"
+            lastMediaSyncDate = Date().timeIntervalSince1970
+            
+            if failedCount == 0 {
+                NotificationManager.shared.sendNotification(title: "Library Offline", body: "All tracks downloaded successfully.")
+            } else {
+                NotificationManager.shared.sendNotification(title: "Library Partial", body: "\(failedCount) tracks could not be downloaded.")
             }
             
             return true
         } catch {
-            await MainActor.run {
-                isMediaSyncing = false
-                if !isMetadataSyncing && !isAuditing { isSyncing = false }
-                lastErrorMessage = "Media sync failed: \(error.localizedDescription)"
-                mediaStatus = "Failed"
-            }
+            isMediaSyncing = false
+            if !isMetadataSyncing && !isAuditing { isSyncing = false }
+            lastErrorMessage = "Media sync failed: \(error.localizedDescription)"
+            mediaStatus = "Failed"
             return false
         }
     }
@@ -482,9 +457,7 @@ final class SyncManager: ObservableObject {
         func cleanupDir(url: URL, validNames: Set<String>, isTrack: Bool = false, categoryName: String) async {
             guard let files = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) else { return }
             
-            await MainActor.run {
-                auditStatus = "Cleaning \(categoryName)..."
-            }
+            auditStatus = "Cleaning \(categoryName)..."
             
             let fileCount = files.count
             var fileIndex = 0
@@ -517,20 +490,16 @@ final class SyncManager: ObservableObject {
                 fileIndex += 1
                 // Periodically update progress and yield
                 if fileIndex % 20 == 0 {
-                    await MainActor.run {
-                        let subProgress = Double(fileIndex) / Double(max(1, fileCount))
-                        // We use a weighted progress for the cleanup phase (each dir is 1 unit of totalItems)
-                        let currentStepProgress = Double(processed) + subProgress
-                        self.auditProgress = currentStepProgress / Double(totalItems)
-                    }
+                    let subProgress = Double(fileIndex) / Double(max(1, fileCount))
+                    // We use a weighted progress for the cleanup phase (each dir is 1 unit of totalItems)
+                    let currentStepProgress = Double(processed) + subProgress
+                    self.auditProgress = currentStepProgress / Double(totalItems)
                     await Task.yield()
                 }
             }
             
             processed += 1
-            await MainActor.run {
-                self.auditProgress = Double(processed) / Double(totalItems)
-            }
+            self.auditProgress = Double(processed) / Double(totalItems)
         }
         
         // 1. Tracks (Document Root)

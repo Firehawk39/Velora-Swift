@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct LibraryView: View {
     @EnvironmentObject var client: NavidromeClient
@@ -171,7 +172,9 @@ struct LibraryView: View {
                                      if sync.isSyncing && sync.syncType == .media {
                                          sync.stopSync()
                                      } else {
-                                         sync.startMediaSync()
+                                         Task { @MainActor in
+                                             _ = await sync.startMediaSync()
+                                         }
                                      }
                                  }) {
                                      ZStack {

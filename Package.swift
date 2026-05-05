@@ -5,7 +5,7 @@ import AppleProductTypes
 let package = Package(
     name: "Velora",
     platforms: [
-        .iOS(.v17)
+        .iOS(.v15)
     ],
     products: [
         .iOSApplication(

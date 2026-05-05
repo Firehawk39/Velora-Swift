@@ -5,7 +5,6 @@ import UIKit
 
 /// Velora AI & Metadata Engine
 /// Orchestrates library audits and intelligent metadata enrichment using Gemini, Discogs, MusicBrainz, and Fanart.tv.
-@available(iOS 17.0, *)
 @MainActor
 class AIManager: ObservableObject {
     static let shared = AIManager()

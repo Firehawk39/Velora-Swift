@@ -1,45 +1,66 @@
 import Foundation
-import SwiftData
+import CoreData
 
-/// Centralized manager for SwiftData operations.
+/// Centralized manager for Core Data operations.
 /// High-performance local cache for AI-enriched metadata.
-@available(iOS 17.0, *)
-@MainActor
+/// Optimized for iOS 15 compatibility.
 class LocalMetadataStore {
     static let shared = LocalMetadataStore()
     
-    private var container: ModelContainer?
-    private var context: ModelContext?
+    private let persistentContainer: NSPersistentContainer
+    
+    private var context: NSManagedObjectContext {
+        return persistentContainer.viewContext
+    }
     
     init() {
-        do {
-            let schema = Schema([
-                PersistentTrack.self,
-                PersistentArtist.self,
-                PersistentAlbum.self
-            ])
-            let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-            self.container = try ModelContainer(for: schema, configurations: [config])
-            if let container = self.container {
-                self.context = ModelContext(container)
-                self.context?.autosaveEnabled = false // Manual batch saving for performance
+        // Find the model in the bundle
+        guard let modelURL = Bundle.module.url(forResource: "Velora", withExtension: "momd") else {
+            fatalError("Failed to find Velora.xcdatamodeld in bundle")
+        }
+        
+        guard let managedObjectModel = NSManagedObjectModel(contentsOf: modelURL) else {
+            fatalError("Failed to load managed object model")
+        }
+        
+        persistentContainer = NSPersistentContainer(name: "Velora", managedObjectModel: managedObjectModel)
+        
+        // Optimize for performance
+        let description = persistentContainer.persistentStoreDescriptions.first
+        description?.setOption(true as NSNumber, forKey: NSMigratePersistentStoresAutomaticallyOption)
+        description?.setOption(true as NSNumber, forKey: NSInferMappingModelAutomaticallyOption)
+        
+        persistentContainer.loadPersistentStores { (storeDescription, error) in
+            if let error = error as NSError? {
+                print("Failed to initialize Core Data: \(error), \(error.userInfo)")
             }
-        } catch {
-            print("Failed to initialize SwiftData: \(error)")
+        }
+        
+        // Merge policy to handle conflicts (favor in-memory changes)
+        context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        context.automaticallyMergesChangesFromParent = true
+    }
+    
+    func save() {
+        if context.hasChanges {
+            do {
+                try context.save()
+            } catch {
+                AppLogger.shared.log("LocalMetadataStore: Failed to save context: \(error)", level: .error)
+            }
         }
     }
     
     // MARK: - Batch Operations
     
     func saveTracks(_ tracks: [Track]) {
-        guard let context = context else { return }
-        
         let trackIds = tracks.map { $0.id }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { trackIds.contains($0.id) })
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "id IN %@", trackIds)
         
         let existingTracks: [String: PersistentTrack]
         do {
-            let fetched = try context.fetch(fetchDescriptor)
+            let fetched = try context.fetch(fetchRequest)
             existingTracks = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
         } catch {
             AppLogger.shared.log("LocalMetadataStore: Failed to fetch existing tracks for batch save.", level: .error)
@@ -52,32 +73,25 @@ class LocalMetadataStore {
                 existing.artist = track.artist
                 existing.album = track.album
                 existing.isStarred = track.isStarred
-                existing.playCount = track.playCount ?? 0
+                existing.playCount = Int32(track.playCount ?? 0)
                 existing.coverArt = track.coverArt
-                
-                // Integrity checks are deferred to the Deep Audit to avoid I/O stalls during sync
             } else {
-                let newTrack = PersistentTrack(track: track)
-                context.insert(newTrack)
+                let newTrack = PersistentTrack(context: context)
+                newTrack.update(with: track)
             }
         }
         
-        do {
-            try context.save()
-        } catch {
-            AppLogger.shared.log("LocalMetadataStore: Failed to save context: \(error)", level: .error)
-        }
+        save()
     }
     
     func saveArtists(_ artists: [Artist]) {
-        guard let context = context else { return }
-        
         let artistIds = artists.map { $0.id }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { artistIds.contains($0.id) })
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "id IN %@", artistIds)
         
         let existingArtists: [String: PersistentArtist]
         do {
-            let fetched = try context.fetch(fetchDescriptor)
+            let fetched = try context.fetch(fetchRequest)
             existingArtists = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
         } catch {
             return
@@ -92,23 +106,22 @@ class LocalMetadataStore {
                 if let type = artist.type { existing.type = type }
                 if let lifeSpan = artist.lifeSpan { existing.lifeSpan = lifeSpan }
             } else {
-                let newArtist = PersistentArtist(artist: artist)
-                context.insert(newArtist)
+                let newArtist = PersistentArtist(context: context)
+                newArtist.update(with: artist)
             }
         }
         
-        try? context.save()
+        save()
     }
     
     func saveAlbums(_ albums: [Album]) {
-        guard let context = context else { return }
-        
         let albumIds = albums.map { $0.id }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { albumIds.contains($0.id) })
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        fetchRequest.predicate = NSPredicate(format: "id IN %@", albumIds)
         
         let existingAlbums: [String: PersistentAlbum]
         do {
-            let fetched = try context.fetch(fetchDescriptor)
+            let fetched = try context.fetch(fetchRequest)
             existingAlbums = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
         } catch {
             return
@@ -120,22 +133,21 @@ class LocalMetadataStore {
                 existing.artist = album.artist
                 existing.coverArt = album.coverArt
                 
-                // Selectively update aggregate stats to avoid overwriting with partial batch data
-                if let sc = album.songCount { existing.songCount = sc }
-                if let dur = album.duration { existing.duration = dur }
+                if let sc = album.songCount { existing.songCount = Int32(sc) }
+                if let dur = album.duration { existing.duration = Int32(dur) }
                 
                 if let dateString = album.firstReleaseDate, let year = Int(dateString.prefix(4)) {
-                    existing.releaseYear = year
+                    existing.releaseYear = Int32(year)
                 }
                 if let label = album.recordLabel { existing.recordLabel = label }
                 if let frd = album.firstReleaseDate { existing.firstReleaseDate = frd }
             } else {
-                let newAlbum = PersistentAlbum(album: album)
-                context.insert(newAlbum)
+                let newAlbum = PersistentAlbum(context: context)
+                newAlbum.update(with: album)
             }
         }
         
-        try? context.save()
+        save()
     }
     
     // MARK: - Single Operations
@@ -149,14 +161,13 @@ class LocalMetadataStore {
     }
     
     func updateAIMetadataBatch(results: [EnrichedMetadata]) {
-        guard let context = context else { return }
-        
         for result in results {
             guard let id = result.id else { continue }
-            let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == id })
+            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+            fetchRequest.predicate = NSPredicate(format: "id == %@", id)
             
             do {
-                if let persistent = try context.fetch(fetchDescriptor).first {
+                if let persistent = try context.fetch(fetchRequest).first {
                     persistent.aiGenrePrediction = result.genre
                     persistent.aiAtmosphere = result.mood
                     persistent.aiStyle = result.style
@@ -168,23 +179,22 @@ class LocalMetadataStore {
             }
         }
         
-        try? context.save()
+        save()
     }
     
     func updateArtistInfo(for artistId: String, bio: String?, mbid: String?, area: String? = nil, type: String? = nil, lifeSpan: String? = nil) {
-        guard let context = context else { return }
-        
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { $0.id == artistId })
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "id == %@", artistId)
         
         do {
-            if let persistent = try context.fetch(fetchDescriptor).first {
+            if let persistent = try context.fetch(fetchRequest).first {
                 if let bio = bio { persistent.biography = bio }
                 if let mbid = mbid { persistent.musicBrainzId = mbid }
                 if let area = area { persistent.area = area }
                 if let type = type { persistent.type = type }
                 if let lifeSpan = lifeSpan { persistent.lifeSpan = lifeSpan }
                 persistent.lastAuditDate = Date()
-                try context.save()
+                save()
             }
         } catch {
             print("Error updating artist info: \(error)")
@@ -196,14 +206,13 @@ class LocalMetadataStore {
     }
     
     func updateAlbumYearBatch(results: [(id: String, year: Int?, label: String?, firstReleaseDate: String?)]) {
-        guard let context = context else { return }
-        
         for result in results {
             let id = result.id
-            let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == id })
+            let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+            fetchRequest.predicate = NSPredicate(format: "id == %@", id)
             do {
-                if let persistent = try context.fetch(fetchDescriptor).first {
-                    if let year = result.year { persistent.releaseYear = year }
+                if let persistent = try context.fetch(fetchRequest).first {
+                    if let year = result.year { persistent.releaseYear = Int32(year) }
                     if let label = result.label { persistent.recordLabel = label }
                     if let frd = result.firstReleaseDate { persistent.firstReleaseDate = frd }
                 }
@@ -212,7 +221,7 @@ class LocalMetadataStore {
             }
         }
         
-        try? context.save()
+        save()
     }
 
     func updateCustomArt(for trackId: String, url: String) {
@@ -220,39 +229,37 @@ class LocalMetadataStore {
     }
     
     func updateCustomArtBatch(results: [(trackIds: [String], albumId: String?, url: String)]) {
-        guard let context = context else { return }
-        
         for result in results {
-            // Update the album if provided
             if let albumId = result.albumId {
-                let albumFetch = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == albumId })
+                let albumFetch: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+                albumFetch.predicate = NSPredicate(format: "id == %@", albumId)
                 if let persistentAlbum = (try? context.fetch(albumFetch))?.first {
                     persistentAlbum.customCoverArt = result.url
                 }
             }
             
-            // Update all tracks
             for trackId in result.trackIds {
-                let trackFetch = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == trackId })
+                let trackFetch: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+                trackFetch.predicate = NSPredicate(format: "id == %@", trackId)
                 if let persistentTrack = (try? context.fetch(trackFetch))?.first {
                     persistentTrack.customCoverArt = result.url
                 }
             }
         }
         
-        try? context.save()
+        save()
     }
     
     func updateBackdropStatus(for artistName: String, hasBackdrop: Bool) {
-        guard let context = context else { return }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.artist == artistName })
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "artist == %@", artistName)
         
         do {
-            let tracks = try context.fetch(fetchDescriptor)
+            let tracks = try context.fetch(fetchRequest)
             for track in tracks {
                 track.hasCustomBackdrop = hasBackdrop
             }
-            try context.save()
+            save()
         } catch {
             print("Error updating backdrop status for \(artistName): \(error)")
         }
@@ -263,14 +270,14 @@ class LocalMetadataStore {
     }
     
     func updateDownloadStatus(for trackId: String, isDownloaded: Bool, localPath: String?) {
-        guard let context = context else { return }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == trackId })
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "id == %@", trackId)
         
         do {
-            if let persistent = try context.fetch(fetchDescriptor).first {
+            if let persistent = try context.fetch(fetchRequest).first {
                 persistent.isDownloaded = isDownloaded
                 persistent.localFilePath = localPath
-                try context.save()
+                save()
             }
         } catch {
             print("Error updating download status: \(error)")
@@ -278,15 +285,15 @@ class LocalMetadataStore {
     }
 
     func updateTrackMetadata(for trackId: String, title: String? = nil, artist: String? = nil, album: String? = nil) {
-        guard let context = context else { return }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == trackId })
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "id == %@", trackId)
         
         do {
-            if let persistent = try context.fetch(fetchDescriptor).first {
+            if let persistent = try context.fetch(fetchRequest).first {
                 if let title = title { persistent.title = title }
                 if let artist = artist { persistent.artist = artist }
                 if let album = album { persistent.album = album }
-                try context.save()
+                save()
             }
         } catch {
             print("Error updating track metadata: \(error)")
@@ -294,375 +301,278 @@ class LocalMetadataStore {
     }
     
     func fetchTrack(id: String) -> PersistentTrack? {
-        guard let context = context else { return nil }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { $0.id == id })
-        return try? context.fetch(fetchDescriptor).first
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "id == %@", id)
+        return try? context.fetch(fetchRequest).first
     }
     
     func fetchTracksByIds(_ ids: [String]) -> [PersistentTrack] {
-        guard let context = context, !ids.isEmpty else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(predicate: #Predicate { ids.contains($0.id) })
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        if ids.isEmpty { return [] }
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "id IN %@", ids)
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAllTracks() -> [PersistentTrack] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(sortBy: [SortDescriptor(\.title)])
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAllArtists() -> [PersistentArtist] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(sortBy: [SortDescriptor(\.name)])
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAllAlbums() -> [PersistentAlbum] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(sortBy: [SortDescriptor(\.name)])
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        fetchRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func trackCount() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>()
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func artistCount() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>()
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func albumCount() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>()
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func fetchTrackIds() -> Set<String> {
-        guard let context = context else { return [] }
-        // Fetch only the ID property to save memory
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(propertiesToFetch: [\.id])
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return Set(results.map { $0.id })
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentTrack.fetchRequest()
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["id"]
+        
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return Set(results.compactMap { $0["id"] })
     }
     
     func fetchArtistNames() -> Set<String> {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(propertiesToFetch: [\.name])
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return Set(results.map { $0.name })
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentArtist.fetchRequest()
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["name"]
+        
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return Set(results.compactMap { $0["name"] })
     }
     
     func fetchAlbumNamesAndArtists() -> [(name: String, artist: String)] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(propertiesToFetch: [\.name, \.artist])
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.map { ($0.name, $0.artist ?? "Unknown Artist") }
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentAlbum.fetchRequest()
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["name", "artist"]
+        
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return results.map { ($0["name"] ?? "", $0["artist"] ?? "Unknown Artist") }
     }
     
     func fetchArtistMBIDs() -> Set<String> {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(
-            predicate: #Predicate<PersistentArtist> { $0.musicBrainzId != nil },
-            propertiesToFetch: [\.musicBrainzId]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return Set(results.compactMap { $0.musicBrainzId })
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentArtist.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "musicBrainzId != nil")
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["musicBrainzId"]
+        
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return Set(results.compactMap { $0["musicBrainzId"] })
     }
     
     func fetchArtist(name: String) -> PersistentArtist? {
-        guard let context = context else { return nil }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { $0.name == name })
-        return try? context.fetch(fetchDescriptor).first
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "name == %@", name)
+        return try? context.fetch(fetchRequest).first
     }
     
     func fetchArtistById(id: String) -> PersistentArtist? {
-        guard let context = context else { return nil }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { $0.id == id })
-        return try? context.fetch(fetchDescriptor).first
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "id == %@", id)
+        return try? context.fetch(fetchRequest).first
     }
     
     func fetchArtistsByIds(_ ids: [String]) -> [PersistentArtist] {
-        guard let context = context, !ids.isEmpty else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(predicate: #Predicate { ids.contains($0.id) })
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        if ids.isEmpty { return [] }
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "id IN %@", ids)
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAlbum(name: String, artistName: String) -> PersistentAlbum? {
-        guard let context = context else { return nil }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.name == name && $0.artist == artistName })
-        return try? context.fetch(fetchDescriptor).first
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        fetchRequest.predicate = NSPredicate(format: "name == %@ AND artist == %@", name, artistName)
+        return try? context.fetch(fetchRequest).first
     }
     
     func fetchAlbumById(id: String) -> PersistentAlbum? {
-        guard let context = context else { return nil }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { $0.id == id })
-        return try? context.fetch(fetchDescriptor).first
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        fetchRequest.predicate = NSPredicate(format: "id == %@", id)
+        return try? context.fetch(fetchRequest).first
     }
     
     func fetchAlbumsByIds(_ ids: [String]) -> [PersistentAlbum] {
-        guard let context = context, !ids.isEmpty else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(predicate: #Predicate { ids.contains($0.id) })
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        if ids.isEmpty { return [] }
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        fetchRequest.predicate = NSPredicate(format: "id IN %@", ids)
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func searchTracks(query: String) -> [PersistentTrack] {
-        guard let context = context, !query.isEmpty else { return [] }
-        
-        // Use a broad fetch to avoid compiler timeout on complex predicates
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(sortBy: [SortDescriptor(\.title)])
-        
-        do {
-            let allTracks = try context.fetch(fetchDescriptor)
-            // Perform high-performance in-memory filtering
-            return allTracks.filter { track in
-                track.title.localizedStandardContains(query) ||
-                (track.artist ?? "").localizedStandardContains(query) ||
-                (track.album ?? "").localizedStandardContains(query) ||
-                (track.aiGenrePrediction ?? "").localizedStandardContains(query) ||
-                (track.aiAtmosphere ?? "").localizedStandardContains(query)
-            }
-        } catch {
-            print("Error searching tracks: \(error)")
-            return []
-        }
+        if query.isEmpty { return [] }
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        // Core Data doesn't have localizedStandardContains in predicates directly for all store types, 
+        // but [cd] (case and diacritic insensitive) works well.
+        fetchRequest.predicate = NSPredicate(format: "title CONTAINS[cd] %@ OR artist CONTAINS[cd] %@ OR album CONTAINS[cd] %@ OR aiGenrePrediction CONTAINS[cd] %@ OR aiAtmosphere CONTAINS[cd] %@", query, query, query, query, query)
+        fetchRequest.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func searchArtists(query: String) -> [PersistentArtist] {
-        guard let context = context, !query.isEmpty else { return [] }
-        
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(sortBy: [SortDescriptor(\.name)])
-        
-        do {
-            let allArtists = try context.fetch(fetchDescriptor)
-            return allArtists.filter { artist in
-                artist.name.localizedStandardContains(query)
-            }
-        } catch {
-            print("Error searching artists: \(error)")
-            return []
-        }
+        if query.isEmpty { return [] }
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "name CONTAINS[cd] %@", query)
+        fetchRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     // MARK: - Audit & Enrichment Helpers
     
     func fetchTracksMissingGenre() -> [PersistentTrack] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { track in
-                track.aiGenrePrediction == nil
-            }
-        )
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "aiGenrePrediction == nil")
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countTracksMissingGenre() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { $0.aiGenrePrediction == nil }
-        )
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "aiGenrePrediction == nil")
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func fetchTracksMissingGenreIds() -> [String] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { $0.aiGenrePrediction == nil },
-            propertiesToFetch: [\.id]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.map { $0.id }
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentTrack.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "aiGenrePrediction == nil")
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["id"]
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return results.compactMap { $0["id"] }
     }
     
     func fetchTracksWithUnknownMetadata() -> [PersistentTrack] {
-        guard let context = context else { return [] }
-        
-        let artistDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { track in
-                track.artist == "Unknown"
-            }
-        )
-        let artistResults = (try? context.fetch(artistDescriptor)) ?? []
-        
-        let albumDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { track in
-                track.album == "Unknown"
-            }
-        )
-        let albumResults = (try? context.fetch(albumDescriptor)) ?? []
-        
-        var combined = artistResults
-        let existingIds = Set(artistResults.map { $0.id })
-        for track in albumResults {
-            if !existingIds.contains(track.id) {
-                combined.append(track)
-            }
-        }
-        return combined
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "artist == %@ OR album == %@", "Unknown", "Unknown")
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAlbumsMissingYear() -> [PersistentAlbum] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(
-            predicate: #Predicate<PersistentAlbum> { album in
-                album.releaseYear == nil || album.releaseYear == 0
-            }
-        )
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        fetchRequest.predicate = NSPredicate(format: "releaseYear == 0 OR releaseYear == nil")
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countAlbumsMissingYear() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(
-            predicate: #Predicate<PersistentAlbum> { $0.releaseYear == nil || $0.releaseYear == 0 }
-        )
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        fetchRequest.predicate = NSPredicate(format: "releaseYear == 0 OR releaseYear == nil")
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func fetchAlbumsMissingYearIds() -> [String] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentAlbum>(
-            predicate: #Predicate<PersistentAlbum> { $0.releaseYear == nil || $0.releaseYear == 0 },
-            propertiesToFetch: [\.id]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.map { $0.id }
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentAlbum.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "releaseYear == 0 OR releaseYear == nil")
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["id"]
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return results.compactMap { $0["id"] }
     }
     
     func fetchTracksWithLowResArt() -> [PersistentTrack] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { track in
-                track.coverArt != nil
-            }
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "coverArt != nil")
+        let results = (try? context.fetch(fetchRequest)) ?? []
         return results.filter { $0.coverArt?.contains("size=500") == false }
     }
     
     func countTracksWithLowResArt() -> Int {
-        // We still have to fetch the strings to check contains, but we can fetch only the coverArt property
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { $0.coverArt != nil },
-            propertiesToFetch: [\.coverArt]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.filter { $0.coverArt?.contains("size=500") == false }.count
+        return fetchTracksWithLowResArt().count
     }
     
     func fetchTracksWithLowResArtIds() -> [String] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { $0.coverArt != nil },
-            propertiesToFetch: [\.id, \.coverArt]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.filter { $0.coverArt?.contains("size=500") == false }.map { $0.id }
+        return fetchTracksWithLowResArt().map { $0.id }
     }
     
     func fetchArtistsMissingInfo() -> [PersistentArtist] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(
-            predicate: #Predicate<PersistentArtist> { artist in
-                artist.musicBrainzId == nil || artist.biography == nil || artist.area == nil
-            }
-        )
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "musicBrainzId == nil OR biography == nil OR area == nil")
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countArtistsMissingInfo() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(
-            predicate: #Predicate<PersistentArtist> { $0.musicBrainzId == nil || $0.biography == nil || $0.area == nil }
-        )
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        fetchRequest.predicate = NSPredicate(format: "musicBrainzId == nil OR biography == nil OR area == nil")
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func fetchArtistsMissingInfoIds() -> [String] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentArtist>(
-            predicate: #Predicate<PersistentArtist> { $0.musicBrainzId == nil || $0.biography == nil || $0.area == nil },
-            propertiesToFetch: [\.id]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.map { $0.id }
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentArtist.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "musicBrainzId == nil OR biography == nil OR area == nil")
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["id"]
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return results.compactMap { $0["id"] }
     }
     
     func fetchTracksMissingBackdrop() -> [PersistentTrack] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { track in
-                !track.hasCustomBackdrop
-            }
-        )
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "hasCustomBackdrop == NO")
+        return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countTracksMissingBackdrop() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { !$0.hasCustomBackdrop }
-        )
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "hasCustomBackdrop == NO")
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func fetchTracksMissingBackdropIds() -> [String] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { !$0.hasCustomBackdrop },
-            propertiesToFetch: [\.id]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.map { $0.id }
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentTrack.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "hasCustomBackdrop == NO")
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["id"]
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return results.compactMap { $0["id"] }
     }
     
     func countTracksWithUnknownMetadata() -> Int {
-        guard let context = context else { return 0 }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { $0.artist == "Unknown" || $0.album == "Unknown" }
-        )
-        return (try? context.fetchCount(fetchDescriptor)) ?? 0
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "artist == %@ OR album == %@", "Unknown", "Unknown")
+        return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func fetchTracksWithUnknownMetadataIds() -> [String] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { $0.artist == "Unknown" || $0.album == "Unknown" },
-            propertiesToFetch: [\.id]
-        )
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        return results.map { $0.id }
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentTrack.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "artist == %@ OR album == %@", "Unknown", "Unknown")
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["id"]
+        let results = (try? context.fetch(fetchRequest)) as? [[String: String]] ?? []
+        return results.compactMap { $0["id"] }
     }
 
     func fetchAuditTargets() -> [PersistentTrack] {
-        guard let context = context else { return [] }
-        
-        // Simplified predicate to avoid compiler timeout
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { track in
-                track.aiGenrePrediction == nil
-            }
-        )
-        
-        let results = (try? context.fetch(fetchDescriptor)) ?? []
-        // Post-filter complex conditions in memory
-        return results.filter { $0.artist == "Unknown" || $0.album == "Unknown" }
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "aiGenrePrediction == nil AND (artist == %@ OR album == %@)", "Unknown", "Unknown")
+        return (try? context.fetch(fetchRequest)) ?? []
     }
 
     func fetchDownloadedTracks() -> [PersistentTrack] {
-        guard let context = context else { return [] }
-        let fetchDescriptor = FetchDescriptor<PersistentTrack>(
-            predicate: #Predicate<PersistentTrack> { $0.isDownloaded }
-        )
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        fetchRequest.predicate = NSPredicate(format: "isDownloaded == YES")
+        return (try? context.fetch(fetchRequest)) ?? []
     }
 
-    /// Verifies all tracks marked as downloaded still exist and are valid on disk.
-    /// Performs this on the MainActor but yields to avoid blocking.
     func verifyLocalPersistence() {
         Task {
             let tracks = self.fetchDownloadedTracks()
@@ -673,10 +583,27 @@ class LocalMetadataStore {
                     self.updateDownloadStatus(for: id, isDownloaded: false, localPath: nil)
                     AppLogger.shared.log("[Persistence] Fixed stale download status for: \(track.title)", level: .info)
                 }
-                
-                // Yield frequently to keep UI responsive during large library verification
                 await Task.yield()
             }
         }
+    }
+}
+
+// MARK: - Core Data Generated Helpers
+extension PersistentTrack {
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<NSFetchRequestResult> {
+        return NSFetchRequest<NSFetchRequestResult>(entityName: "PersistentTrack")
+    }
+}
+
+extension PersistentArtist {
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<NSFetchRequestResult> {
+        return NSFetchRequest<NSFetchRequestResult>(entityName: "PersistentArtist")
+    }
+}
+
+extension PersistentAlbum {
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<NSFetchRequestResult> {
+        return NSFetchRequest<NSFetchRequestResult>(entityName: "PersistentAlbum")
     }
 }

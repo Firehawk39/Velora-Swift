@@ -8,7 +8,6 @@ struct LyricLine: Hashable {
     let text: String
 }
 
-@available(iOS 17.0, *)
 @MainActor
 class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     static var shared: PlaybackManager?
@@ -319,9 +318,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         let offsetTime = CMTime(seconds: offset, preferredTimescale: 1000)
         var count: CMItemCount = 0
-        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: 0, timingInfoArray: nil, timingInfoCountOut: &count)
+        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count)
         var timingInfo = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: count)
-        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: count, timingInfoArray: &timingInfo, timingInfoCountOut: &count)
+        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: count, arrayToFill: &timingInfo, entriesNeededOut: &count)
         
         for i in 0..<count {
             timingInfo[i].presentationTimeStamp = CMTimeAdd(timingInfo[i].presentationTimeStamp, offsetTime)
