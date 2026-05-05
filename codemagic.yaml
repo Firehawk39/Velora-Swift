@@ -9,16 +9,24 @@ workflows:
     environment:
       xcode: "16"
     scripts:
-      - name: Set up and build
+      - name: Build
         script: |
-          TOOLCHAIN=/Applications/Xcode-16.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain
-          export PATH="$TOOLCHAIN/usr/bin:$PATH"
-          swift package resolve
-          swift package generate-xcodeproj --scheme Velora
-          xcode-project build-ipa \
-            --project Velora.xcodeproj \
-            --scheme Velora \
-            --configuration Debug
+          xcrun swift package resolve || true
+          xcrun swift package generate-xcodeproj --scheme Velora || true
+          xcodebuild -project Velora.xcodeproj \
+            -scheme Velora \
+            -configuration Debug \
+            -destination generic/platform=iOS \
+            -archivePath build/Velora.xcarchive \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            SKIP_INSTALL=YES
+          mkdir -p Payload
+          find build/Velora.xcarchive -name "*.app" -type d -exec cp -R {} Payload/Velora.app \;
+          zip -r build/Velora-Jailbreak.ipa Payload
+          mkdir -p build/ios
+          mv build/Velora-Jailbreak.ipa build/ios/
 
     artifacts:
       - build/ios/*.ipa
