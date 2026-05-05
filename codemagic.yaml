@@ -2,28 +2,50 @@ workflows:
   ios-jailbreak:
     name: Velora Jailbreak IPA (Unsigned)
     instance_type: mac_mini_m1
-    max_build_duration: 120
+    max_build_duration: 60
+    cache:
+      cache_paths:
+        - ~/.swiftpm
     environment:
       xcode: latest
     scripts:
+      - name: Resolve Swift packages
+        script: |
+          swift package resolve
+
+      - name: Generate Xcode project
+        script: |
+          swift package generate-xcodeproj --scheme Velora
+
       - name: Build iOS app
         script: |
-          xcodebuild -scheme Velora \
+          xcodebuild archive \
+            -project Velora.xcodeproj \
+            -scheme Velora \
             -configuration Debug \
-            -destination generic/platform=iOS \
-            -archivePath build/Velora.xcarchive \
+            -destination "generic/platform=iOS" \
+            -archivePath Velora.xcarchive \
+            -derivedDataPath derived_data \
             -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             SKIP_INSTALL=YES
+
+      - name: Package IPA
+        script: |
+          APP=$(find Velora.xcarchive -name "*.app" -type d | head -1)
           mkdir -p Payload
-          find build -name "*.app" -type d -exec cp -R {} Payload/Velora.app \;
-          zip -r build/Velora-Jailbreak.ipa Payload
-          mkdir -p build/ios
-          mv build/Velora-Jailbreak.ipa build/ios/
+          cp -R "$APP" Payload/Velora.app
+          cp Payload/Velora.app/Info.plist Payload/Velora.app/Info.plist.bak || true
 
+      - name: Create final IPA
+        script: |
+          rm -f Payload/Velora.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set:CFBundleExecutable Velora" -c "Set:CFBundleIdentifier com.velora.aistudio" -c "Set:CFBundleName Velora" -c "Set:CFBundlePackageType APPL" -c "Set:CFBundleShortVersionString 1.0" -c "Set:CFBundleVersion 1" -c "Set:LSRequiresIPhoneOS true" -c "Set:MinimumOSVersion 15.0" -c "Set:UIRequiresFullScreen true" Payload/Velora.app/Info.plist || echo "PlistBuddy failed"
+          ls -la Payload/Velora.app/
+          
+          zip -r Velora-Jailbreak.ipa Payload
+          mkdir -p artifacts
+          mv Velora-Jailbreak.ipa artifacts/
     artifacts:
-      - build/ios/*.ipa
-
-    artifacts:
-      - build/ios/*.ipa
+      - artifacts/*.ipa
