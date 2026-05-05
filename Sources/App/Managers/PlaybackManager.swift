@@ -1,5 +1,5 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import MediaPlayer
 import UIKit
 
@@ -269,8 +269,13 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private func setupHiFiTimeObserver() {
         Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
             Task { @MainActor in
-                guard let self = self, let sync = self.hiFiSynchronizer, self.isPlaying else { 
-                    if self?.hiFiSynchronizer == nil { timer.invalidate() }
+                guard let self = self else {
+                    timer.invalidate()
+                    return
+                }
+                
+                guard let sync = self.hiFiSynchronizer, self.isPlaying else { 
+                    if self.hiFiSynchronizer == nil { timer.invalidate() }
                     return 
                 }
                 let currentTime = CMTimeGetSeconds(sync.currentTime())
