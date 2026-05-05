@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import os
 
 /// Manages interaction with MusicBrainz API for artist metadata and MBID resolution.
 /// Now features local caching to prevent redundant network hits.
@@ -27,7 +28,7 @@ class MusicBrainzManager: ObservableObject {
     // In-memory cache for fast lookups
     private var nameToMBIDCache: [String: String] = [:]
     private var mbidCache: [String: String] = [:]
-    private let mbidCacheLock = NSLock()
+    private let mbidCacheLock = OSAllocatedUnfairLock(initialState: [String: String]())
     
     // Throttling for MusicBrainz (1 request per second limit)
     private actor Throttler {
@@ -224,20 +225,17 @@ class MusicBrainzManager: ObservableObject {
         let primary = extractPrimaryArtist(artist)
         
         // Check in-memory cache
-        self.mbidCacheLock.lock()
-        if let cached = mbidCache[primary.lowercased()] {
-            self.mbidCacheLock.unlock()
+        if let cached = mbidCacheLock.withLock({ $0[primary.lowercased()] }) {
             return cached
         }
-        self.mbidCacheLock.unlock()
 
         AppLogger.shared.log("[MBID] Resolving robustly: \"\(artist)\" -> Primary: \"\(primary)\"", level: .info)
         
         // Use a recursive search strategy
         if let mbid = await performMBIDResolutionAsync(primary: primary, step: .exactMusicBrainz) {
-            self.mbidCacheLock.lock()
-            self.mbidCache[primary.lowercased()] = mbid
-            self.mbidCacheLock.unlock()
+            mbidCacheLock.withLock { cache in
+                cache[primary.lowercased()] = mbid
+            }
             
             // Also update persistent cache
             await MainActor.run {

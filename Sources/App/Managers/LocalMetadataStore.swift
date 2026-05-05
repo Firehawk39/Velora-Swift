@@ -104,7 +104,9 @@ class LocalMetadataStore {
                     existing.artist = album.artist
                     existing.coverArt = album.coverArt
                     
-                    if let year = album.releaseYear { existing.releaseYear = year }
+                    if let dateString = album.firstReleaseDate, let year = Int(dateString.prefix(4)) {
+                        existing.releaseYear = year
+                    }
                     if let label = album.recordLabel { existing.recordLabel = label }
                     if let frd = album.firstReleaseDate { existing.firstReleaseDate = frd }
                 } else {
@@ -398,12 +400,15 @@ class LocalMetadataStore {
     
     func fetchArtistsMissingInfo() -> [PersistentArtist] {
         guard let context = context else { return [] }
+        // Simplified predicate to avoid compiler timeout
         let fetchDescriptor = FetchDescriptor<PersistentArtist>(
             predicate: #Predicate<PersistentArtist> { artist in
-                artist.biography == nil || artist.musicBrainzId == nil || artist.area == nil
+                artist.musicBrainzId == nil
             }
         )
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let results = (try? context.fetch(fetchDescriptor)) ?? []
+        // Perform additional filtering in memory for complex conditions
+        return results.filter { $0.biography == nil || $0.area == nil }
     }
     
     func fetchTracksMissingBackdrop() -> [PersistentTrack] {
@@ -419,14 +424,15 @@ class LocalMetadataStore {
     func fetchAuditTargets() -> [PersistentTrack] {
         guard let context = context else { return [] }
         
+        // Simplified predicate to avoid compiler timeout
         let fetchDescriptor = FetchDescriptor<PersistentTrack>(
             predicate: #Predicate<PersistentTrack> { track in
-                track.aiGenrePrediction == nil || 
-                track.artist == "Unknown" || 
-                track.album == "Unknown"
+                track.aiGenrePrediction == nil
             }
         )
         
-        return (try? context.fetch(fetchDescriptor)) ?? []
+        let results = (try? context.fetch(fetchDescriptor)) ?? []
+        // Post-filter complex conditions in memory
+        return results.filter { $0.artist == "Unknown" || $0.album == "Unknown" }
     }
 }

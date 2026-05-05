@@ -106,6 +106,11 @@ final class PersistentAlbum {
         self.songCount = album.songCount
         self.duration = album.duration
         self.coverArt = album.coverArt
+        self.recordLabel = album.recordLabel
+        self.firstReleaseDate = album.firstReleaseDate
+        if let frd = album.firstReleaseDate, let year = Int(frd.prefix(4)) {
+            self.releaseYear = year
+        }
     }
 }
 
