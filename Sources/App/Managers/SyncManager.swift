@@ -406,7 +406,6 @@ final class SyncManager: ObservableObject {
             return false
         }
     }
-    }
     
     // MARK: - Scheduling & Maintenance
     
