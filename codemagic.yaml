@@ -6,11 +6,21 @@ workflows:
     environment:
       xcode: latest
     scripts:
-      - name: Build
+      - name: Build iOS app
         script: |
-          swift package resolve
-          swift package generate-xcodeproj --package-path . --scheme Velora
-          xcode-project build-ipa --project Velora.xcodeproj --scheme Velora --configuration Debug
+          xcodebuild -scheme Velora \
+            -configuration Debug \
+            -destination generic/platform=iOS \
+            -archivePath build/Velora.xcarchive \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            SKIP_INSTALL=YES
+          mkdir -p Payload
+          find build -name "*.app" -type d -exec cp -R {} Payload/Velora.app \;
+          zip -r build/Velora-Jailbreak.ipa Payload
+          mkdir -p build/ios
+          mv build/Velora-Jailbreak.ipa build/ios/
 
     artifacts:
       - build/ios/*.ipa
