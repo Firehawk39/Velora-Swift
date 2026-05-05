@@ -8,6 +8,7 @@ struct LyricLine: Hashable {
     let text: String
 }
 
+@available(iOS 17.0, *)
 @MainActor
 class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     static var shared: PlaybackManager?
@@ -20,6 +21,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var currentLyrics: String? = nil
     @Published var currentSyncedLyrics: [LyricLine]? = nil
     @Published var isLyricsMode: Bool = false
+    @Published var isHiFi: Bool = false
     
     // Queue support
     @Published var queue: [Track] = []
@@ -68,6 +70,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private var nextAssetReader: AVAssetReader?
     private var nextAssetReaderOutput: AVAssetReaderTrackOutput?
     
+    private var hiFiTimelineOffset: Double = 0
     private var isCrossfading = false
     private var timeObserver: Any?
     private var playerItemObserver: Any?
@@ -164,8 +167,12 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
     
-    private func loadAndPlay(track: Track) {
-        stopHiFiRenderer()
+    private func loadAndPlay(track: Track, isGapless: Bool = false) {
+        if !isGapless {
+            stopHiFiRenderer()
+            hiFiTimelineOffset = 0
+            self.isHiFi = false
+        }
         cleanupObservers()
         
         self.currentTrack = track
@@ -174,12 +181,22 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         let url = getEffectiveUrl(for: track)
         
-        // Strategy: Use AVSampleBufferAudioRenderer for FLAC or Hi-Fi preference
-        let useHiFi = track.suffix?.lowercased() == "flac" || UserDefaults.standard.bool(forKey: "velora_force_hifi")
+        // Strategy: Use AVSampleBufferAudioRenderer for ALL local files to ensure gapless transitions.
+        // For remote streams, we fallback to standard AVPlayer.
+        let useHiFi = url.isFileURL
         
-        if useHiFi && url.isFileURL {
-            setupHiFiRenderer(for: url)
+        if useHiFi {
+            // Stop standard player if it was running
+            player?.pause()
+            cleanupObservers()
+            player = nil
+            
+            setupHiFiRenderer(for: url, isGapless: isGapless)
         } else {
+            // Stop Hi-Fi if it was running
+            stopHiFiRenderer()
+            hiFiTimelineOffset = 0
+            
             let playerItem = AVPlayerItem(url: url)
             self.player = AVPlayer(playerItem: playerItem)
             setupObservers(for: player!, track: track)
@@ -212,70 +229,112 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         return client.getStreamUrl(id: track.id) ?? URL(string: "about:blank")!
     }
     
-    // MARK: - Advanced Audio Buffering (The Last 3%)
+    // MARK: - Advanced Audio Buffering & Hi-Fi Gapless
     
-    private func setupHiFiRenderer(for url: URL) {
+    private func setupHiFiRenderer(for url: URL, isGapless: Bool) {
         let asset = AVAsset(url: url)
         do {
-            assetReader = try AVAssetReader(asset: asset)
-            guard let audioTrack = asset.tracks(withMediaType: .audio).first else { 
-                fallbackToStandardPlayer(url: url)
-                return 
+            if isGapless {
+                // For gapless, we use the pre-loaded nextAssetReader if available
+                if let reader = nextAssetReader, let output = nextAssetReaderOutput {
+                    assetReader = reader
+                    assetReaderOutput = output
+                    nextAssetReader = nil
+                    nextAssetReaderOutput = nil
+                } else {
+                    assetReader = try AVAssetReader(asset: asset)
+                    guard let audioTrack = asset.tracks(withMediaType: .audio).first else { return }
+                    assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
+                    assetReader?.add(assetReaderOutput!)
+                    assetReader?.startReading()
+                }
+            } else {
+                assetReader = try AVAssetReader(asset: asset)
+                guard let audioTrack = asset.tracks(withMediaType: .audio).first else { 
+                    fallbackToStandardPlayer(url: url)
+                    return 
+                }
+                assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
+                assetReader?.add(assetReaderOutput!)
+                assetReader?.startReading()
+                
+                hiFiRenderer = AVSampleBufferAudioRenderer()
+                hiFiSynchronizer = AVSampleBufferRenderSynchronizer()
+                hiFiSynchronizer?.addRenderer(hiFiRenderer!)
+                self.isHiFi = true
             }
             
-            let outputSettings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVLinearPCMIsFloatKey: true,
-                AVLinearPCMBitDepthKey: 32,
-                AVLinearPCMIsNonInterleaved: false,
-                AVLinearPCMIsBigEndianKey: false
-            ]
-            
-            assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
-            assetReader?.add(assetReaderOutput!)
-            assetReader?.startReading()
-            
-            hiFiRenderer = AVSampleBufferAudioRenderer()
-            hiFiSynchronizer = AVSampleBufferRenderSynchronizer()
-            hiFiSynchronizer?.addRenderer(hiFiRenderer!)
-            
             requestDataFromAssetReader()
-            hiFiSynchronizer?.setRate(1.0, time: .zero)
             
-            // Progress observer for Hi-Fi
+            if !isGapless {
+                hiFiSynchronizer?.setRate(1.0, time: .zero)
+            }
+            
             setupHiFiTimeObserver()
-            
-            AppLogger.shared.log("Hi-Fi Bit-Perfect Renderer active for: \(currentTrack?.title ?? "Unknown")", level: .info)
+            AppLogger.shared.log("Hi-Fi Bit-Perfect Renderer \(isGapless ? "Gapless transition" : "active") for: \(currentTrack?.title ?? "Unknown") [PCM 32-bit Float]", level: .info)
         } catch {
+            AppLogger.shared.log("Hi-Fi Renderer failed to initialize: \(error). Falling back.", level: .warning)
             fallbackToStandardPlayer(url: url)
         }
+    }
+    
+    private var hifiOutputSettings: [String: Any] {
+        [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsNonInterleaved: false,
+            AVLinearPCMIsBigEndianKey: false
+        ]
     }
     
     private func requestDataFromAssetReader() {
         guard let renderer = hiFiRenderer, let output = assetReaderOutput else { return }
         
-        // AVAssetReaderTrackOutput is not Sendable, but it's safe to use on the queue 
-        // provided to requestMediaDataWhenReady. To satisfy strict concurrency,
-        // we wrap it in an @unchecked Sendable container.
-        struct SendableOutput: @unchecked Sendable {
-            let val: AVAssetReaderTrackOutput
-        }
-        
+        let offset = hiFiTimelineOffset
         let wrapper = SendableOutput(val: output)
         
-        renderer.requestMediaDataWhenReady(on: .global(qos: .userInteractive)) { [weak renderer] in
-            guard let renderer = renderer else { return }
+        renderer.requestMediaDataWhenReady(on: .global(qos: .userInteractive)) { [weak renderer, weak self] in
+            guard let renderer = renderer, let self = self else { return }
             let output = wrapper.val
             
-            while renderer.isReadyForMoreMediaData {
+            // Performance Optimization: Limit samples per block to keep the UI and background threads responsive.
+            // AVSampleBufferAudioRenderer will call this block again if it needs more data.
+            var samplesEnqueued = 0
+            while renderer.isReadyForMoreMediaData && samplesEnqueued < 15 {
                 if let sampleBuffer = output.copyNextSampleBuffer() {
-                    renderer.enqueue(sampleBuffer)
+                    let adjustedBuffer = self.adjustSampleBuffer(sampleBuffer, offset: offset)
+                    renderer.enqueue(adjustedBuffer ?? sampleBuffer)
+                    samplesEnqueued += 1
                 } else {
                     renderer.stopRequestingMediaData()
                     break
                 }
             }
         }
+    }
+    
+    private func adjustSampleBuffer(_ sampleBuffer: CMSampleBuffer, offset: Double) -> CMSampleBuffer? {
+        guard offset > 0 else { return sampleBuffer }
+        
+        let offsetTime = CMTime(seconds: offset, preferredTimescale: 1000)
+        var count: CMItemCount = 0
+        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: 0, timingInfoArray: nil, timingInfoCountOut: &count)
+        var timingInfo = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: count)
+        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: count, timingInfoArray: &timingInfo, timingInfoCountOut: &count)
+        
+        for i in 0..<count {
+            timingInfo[i].presentationTimeStamp = CMTimeAdd(timingInfo[i].presentationTimeStamp, offsetTime)
+            timingInfo[i].decodeTimeStamp = CMTimeAdd(timingInfo[i].decodeTimeStamp, offsetTime)
+        }
+        
+        var newBuffer: CMSampleBuffer?
+        CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: count, sampleTimingArray: timingInfo, sampleBufferOut: &newBuffer)
+        return newBuffer
+    }
+    
+    struct SendableOutput: @unchecked Sendable {
+        let val: AVAssetReaderTrackOutput
     }
     
     private func setupHiFiTimeObserver() {
@@ -291,10 +350,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                     return 
                 }
                 let currentTime = CMTimeGetSeconds(sync.currentTime())
-                self.progress = currentTime
+                self.progress = max(0, currentTime - self.hiFiTimelineOffset)
                 
                 // Gapless Transition Trigger (The Last 3%)
-                if self.duration > 0 && currentTime >= self.duration - 0.1 {
+                if self.duration > 0 && self.progress >= self.duration - 0.05 {
+                    AppLogger.shared.log("[Gapless] Track end reached. Transitioning...", level: .info)
                     self.executeGaplessTransition()
                     timer.invalidate()
                     return
@@ -316,30 +376,12 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             return
         }
         
-        if let reader = nextAssetReader, let output = nextAssetReaderOutput {
-            // Hot-swap: Use pre-loaded asset reader
-            AppLogger.shared.log("[Hi-Fi] Executing Gapless Transition...", level: .info)
-            self.assetReader = reader
-            self.assetReaderOutput = output
-            self.nextAssetReader = nil
-            self.nextAssetReaderOutput = nil
-            
-            self.queueIndex += 1
-            self.currentTrack = queue[queueIndex]
-            self.duration = Double(currentTrack?.duration ?? 0)
-            self.progress = 0
-            
-            // Re-configure renderer for new stream
-            self.requestDataFromAssetReader()
-            self.hiFiSynchronizer?.setRate(1.0, time: .zero)
-            self.setupHiFiTimeObserver()
-            self.updateNowPlayingInfo()
-        } else {
-            // Fallback to standard transition
-            Task { @MainActor in
-                self.nextTrack()
-            }
-        }
+        // Calculate new offset
+        hiFiTimelineOffset += duration
+        
+        queueIndex += 1
+        let nextTrack = queue[queueIndex]
+        loadAndPlay(track: nextTrack, isGapless: true)
     }
     
     private func prepareNextTrackForGapless() {
@@ -382,6 +424,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         nextAssetReader?.cancelReading()
         nextAssetReader = nil
         nextAssetReaderOutput = nil
+        isHiFi = false
     }
     
     // MARK: - Standard AVPlayer Logic
@@ -546,11 +589,51 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func seek(to time: Double) {
-        let cmTime = CMTime(seconds: time, preferredTimescale: 1000)
         if let sync = hiFiSynchronizer {
+            // Strategy: Hi-Fi seeking requires recreating the forward-only AVAssetReader.
+            // We flush the renderer to prevent old samples from playing.
+            let absoluteTime = time + hiFiTimelineOffset
+            let cmTime = CMTime(seconds: absoluteTime, preferredTimescale: 1000)
+            
+            recreateAssetReader(at: time)
             sync.setRate(isPlaying ? 1.0 : 0, time: cmTime)
         } else {
+            let cmTime = CMTime(seconds: time, preferredTimescale: 1000)
             player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+    }
+    
+    private func recreateAssetReader(at time: Double) {
+        guard let track = currentTrack else { return }
+        let url = getEffectiveUrl(for: track)
+        let asset = AVAsset(url: url)
+        
+        // Stop current requests and flush the buffer
+        hiFiRenderer?.stopRequestingMediaData()
+        hiFiRenderer?.flush()
+        
+        assetReader?.cancelReading()
+        
+        do {
+            assetReader = try AVAssetReader(asset: asset)
+            // Define time range starting from the seek point
+            let startTime = CMTime(seconds: time, preferredTimescale: 1000)
+            let durationLimit = CMTime(seconds: Double(track.duration ?? 3600), preferredTimescale: 1000)
+            assetReader?.timeRange = CMTimeRange(start: startTime, duration: durationLimit)
+            
+            guard let audioTrack = asset.tracks(withMediaType: .audio).first else { return }
+            assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
+            assetReader?.add(assetReaderOutput!)
+            
+            if assetReader?.startReading() == true {
+                // Pre-fill buffer before returning to ensure smoother resumption
+                requestDataFromAssetReader()
+                AppLogger.shared.log("Hi-Fi Reader recreated for seek at \(time)s", level: .debug)
+            } else {
+                AppLogger.shared.log("Failed to start reading after seek", level: .error)
+            }
+        } catch {
+            AppLogger.shared.log("Hi-Fi Reader recreation failed: \(error)", level: .error)
         }
     }
     
@@ -815,6 +898,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     func refreshDownloadedTracks() {
         loadDownloadedTracks()
+        LocalMetadataStore.shared.verifyLocalPersistence()
     }
     
     private func loadDownloadedTracks() {
@@ -826,27 +910,37 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             }
             downloadedTrackIds = Set(ids)
         }
+        LocalMetadataStore.shared.verifyLocalPersistence()
     }
     
     // MARK: - URLSessionDownloadDelegate
     
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        let taskId = downloadTask.taskIdentifier
+        let originalUrl = downloadTask.originalRequest?.url
+        
+        // Determine extension from URL or fallback to mp3
+        let ext = originalUrl?.pathExtension ?? "mp3"
+        
         // Copy the file to a temp location before the system removes it
-        let tempDest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp3")
+        let tempDest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".\(ext)")
         try? FileManager.default.copyItem(at: location, to: tempDest)
         
-        let taskId = downloadTask.taskIdentifier
         Task { @MainActor in
             guard let trackId = downloadTasks[taskId] else { return }
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let dest = docs.appendingPathComponent("\(trackId).mp3")
+            let dest = docs.appendingPathComponent("\(trackId).\(ext)")
+            
+            // Clean up existing if any
             try? FileManager.default.removeItem(at: dest)
+            
             do {
                 try FileManager.default.moveItem(at: tempDest, to: dest)
                 downloadedTrackIds.insert(trackId)
                 LocalMetadataStore.shared.updateDownloadStatus(for: trackId, isDownloaded: true, localPath: dest.path)
-                AppLogger.shared.log("Downloaded: \(trackId)", level: .info)
+                AppLogger.shared.log("Downloaded: \(trackId) as \(ext)", level: .info)
             } catch {
+                AppLogger.shared.log("Failed to move download: \(error)", level: .error)
                 failedDownloadIds.insert(trackId)
             }
             downloadTasks.removeValue(forKey: taskId)
@@ -860,6 +954,19 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         Task { @MainActor in
             guard let trackId = downloadTasks[taskId] else { return }
             downloadProgress[trackId] = prog
+        }
+    }
+    
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        let taskId = task.taskIdentifier
+        Task { @MainActor in
+            if let error = error {
+                guard let trackId = downloadTasks[taskId] else { return }
+                AppLogger.shared.log("Download failed for \(trackId): \(error.localizedDescription)", level: .error)
+                failedDownloadIds.insert(trackId)
+                downloadTasks.removeValue(forKey: taskId)
+                activeDownloadCount -= 1
+            }
         }
     }
 }

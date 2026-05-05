@@ -114,6 +114,9 @@ struct ContentView: View {
         .onAppear { 
             SyncManager.shared.configure(client: client, playback: playback)
             autoLogin() 
+            Task {
+                await SyncManager.shared.performAutoMaintenance()
+            }
         }
         .onChange(of: activeTab) { _ in
             withAnimation { 

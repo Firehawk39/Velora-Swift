@@ -5,6 +5,7 @@ import UIKit
 
 /// Velora AI & Metadata Engine
 /// Orchestrates library audits and intelligent metadata enrichment using Gemini, Discogs, MusicBrainz, and Fanart.tv.
+@available(iOS 17.0, *)
 @MainActor
 class AIManager: ObservableObject {
     static let shared = AIManager()
@@ -56,27 +57,27 @@ class AIManager: ObservableObject {
         isProcessing = true
         auditStatus = "Scanning library for gaps..."
         
-        let localCount = LocalMetadataStore.shared.fetchAllTracks().count
+        let localCount = LocalMetadataStore.shared.trackCount()
         if forceRefresh || localCount == 0 {
             auditStatus = "Syncing with Navidrome (full scan)..."
             await NavidromeClient.shared.syncLibrary()
             auditStatus = "Scanning library for gaps..."
         }
         
-        let missingGenre = LocalMetadataStore.shared.fetchTracksMissingGenre()
-        let missingYear = LocalMetadataStore.shared.fetchAlbumsMissingYear()
-        let lowResArt = LocalMetadataStore.shared.fetchTracksWithLowResArt()
-        let missingBackdrop = LocalMetadataStore.shared.fetchTracksMissingBackdrop()
-        let missingMetadata = LocalMetadataStore.shared.fetchArtistsMissingInfo()
-        let unknownMeta = LocalMetadataStore.shared.fetchTracksWithUnknownMetadata()
+        let missingGenreCount = LocalMetadataStore.shared.countTracksMissingGenre()
+        let missingYearCount = LocalMetadataStore.shared.countAlbumsMissingYear()
+        let lowResArtCount = LocalMetadataStore.shared.countTracksWithLowResArt()
+        let missingBackdropCount = LocalMetadataStore.shared.countTracksMissingBackdrop()
+        let missingMetadataCount = LocalMetadataStore.shared.countArtistsMissingInfo()
+        let unknownMetaCount = LocalMetadataStore.shared.countTracksWithUnknownMetadata()
         
         var results: [AuditResult] = []
-        if !missingGenre.isEmpty { results.append(AuditResult(type: .missingGenre, count: missingGenre.count, description: "\(missingGenre.count) tracks missing genre prediction")) }
-        if !missingYear.isEmpty { results.append(AuditResult(type: .missingYear, count: missingYear.count, description: "\(missingYear.count) albums missing release year")) }
-        if !lowResArt.isEmpty { results.append(AuditResult(type: .lowResArt, count: lowResArt.count, description: "\(lowResArt.count) tracks have low-resolution art")) }
-        if !missingBackdrop.isEmpty { results.append(AuditResult(type: .missingBackdrop, count: missingBackdrop.count, description: "\(missingBackdrop.count) tracks missing immersive backdrops")) }
-        if !missingMetadata.isEmpty { results.append(AuditResult(type: .missingMetadata, count: missingMetadata.count, description: "\(missingMetadata.count) artists missing biography or MBID")) }
-        if !unknownMeta.isEmpty { results.append(AuditResult(type: .unknownMetadata, count: unknownMeta.count, description: "\(unknownMeta.count) tracks with 'Unknown' tags")) }
+        if missingGenreCount > 0 { results.append(AuditResult(type: .missingGenre, count: missingGenreCount, description: "\(missingGenreCount) tracks missing genre prediction")) }
+        if missingYearCount > 0 { results.append(AuditResult(type: .missingYear, count: missingYearCount, description: "\(missingYearCount) albums missing release year")) }
+        if lowResArtCount > 0 { results.append(AuditResult(type: .lowResArt, count: lowResArtCount, description: "\(lowResArtCount) tracks have low-resolution art")) }
+        if missingBackdropCount > 0 { results.append(AuditResult(type: .missingBackdrop, count: missingBackdropCount, description: "\(missingBackdropCount) tracks missing immersive backdrops")) }
+        if missingMetadataCount > 0 { results.append(AuditResult(type: .missingMetadata, count: missingMetadataCount, description: "\(missingMetadataCount) artists missing biography or MBID")) }
+        if unknownMetaCount > 0 { results.append(AuditResult(type: .unknownMetadata, count: unknownMetaCount, description: "\(unknownMetaCount) tracks with 'Unknown' tags")) }
         
         self.auditResults = results
         self.lastAuditDate = Date()
@@ -95,15 +96,15 @@ class AIManager: ObservableObject {
         
         let activeStages = stages ?? Set(IssueType.allCases)
         
-        // Calculate total items across all active stages for cumulative progress
-        var totalItems = 0
-        let genreTargets = activeStages.contains(.missingGenre) ? LocalMetadataStore.shared.fetchTracksMissingGenre() : []
-        let yearTargets = activeStages.contains(.missingYear) ? LocalMetadataStore.shared.fetchAlbumsMissingYear() : []
-        let metaTargets = activeStages.contains(.missingMetadata) ? LocalMetadataStore.shared.fetchArtistsMissingInfo() : []
-        let backdropTargets = activeStages.contains(.missingBackdrop) ? LocalMetadataStore.shared.fetchTracksMissingBackdrop() : []
-        let artTargets = activeStages.contains(.lowResArt) ? LocalMetadataStore.shared.fetchTracksWithLowResArt() : []
-        let unknownTargets = activeStages.contains(.unknownMetadata) ? LocalMetadataStore.shared.fetchTracksWithUnknownMetadata() : []
-        totalItems = genreTargets.count + yearTargets.count + metaTargets.count + backdropTargets.count + artTargets.count + unknownTargets.count
+        // Fetch IDs for memory efficiency
+        let genreTargetIds = activeStages.contains(.missingGenre) ? LocalMetadataStore.shared.fetchTracksMissingGenreIds() : []
+        let yearTargetIds = activeStages.contains(.missingYear) ? LocalMetadataStore.shared.fetchAlbumsMissingYearIds() : []
+        let metaTargetIds = activeStages.contains(.missingMetadata) ? LocalMetadataStore.shared.fetchArtistsMissingInfoIds() : []
+        let backdropTargetIds = activeStages.contains(.missingBackdrop) ? LocalMetadataStore.shared.fetchTracksMissingBackdropIds() : []
+        let artTargetIds = activeStages.contains(.lowResArt) ? LocalMetadataStore.shared.fetchTracksWithLowResArtIds() : []
+        let unknownTargetIds = activeStages.contains(.unknownMetadata) ? LocalMetadataStore.shared.fetchTracksWithUnknownMetadataIds() : []
+        
+        let totalItems = genreTargetIds.count + yearTargetIds.count + metaTargetIds.count + backdropTargetIds.count + artTargetIds.count + unknownTargetIds.count
         
         guard totalItems > 0 else {
             isProcessing = false
@@ -114,39 +115,39 @@ class AIManager: ObservableObject {
         
         var itemsProcessed = 0
         
-        if !genreTargets.isEmpty {
+        if !genreTargetIds.isEmpty {
             genreProgress = 0.0
             activeStageLabel = "Genre Prediction"
-            await enrichGenres(targets: genreTargets, totalItems: totalItems, processed: &itemsProcessed)
+            await enrichGenres(targetIds: genreTargetIds, totalItems: totalItems, processed: &itemsProcessed)
             genreProgress = 1.0
         }
-        if !yearTargets.isEmpty {
+        if !yearTargetIds.isEmpty {
             yearProgress = 0.0
             activeStageLabel = "Album Year"
-            await enrichAlbumMetadata(targets: yearTargets, totalItems: totalItems, processed: &itemsProcessed)
+            await enrichAlbumMetadata(targetIds: yearTargetIds, totalItems: totalItems, processed: &itemsProcessed)
             yearProgress = 1.0
         }
-        if !metaTargets.isEmpty {
+        if !metaTargetIds.isEmpty {
             artistProgress = 0.0
             activeStageLabel = "Artist Metadata"
-            await enrichArtistMetadata(targets: metaTargets, totalItems: totalItems, processed: &itemsProcessed)
+            await enrichArtistMetadata(targetIds: metaTargetIds, totalItems: totalItems, processed: &itemsProcessed)
             artistProgress = 1.0
         }
-        if !backdropTargets.isEmpty {
+        if !backdropTargetIds.isEmpty {
             backdropProgress = 0.0
             activeStageLabel = "Backdrop Fetch"
-            await enrichBackdrops(targets: backdropTargets, totalItems: totalItems, processed: &itemsProcessed)
+            await enrichBackdrops(targetIds: backdropTargetIds, totalItems: totalItems, processed: &itemsProcessed)
             backdropProgress = 1.0
         }
-        if !artTargets.isEmpty {
+        if !artTargetIds.isEmpty {
             artProgress = 0.0
             activeStageLabel = "Cover Art Upgrade"
-            await fixLowResArt(targets: artTargets, totalItems: totalItems, processed: &itemsProcessed)
+            await fixLowResArt(targetIds: artTargetIds, totalItems: totalItems, processed: &itemsProcessed)
             artProgress = 1.0
         }
-        if !unknownTargets.isEmpty {
+        if !unknownTargetIds.isEmpty {
             activeStageLabel = "Unknown Metadata"
-            await fixUnknownMetadata(targets: unknownTargets, totalItems: totalItems, processed: &itemsProcessed)
+            await fixUnknownMetadata(targetIds: unknownTargetIds, totalItems: totalItems, processed: &itemsProcessed)
         }
         
         isProcessing = false
@@ -158,18 +159,19 @@ class AIManager: ObservableObject {
     
     // MARK: - AI Enrichment (Gemini)
     
-    private func enrichGenres(targets: [PersistentTrack], totalItems: Int, processed: inout Int) async {
+    private func enrichGenres(targetIds: [String], totalItems: Int, processed: inout Int) async {
         guard let key = geminiKey else { 
             AppLogger.shared.log("AIManager: Gemini API key missing.", level: .error)
             return 
         }
-        guard !targets.isEmpty else { return }
+        guard !targetIds.isEmpty else { return }
         
         let batchSize = 15 // Smaller batches for better reliability
-        for i in stride(from: 0, to: targets.count, by: batchSize) {
+        for i in stride(from: 0, to: targetIds.count, by: batchSize) {
             if !isProcessing { break }
-            let end = min(i + batchSize, targets.count)
-            let batch = Array(targets[i..<end])
+            let end = min(i + batchSize, targetIds.count)
+            let batchIds = Array(targetIds[i..<end])
+            let batch = LocalMetadataStore.shared.fetchTracksByIds(batchIds)
             
             let currentTrack = batch.first?.title ?? "Tracks"
             auditStatus = "AI Prediction: \(currentTrack) (+ \(batch.count - 1) others)"
@@ -182,23 +184,28 @@ class AIManager: ObservableObject {
             
             processed += batch.count
             fixProgress = Double(processed) / Double(totalItems)
-            genreProgress = Double(i + batch.count) / Double(targets.count)
+            genreProgress = Double(i + batch.count) / Double(targetIds.count)
             
-            // Throttle for Gemini Free Tier (5s) to avoid 429
-            try? await Task.sleep(nanoseconds: 5_000_000_000) 
+            // Throttling is now handled by enrichBatchWithGeminiInternal via exponential backoff
             await Task.yield() // Keep UI responsive
         }
     }
     
     // MARK: - Album Metadata (Discogs)
     
-    private func enrichAlbumMetadata(targets: [PersistentAlbum], totalItems: Int, processed: inout Int) async {
-        guard !targets.isEmpty else { return }
-        let stageCount = targets.count
+    private func enrichAlbumMetadata(targetIds: [String], totalItems: Int, processed: inout Int) async {
+        guard !targetIds.isEmpty else { return }
+        let stageCount = targetIds.count
         var stageProcessed = 0
         
-        for pAlbum in targets {
+        for albumId in targetIds {
             if !isProcessing { break }
+            guard let pAlbum = LocalMetadataStore.shared.fetchAlbumById(id: albumId) else {
+                processed += 1
+                stageProcessed += 1
+                continue
+            }
+            
             auditStatus = "Discogs Year: \(pAlbum.name)"
             
             // Try Discogs for year first (already exists)
@@ -233,13 +240,19 @@ class AIManager: ObservableObject {
     
     // MARK: - Artist Metadata (MusicBrainz)
     
-    private func enrichArtistMetadata(targets: [PersistentArtist], totalItems: Int, processed: inout Int) async {
-        guard !targets.isEmpty else { return }
-        let stageCount = targets.count
+    private func enrichArtistMetadata(targetIds: [String], totalItems: Int, processed: inout Int) async {
+        guard !targetIds.isEmpty else { return }
+        let stageCount = targetIds.count
         var stageProcessed = 0
         
-        for pArtist in targets {
+        for artistId in targetIds {
             if !isProcessing { break }
+            guard let pArtist = LocalMetadataStore.shared.fetchArtistById(id: artistId) else {
+                processed += 1
+                stageProcessed += 1
+                continue
+            }
+            
             auditStatus = "Researching: \(pArtist.name)"
             
             let mbid: String?
@@ -276,9 +289,10 @@ class AIManager: ObservableObject {
     
     // MARK: - Media Assets (Fanart.tv)
     
-    private func enrichBackdrops(targets: [PersistentTrack], totalItems: Int, processed: inout Int) async {
-        guard !targets.isEmpty else { return }
+    private func enrichBackdrops(targetIds: [String], totalItems: Int, processed: inout Int) async {
+        guard !targetIds.isEmpty else { return }
         
+        let targets = LocalMetadataStore.shared.fetchTracksByIds(targetIds)
         let artistNames = Array(Set(targets.compactMap { $0.artist }))
         let stageCount = artistNames.count
         var stageProcessed = 0
@@ -302,9 +316,10 @@ class AIManager: ObservableObject {
         }
     }
     
-    private func fixLowResArt(targets: [PersistentTrack], totalItems: Int, processed: inout Int) async {
-        guard !targets.isEmpty else { return }
+    private func fixLowResArt(targetIds: [String], totalItems: Int, processed: inout Int) async {
+        guard !targetIds.isEmpty else { return }
         
+        let targets = LocalMetadataStore.shared.fetchTracksByIds(targetIds)
         let albums = Dictionary(grouping: targets, by: { track -> String in
             if let aid = track.albumId { return aid }
             return "\(track.artist ?? "Unknown")|\(track.album ?? "Unknown")"
@@ -357,11 +372,16 @@ class AIManager: ObservableObject {
         return false
     }
     
-    private func fixUnknownMetadata(targets: [PersistentTrack], totalItems: Int, processed: inout Int) async {
-        guard !targets.isEmpty else { return }
+    private func fixUnknownMetadata(targetIds: [String], totalItems: Int, processed: inout Int) async {
+        guard !targetIds.isEmpty else { return }
         
-        for track in targets {
+        for trackId in targetIds {
             if !isProcessing { break }
+            guard let track = LocalMetadataStore.shared.fetchTrack(id: trackId) else {
+                processed += 1
+                continue
+            }
+            
             auditStatus = "Fixing Metadata: \(track.title)"
             
             // For 'Unknown' tracks, we try MusicBrainz resolution first
@@ -459,44 +479,73 @@ extension AIManager {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                AppLogger.shared.log("AIManager: Gemini API returned status \(http.statusCode)", level: .error)
-                return nil
-            }
-            
-            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let candidates = json["candidates"] as? [[String: Any]],
-                  let firstCandidate = candidates.first,
-                  let content = firstCandidate["content"] as? [String: Any],
-                  let parts = content["parts"] as? [[String: Any]],
-                  let rawJson = parts.first?["text"] as? String else {
-                AppLogger.shared.log("AIManager: Gemini response format invalid.", level: .error)
-                return nil
-            }
-            
-            let cleaned = self.extractJsonArray(from: rawJson)
-            guard let jsonData = cleaned.data(using: .utf8) else { return nil }
-            
+        var retryCount = 0
+        let maxRetries = 3
+        
+        while retryCount <= maxRetries {
             do {
-                let results = try JSONDecoder().decode([EnrichedMetadata].self, from: jsonData)
-                AppLogger.shared.log("AIManager: Successfully decoded \(results.count) predictions.", level: .info)
-                return results
+                let (data, response) = try await URLSession.shared.data(for: request)
+                
+                if let http = response as? HTTPURLResponse {
+                    let statusCode = http.statusCode
+                    
+                    if statusCode == 200 {
+                        // Success - break the loop and process data below
+                        retryCount = maxRetries + 1 
+                        
+                        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let candidates = json["candidates"] as? [[String: Any]],
+                              let firstCandidate = candidates.first,
+                              let content = firstCandidate["content"] as? [String: Any],
+                              let parts = content["parts"] as? [[String: Any]],
+                              let rawJson = parts.first?["text"] as? String else {
+                            AppLogger.shared.log("AIManager: Gemini response format invalid.", level: .error)
+                            return nil
+                        }
+                        
+                        let cleaned = self.extractJsonArray(from: rawJson)
+                        guard let jsonData = cleaned.data(using: .utf8) else { return nil }
+                        
+                        do {
+                            let results = try JSONDecoder().decode([EnrichedMetadata].self, from: jsonData)
+                            AppLogger.shared.log("AIManager: Successfully decoded \(results.count) predictions.", level: .info)
+                            return results
+                        } catch {
+                            if promptModifier.isEmpty { // Only retry once with stricter prompt
+                                AppLogger.shared.log("AIManager: JSON decoding failed. Retrying with stricter prompt...", level: .warning)
+                                return await self.enrichBatchWithGemini(tracks: tracks, apiKey: apiKey, isRetry: true)
+                            } else {
+                                AppLogger.shared.log("AIManager: JSON decoding failed after retry. Giving up on this batch.", level: .error)
+                                return nil
+                            }
+                        }
+                    } else if [429, 500, 502, 503, 504].contains(statusCode) {
+                        retryCount += 1
+                        if retryCount > maxRetries {
+                            AppLogger.shared.log("AIManager: Max retries exceeded for status \(statusCode).", level: .error)
+                            return nil
+                        }
+                        let sleepTime = pow(2.0, Double(retryCount)) * 2.0 // 4s, 8s, 16s...
+                        AppLogger.shared.log("AIManager: Transient error (\(statusCode)). Retrying in \(Int(sleepTime))s...", level: .warning)
+                        try? await Task.sleep(nanoseconds: UInt64(sleepTime * 1_000_000_000))
+                        continue
+                    } else {
+                        AppLogger.shared.log("AIManager: Gemini API returned persistent error \(statusCode)", level: .error)
+                        return nil
+                    }
+                }
             } catch {
-                if promptModifier.isEmpty { // Only retry once
-                    AppLogger.shared.log("AIManager: JSON decoding failed. Retrying with stricter prompt...", level: .warning)
-                    return await self.enrichBatchWithGemini(tracks: tracks, apiKey: apiKey, isRetry: true)
-                } else {
-                    AppLogger.shared.log("AIManager: JSON decoding failed after retry. Giving up on this batch.", level: .error)
+                retryCount += 1
+                if retryCount > maxRetries {
+                    AppLogger.shared.log("AIManager: Gemini network error: \(error.localizedDescription)", level: .error)
                     return nil
                 }
+                let sleepTime = pow(2.0, Double(retryCount)) * 2.0
+                AppLogger.shared.log("AIManager: Network error. Retrying in \(Int(sleepTime))s...", level: .warning)
+                try? await Task.sleep(nanoseconds: UInt64(sleepTime * 1_000_000_000))
             }
-        } catch {
-            AppLogger.shared.log("AIManager: Gemini network error: \(error.localizedDescription)", level: .error)
-            return nil
         }
+        return nil
     }
 
     

@@ -270,7 +270,7 @@ extension NavidromeClient {
     /// High-performance search that queries the local persistence layer first for instant results.
     func searchAsync(query: String) async -> ([Track], [Album], [Artist]) {
         // 1. Instant local search (Persistence Layer Optimization)
-        let localTracks = LocalMetadataStore.shared.searchTracks(query: query).map { p in
+        let localTracks = await LocalMetadataStore.shared.searchTracks(query: query).map { p in
             var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
                   duration: p.duration ?? 0, coverArt: p.coverArt ?? "",
                   artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
@@ -279,7 +279,7 @@ extension NavidromeClient {
             return t
         }
         
-        let localArtists = LocalMetadataStore.shared.searchArtists(query: query).map { p in
+        let localArtists = await LocalMetadataStore.shared.searchArtists(query: query).map { p in
             Artist(id: p.id, name: p.name, coverArt: p.coverArt)
         }
         
@@ -317,26 +317,27 @@ extension NavidromeClient {
         }
     }
 
+    @MainActor
     func search(query: String, completion: @escaping ([Track], [Album], [Artist]) -> Void) {
-        // 1. Return local results immediately
-        let localTracks = LocalMetadataStore.shared.searchTracks(query: query).map { p in
-            var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
-                  duration: p.duration ?? 0, coverArt: p.coverArt ?? "",
-                  artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
-            t.isStarred = p.isStarred
-            t.playCount = p.playCount
-            return t
-        }
-        let localArtists = LocalMetadataStore.shared.searchArtists(query: query).map { p in
-            Artist(id: p.id, name: p.name, coverArt: p.coverArt)
-        }
-        
-        if !localTracks.isEmpty || !localArtists.isEmpty {
-            completion(localTracks, [], localArtists)
-        }
-        
-        // 2. Perform remote search
         Task {
+            // 1. Return local results immediately
+            let localTracks = await LocalMetadataStore.shared.searchTracks(query: query).map { p in
+                var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
+                      duration: p.duration ?? 0, coverArt: p.coverArt ?? "",
+                      artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
+                t.isStarred = p.isStarred
+                t.playCount = p.playCount
+                return t
+            }
+            let localArtists = await LocalMetadataStore.shared.searchArtists(query: query).map { p in
+                Artist(id: p.id, name: p.name, coverArt: p.coverArt)
+            }
+            
+            if !localTracks.isEmpty || !localArtists.isEmpty {
+                completion(localTracks, [], localArtists)
+            }
+            
+            // 2. Perform remote search
             let result = await searchAsync(query: query)
             completion(result.0, result.1, result.2)
         }
@@ -482,9 +483,11 @@ extension NavidromeClient {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.fetchRecentlyPlayed() }
             group.addTask { await self.fetchPlaylists() }
+            group.addTask { await self.fetchArtists() }
+            group.addTask { await self.fetchAlbums() }
         }
         
-        // 2. Perform the high-performance track fetch which also populates artists and albums
+        // 2. Perform the high-performance track fetch
         let tracks = await fetchAllTracksAsync()
         
         await MainActor.run {
@@ -544,7 +547,8 @@ extension NavidromeClient {
                     
                     let batchAlbums = Dictionary(grouping: songs, by: { $0.albumId }).compactMap { (id, tracks) -> Album? in
                         guard let id = id, let first = tracks.first else { return nil }
-                        return Album(id: id, name: first.album ?? "Unknown Album", artist: first.artist, artistId: first.artistId ?? "", songCount: tracks.count, duration: tracks.reduce(0, { $0 + ($1.duration ?? 0) }), coverArt: first.coverArt)
+                        // Set songCount and duration to nil to avoid overwriting complete aggregate data with partial batch data
+                        return Album(id: id, name: first.album ?? "Unknown Album", artist: first.artist, artistId: first.artistId ?? "", songCount: nil, duration: nil, coverArt: first.coverArt)
                     }
                     LocalMetadataStore.shared.saveAlbums(batchAlbums)
                 }

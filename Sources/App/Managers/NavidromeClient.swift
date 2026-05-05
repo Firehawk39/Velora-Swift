@@ -3,6 +3,7 @@ import CryptoKit
 
 /// The primary client for communicating with a Navidrome (Subsonic) server.
 /// Handles authentication, URL construction, and core data fetching operations.
+@MainActor
 class NavidromeClient: ObservableObject {
     static let shared = NavidromeClient()
     

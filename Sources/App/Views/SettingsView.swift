@@ -326,6 +326,14 @@ struct AppSettingsView: View {
     let labelCol   = Color(hex: "#60a5fa")
 
     var isDark: Bool { colorScheme == .dark }
+    
+    private func formattedDate(_ timestamp: Double) -> String {
+        if timestamp == 0 { return "Never" }
+        let date = Date(timeIntervalSince1970: timestamp)
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
 
     var body: some View {
         ZStack {
@@ -401,26 +409,64 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
+                            if let error = sync.lastErrorMessage {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.red)
+                                        .font(.system(size: 14))
+                                    Text(error)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.red)
+                                    Spacer()
+                                    Button(action: { sync.lastErrorMessage = nil }) {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(12)
+                                .padding(.bottom, 8)
+                            }
+                            
                             Button(action: {
                                 if sync.isMetadataSyncing {
                                     sync.stopMetadataSync()
                                 } else {
-                                    sync.startMetadataSync()
+                                    Task { await sync.startMetadataSync() }
                                 }
                             }) {
                                 HStack {
-                                    Image(systemName: "info.circle.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(sync.isMetadataSyncing ? .blue : labelCol)
+                                    ZStack {
+                                        Image(systemName: "info.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(sync.isMetadataSyncing ? .blue : labelCol)
+                                        
+                                        if sync.needsMetadataSync && !sync.isMetadataSyncing {
+                                            Circle()
+                                                .fill(Color.orange)
+                                                .frame(width: 8, height: 8)
+                                                .offset(x: 10, y: -10)
+                                        }
+                                    }
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isMetadataSyncing ? "Syncing Info..." : "Download Library Metadata")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isMetadataSyncing ? sync.metadataStatus : "Artist bios, portraits, and album details")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.gray)
-                                            .lineLimit(1)
+                                        
+                                        HStack(spacing: 4) {
+                                            Text(sync.isMetadataSyncing ? sync.metadataStatus : "Last run: \(formattedDate(sync.lastMetadataSyncDate))")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.gray)
+                                            
+                                            if sync.needsMetadataSync && !sync.isMetadataSyncing {
+                                                Text("• Update suggested")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundColor(.orange)
+                                            }
+                                        }
                                     }
                                     
                                     Spacer()
@@ -449,7 +495,7 @@ struct AppSettingsView: View {
                                 if sync.isMediaSyncing {
                                     sync.stopMediaSync()
                                 } else {
-                                    sync.startMediaSync()
+                                    Task { await sync.startMediaSync() }
                                 }
                             }) {
                                 HStack {
@@ -461,7 +507,7 @@ struct AppSettingsView: View {
                                         Text(sync.isMediaSyncing ? "Downloading..." : "Download All Music")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isMediaSyncing ? sync.mediaStatus : "Save all tracks for offline listening")
+                                        Text(sync.isMediaSyncing ? sync.mediaStatus : "Last run: \(formattedDate(sync.lastMediaSyncDate))")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -491,24 +537,41 @@ struct AppSettingsView: View {
                             // Deep Audit Button
                             Button(action: {
                                 if sync.isAuditing {
-                                    sync.stopSync() // Stop audit also stops everything for now
+                                    sync.stopAudit()
                                 } else {
-                                    sync.startDeepAudit()
+                                    Task { await sync.startDeepAudit() }
                                 }
                             }) {
                                 HStack {
-                                    Image(systemName: "shield.checkerboard")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(sync.isAuditing ? .green : labelCol)
+                                    ZStack {
+                                        Image(systemName: "shield.checkerboard")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(sync.isAuditing ? .green : labelCol)
+                                        
+                                        if sync.needsAudit && !sync.isAuditing {
+                                            Circle()
+                                                .fill(Color.orange)
+                                                .frame(width: 8, height: 8)
+                                                .offset(x: 10, y: -10)
+                                        }
+                                    }
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isAuditing ? "Auditing..." : "Deep Integrity Audit")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isAuditing ? sync.auditStatus : "Scan & fix corrupted or partial files")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.gray)
-                                            .lineLimit(1)
+                                        
+                                        HStack(spacing: 4) {
+                                            Text(sync.isAuditing ? sync.auditStatus : "Last run: \(formattedDate(sync.lastAuditDate))")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.gray)
+                                            
+                                            if sync.needsAudit && !sync.isAuditing {
+                                                Text("• Audit recommended")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundColor(.orange)
+                                            }
+                                        }
                                     }
                                     
                                     Spacer()

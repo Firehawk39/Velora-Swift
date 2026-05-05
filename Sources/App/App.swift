@@ -3,6 +3,12 @@ import CoreText
 import Foundation
 
 class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        BackgroundTaskManager.shared.registerTasks()
+        NotificationManager.shared.requestAuthorization()
+        return true
+    }
+
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         if identifier == "com.velora.downloads" {
             PlaybackManager.sharedBackgroundCompletion = completionHandler
@@ -28,9 +34,16 @@ struct VeloraApp: App {
         URLCache.shared = cache
     }
     
+    @Environment(\.scenePhase) var scenePhase
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
+        }
+        .onChange(of: scenePhase) { oldPhase, newPhase in
+            if newPhase == .background {
+                BackgroundTaskManager.shared.scheduleTasks()
+            }
         }
     }
     

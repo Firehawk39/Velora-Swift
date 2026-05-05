@@ -26,7 +26,12 @@ class MusicBrainzManager: ObservableObject {
     }
     
     // In-memory cache for fast lookups
-    private var nameToMBIDCache: [String: String] = [:]
+    private struct CacheEntry: Codable {
+        let mbid: String
+        let lastVerified: Date
+    }
+    
+    private var nameToMBIDCache: [String: CacheEntry] = [:]
     private var mbidCache: [String: String] = [:]
     private let mbidCacheLock = OSAllocatedUnfairLock(initialState: [String: String]())
     
@@ -54,7 +59,7 @@ class MusicBrainzManager: ObservableObject {
     }
     
     func getMetadataUrl(for artist: String) -> URL {
-        let mbid = nameToMBIDCache[artist] ?? "unknown"
+        let mbid = nameToMBIDCache[artist]?.mbid ?? "unknown"
         return metadataDir.appendingPathComponent("artist_\(mbid).json")
     }
     
@@ -62,10 +67,18 @@ class MusicBrainzManager: ObservableObject {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let fileUrl = docs.appendingPathComponent(cacheFile)
         
-        if let data = try? Data(contentsOf: fileUrl),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-            self.nameToMBIDCache = decoded
-            AppLogger.shared.log("[MBID] Loaded \(decoded.count) entries from persistent cache")
+        if let data = try? Data(contentsOf: fileUrl) {
+            if let decoded = try? JSONDecoder().decode([String: CacheEntry].self, from: data) {
+                self.nameToMBIDCache = decoded
+                AppLogger.shared.log("[MBID] Loaded \(decoded.count) entries from persistent cache")
+            } else if let legacy = try? JSONDecoder().decode([String: String].self, from: data) {
+                // Migration from legacy [String: String]
+                for (name, mbid) in legacy {
+                    self.nameToMBIDCache[name] = CacheEntry(mbid: mbid, lastVerified: Date())
+                }
+                AppLogger.shared.log("[MBID] Migrated \(legacy.count) legacy entries to new cache format")
+                saveCache()
+            }
         }
     }
     
@@ -75,6 +88,25 @@ class MusicBrainzManager: ObservableObject {
         
         if let data = try? JSONEncoder().encode(nameToMBIDCache) {
             try? data.write(to: fileUrl)
+        }
+    }
+    
+    /// Verifies the integrity of the MBID cache against the current local database.
+    /// Removes entries for artists that no longer exist in our library.
+    func verifyCacheIntegrity() {
+        let currentArtists = Set(LocalMetadataStore.shared.fetchAllArtists().map { $0.name })
+        var removedCount = 0
+        
+        for name in nameToMBIDCache.keys {
+            if !currentArtists.contains(name) {
+                nameToMBIDCache.removeValue(forKey: name)
+                removedCount += 1
+            }
+        }
+        
+        if removedCount > 0 {
+            AppLogger.shared.log("[MBID] Pruned \(removedCount) orphaned entries from cache.")
+            saveCache()
         }
     }
     
@@ -219,7 +251,10 @@ class MusicBrainzManager: ObservableObject {
     func resolveMBIDAsync(for artist: String) async -> String? {
         // 1. Check persistent cache first
         if let cached = nameToMBIDCache[artist] {
-            return cached
+            // Check if we should re-verify (every 30 days)
+            if Date().timeIntervalSince(cached.lastVerified) < 30 * 24 * 60 * 60 {
+                return cached.mbid
+            }
         }
         
         let primary = extractPrimaryArtist(artist)
@@ -239,7 +274,7 @@ class MusicBrainzManager: ObservableObject {
             
             // Also update persistent cache
             await MainActor.run {
-                self.nameToMBIDCache[artist] = mbid
+                self.nameToMBIDCache[artist] = CacheEntry(mbid: mbid, lastVerified: Date())
                 self.saveCache()
             }
             return mbid
