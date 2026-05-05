@@ -3,9 +3,6 @@ workflows:
     name: Velora Jailbreak IPA (Unsigned)
     instance_type: mac_mini_m1
     max_build_duration: 60
-    cache:
-      cache_paths:
-        - ~/.swiftpm
     environment:
       xcode: "16"
     scripts:
@@ -19,33 +16,10 @@ workflows:
 
       - name: Build iOS app
         script: |
-          xcodebuild archive \
-            -project Velora.xcodeproj \
-            -scheme Velora \
-            -configuration Debug \
-            -destination "generic/platform=iOS" \
-            -archivePath Velora.xcarchive \
-            -derivedDataPath derived_data \
-            -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGN_IDENTITY="" \
-            SKIP_INSTALL=YES
+          xcode-project build-ipa \
+            --project Velora.xcodeproj \
+            --scheme Velora \
+            --configuration Debug
 
-      - name: Package IPA
-        script: |
-          APP=$(find Velora.xcarchive -name "*.app" -type d | head -1)
-          mkdir -p Payload
-          cp -R "$APP" Payload/Velora.app
-          cp Payload/Velora.app/Info.plist Payload/Velora.app/Info.plist.bak || true
-
-      - name: Create final IPA
-        script: |
-          rm -f Payload/Velora.app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set:CFBundleExecutable Velora" -c "Set:CFBundleIdentifier com.velora.aistudio" -c "Set:CFBundleName Velora" -c "Set:CFBundlePackageType APPL" -c "Set:CFBundleShortVersionString 1.0" -c "Set:CFBundleVersion 1" -c "Set:LSRequiresIPhoneOS true" -c "Set:MinimumOSVersion 15.0" -c "Set:UIRequiresFullScreen true" Payload/Velora.app/Info.plist || echo "PlistBuddy failed"
-          ls -la Payload/Velora.app/
-          
-          zip -r Velora-Jailbreak.ipa Payload
-          mkdir -p artifacts
-          mv Velora-Jailbreak.ipa artifacts/
     artifacts:
-      - artifacts/*.ipa
+      - build/ios/*.ipa
