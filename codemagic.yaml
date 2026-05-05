@@ -8,6 +8,7 @@ workflows:
         - ~/.swiftpm
     environment:
       xcode: latest
+      swift: 6.0
     scripts:
       - name: Resolve Swift packages
         script: |
