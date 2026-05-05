@@ -7,8 +7,7 @@ workflows:
       cache_paths:
         - ~/.swiftpm
     environment:
-      xcode: latest
-      swift: 6.0
+      xcode: "16"
     scripts:
       - name: Resolve Swift packages
         script: |

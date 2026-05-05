@@ -1,6 +1,5 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.9
 import PackageDescription
-import AppleProductTypes
 
 let package = Package(
     name: "Velora",
@@ -8,25 +7,10 @@ let package = Package(
         .iOS(.v15)
     ],
     products: [
-        .iOSApplication(
+        .library(
             name: "Velora",
-            targets: ["AppModule"],
-            bundleIdentifier: "com.velora.aistudio",
-            teamIdentifier: "",
-            displayVersion: "1.0",
-            bundleVersion: "1",
-            appIcon: .asset("AppIcon"),
-            accentColor: .presetColor(.red),
-            supportedDeviceFamilies: [
-                .pad,
-                .phone
-            ],
-            supportedInterfaceOrientations: [
-                .portrait,
-                .landscapeRight,
-                .landscapeLeft,
-                .portraitUpsideDown
-            ]
+            type: .executable,
+            targets: ["AppModule"]
         )
     ],
     targets: [
