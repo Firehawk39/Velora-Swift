@@ -1,225 +1,79 @@
 workflows:
   ios-jailbreak:
-    name: Velora Jailbreak IPA (Unsigned)
+    name: Velora SPM Jailbreak IPA
     instance_type: mac_mini_m1
-    max_build_duration: 30
+    max_build_duration: 60
     cache:
       cache_paths:
         - ~/.swiftpm
     environment:
-      vars:
-        XCODE_SCHEME: "Velora"
       xcode: latest
+      flutter: stable
     scripts:
-      - name: Build Unsigned App
+      - name: Check build tools
         script: |
+          xcodebuild -version || true
+          swift --version || true
+
+      - name: Generate Xcode project from SPM
+        script: |
+          swift package generate-xcodeproj --scheme Velora
+          ls -la *.xcodeproj
+
+      - name: Build iOS app with xcodebuild
+        script: |
+          set -e
           xcodebuild archive \
+            -project Velora.xcodeproj \
             -scheme Velora \
-            -configuration Release \
+            -configuration Debug \
             -destination "generic/platform=iOS" \
             -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
             -sdk iphoneos \
-            ARCHS=arm64 \
-            TARGETED_DEVICE_FAMILY="1,2" \
-            IPHONEOS_DEPLOYMENT_TARGET=17.0 \
-            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
-            INSTALL_PATH=/Applications \
-            PRODUCT_NAME=Velora \
-            WRAPPER_EXTENSION=app \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            SKIP_INSTALL=NO
+            PROVISIONING_PROFILE="" \
+            SKIP_INSTALL=YES
 
-      - name: Build IPA
+      - name: Package IPA
         script: |
-          # 1. Find the app bundle
-          APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            echo "CRITICAL: Failed to find .app bundle."
-            find Velora.xcarchive
-            exit 1
-          fi
+          set -e
+          APP=$(find Velora.xcarchive -name "*.app" -type d | head -1)
+          echo "App bundle: $APP"
           
-          # 2. Find the binary
-          BINARY_NAME="Velora"
-          # Look for the largest executable file that isn't a plist or other resource
-          BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" -not -name "*.sh" | xargs du -a | sort -n -r | head -n 1 | awk '{print $2}')
-          
-          if [ -z "$BINARY_PATH" ]; then
-            echo "CRITICAL: Failed to find binary."
-            exit 1
-          fi
-          
-          echo "Found main binary at: $BINARY_PATH (Size: $(du -h "$BINARY_PATH" | cut -f1))"
-          
-          # 3. Assemble the bundle manually
-          echo "Assembling bundle from $APP_PATH"
           mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          
-          PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
-          
-          # Force copy the binary we found into the bundle root as the correct name
-          cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
-          chmod +x "$PAYLOAD_APP/$BINARY_NAME"
-          
-          # 4. Force-write the Info.plist
-          cat <<EOF > "$PAYLOAD_APP/Info.plist"
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>$BINARY_NAME</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.velora.aistudio</string>
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
-              <key>CFBundleName</key>
-              <string>Velora</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>LSRequiresIPhoneOS</key>
-              <true/>
-              <key>UIDeviceFamily</key>
-              <array>
-                  <integer>1</integer>
-                  <integer>2</integer>
-              </array>
-              <key>MinimumOSVersion</key>
-              <string>17.0</string>
-              <key>UIRequiredDeviceCapabilities</key>
-              <array>
-                  <string>arm64</string>
-              </array>
-              <key>UIBackgroundModes</key>
-              <array>
-                  <string>audio</string>
-              </array>
-              <key>UIRequiresFullScreen</key>
-              <true/>
-              <key>UILaunchScreen</key>
-              <dict/>
-              <key>UIApplicationSceneManifest</key>
-              <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key>
-                  <true/>
-                  <key>UISceneConfigurations</key>
-                  <dict/>
-              </dict>
-              <key>UISupportedInterfaceOrientations</key>
-              <array>
-                  <string>UIInterfaceOrientationPortrait</string>
-                  <string>UIInterfaceOrientationLandscapeLeft</string>
-                  <string>UIInterfaceOrientationLandscapeRight</string>
-              </array>
-              <key>UISupportedInterfaceOrientations~ipad</key>
-              <array>
-                  <string>UIInterfaceOrientationPortrait</string>
-                  <string>UIInterfaceOrientationPortraitUpsideDown</string>
-                  <string>UIInterfaceOrientationLandscapeLeft</string>
-                  <string>UIInterfaceOrientationLandscapeRight</string>
-              </array>
-              <key>NSAppTransportSecurity</key>
-              <dict>
-                  <key>NSAllowsArbitraryLoads</key>
-                  <true/>
-                  <key>NSAllowsLocalNetworking</key>
-                  <true/>
-              </dict>
-              <key>CADisableMinimumFrameDuration</key>
-              <true/>
-              <key>CADisableMinimumFrameDurationOnPhone</key>
-              <true/>
-              <key>CFBundleIconName</key>
-              <string>AppIcon</string>
-              <key>CFBundleIcons</key>
-              <dict>
-                  <key>CFBundlePrimaryIcon</key>
-                  <dict>
-                      <key>CFBundleIconFiles</key>
-                      <array>
-                          <string>AppIcon20x20</string>
-                          <string>AppIcon29x29</string>
-                          <string>AppIcon40x40</string>
-                          <string>AppIcon60x60</string>
-                      </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
-                  </dict>
-              </dict>
-              <key>CFBundleIcons~ipad</key>
-              <dict>
-                  <key>CFBundlePrimaryIcon</key>
-                  <dict>
-                      <key>CFBundleIconFiles</key>
-                      <array>
-                          <string>AppIcon20x20</string>
-                          <string>AppIcon29x29</string>
-                          <string>AppIcon40x40</string>
-                          <string>AppIcon76x76</string>
-                          <string>AppIcon83.5x83.5</string>
-                      </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
-                  </dict>
-              </dict>
-              <key>NSLocalNetworkUsageDescription</key>
-              <string>Velora needs to connect to your Navidrome server on your local network.</string>
-              <key>NSBonjourServices</key>
-              <array>
-                  <string>_http._tcp</string>
-                  <string>_subsonic._tcp</string>
-              </array>
-              <key>UIStatusBarHidden</key>
-              <true/>
-              <key>UIViewControllerBasedStatusBarAppearance</key>
-              <false/>
-          </dict>
-          </plist>
-          EOF
-          
-          # 4.5. Robust Icon Preparation
-          ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
-          if [ -d "$ICON_SOURCE" ]; then
-              echo "Preparing icons from $ICON_SOURCE..."
-              # iPhone / iPad Universal
-              cp "$ICON_SOURCE/AppIcon-20@2x.png" "$PAYLOAD_APP/AppIcon20x20@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-20@3x.png" "$PAYLOAD_APP/AppIcon20x20@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@2x.png" "$PAYLOAD_APP/AppIcon29x29@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@3x.png" "$PAYLOAD_APP/AppIcon29x29@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40@2x.png" "$PAYLOAD_APP/AppIcon40x40@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40@3x.png" "$PAYLOAD_APP/AppIcon40x40@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
-              # iPad specific
-              cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
-              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
-              cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
-          fi
+          cp -R "$APP" Payload/Velora.app
 
-          echo "Diagnostic: Final Bundle Listing"
-          ls -Rlh "$PAYLOAD_APP"
+      - name: Create final IPA
+        script: |
+          cat > Payload/Velora.app/Info.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Velora</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.velora.aistudio</string>
+    <key>CFBundleName</key>
+    <string>Velora</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>MinimumOSVersion</key>
+    <string>15.0</string>
+</dict>
+</plist>
+EOF
           
-          echo "Verifying Assets.car..."
-          if [ ! -f "$PAYLOAD_APP/Assets.car" ]; then
-              echo "Searching for missing Assets.car in derived data..."
-              find derived_data -name "Assets.car" -exec cp {} "$PAYLOAD_APP/Assets.car" \;
-          fi
-          
-          # 5. Create IPA
           zip -r Velora-Jailbreak.ipa Payload
-          echo "Final IPA size: $(du -h Velora-Jailbreak.ipa | cut -f1)"
-          
           mkdir -p artifacts
           mv Velora-Jailbreak.ipa artifacts/
     artifacts:
