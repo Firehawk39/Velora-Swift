@@ -1,6 +1,6 @@
 workflows:
   ios-jailbreak:
-    name: Velora SPM Jailbreak IPA
+    name: Velora Jailbreak IPA (Unsigned)
     instance_type: mac_mini_m1
     max_build_duration: 60
     cache:
@@ -8,21 +8,17 @@ workflows:
         - ~/.swiftpm
     environment:
       xcode: latest
-      flutter: stable
     scripts:
-      - name: Check build tools
+      - name: Resolve Swift packages
         script: |
-          xcodebuild -version || true
-          swift --version || true
+          swift package resolve
 
-      - name: Generate Xcode project from SPM
+      - name: Generate Xcode project
         script: |
           swift package generate-xcodeproj --scheme Velora
-          ls -la *.xcodeproj
 
-      - name: Build iOS app with xcodebuild
+      - name: Build iOS app
         script: |
-          set -e
           xcodebuild archive \
             -project Velora.xcodeproj \
             -scheme Velora \
@@ -31,47 +27,22 @@ workflows:
             -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
             -sdk iphoneos \
-            IPHONEOS_DEPLOYMENT_TARGET=15.0 \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE="" \
             SKIP_INSTALL=YES
 
       - name: Package IPA
         script: |
-          set -e
           APP=$(find Velora.xcarchive -name "*.app" -type d | head -1)
-          echo "App bundle: $APP"
-          
           mkdir -p Payload
           cp -R "$APP" Payload/Velora.app
+          cp Payload/Velora.app/Info.plist Payload/Velora.app/Info.plist.bak || true
 
       - name: Create final IPA
         script: |
-          cat > Payload/Velora.app/Info.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>Velora</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.velora.aistudio</string>
-    <key>CFBundleName</key>
-    <string>Velora</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>LSRequiresIPhoneOS</key>
-    <true/>
-    <key>MinimumOSVersion</key>
-    <string>15.0</string>
-</dict>
-</plist>
-EOF
+          rm -f Payload/Velora.app/Info.plist
+          /usr/libexec/PlistBuddy -c "Set:CFBundleExecutable Velora" -c "Set:CFBundleIdentifier com.velora.aistudio" -c "Set:CFBundleName Velora" -c "Set:CFBundlePackageType APPL" -c "Set:CFBundleShortVersionString 1.0" -c "Set:CFBundleVersion 1" -c "Set:LSRequiresIPhoneOS true" -c "Set:MinimumOSVersion 15.0" -c "Set:UIRequiresFullScreen true" Payload/Velora.app/Info.plist || echo "PlistBuddy failed"
+          ls -la Payload/Velora.app/
           
           zip -r Velora-Jailbreak.ipa Payload
           mkdir -p artifacts
