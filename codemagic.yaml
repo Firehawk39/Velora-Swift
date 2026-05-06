@@ -33,11 +33,15 @@ workflows:
             
       - name: Build IPA
         script: |
-          # 1. Find the bundle
-          APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
+          # 1. Find the bundle (Handling both .app and extensionless SPM bundles)
+          APP_PATH=$(find Velora.xcarchive/Products/Applications -maxdepth 1 -type d | grep -v "Applications$" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "CRITICAL: Failed to find .app bundle."
-            find Velora.xcarchive
+            APP_PATH=$(find Velora.xcarchive/Products/Applications -name "Velora" | head -n 1)
+          fi
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "CRITICAL: Failed to find bundle in Velora.xcarchive/Products/Applications"
+            ls -R Velora.xcarchive/Products/Applications
             exit 1
           fi
           
@@ -48,10 +52,10 @@ workflows:
             BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
           fi
           
-          # 3. Assemble the bundle
+          # 3. Assemble the bundle (Ensuring .app extension for iOS)
           mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
+          cp -R "$APP_PATH" "Payload/Velora.app"
+          PAYLOAD_APP="Payload/Velora.app"
           
           # Ensure binary is in place and executable
           if [ ! -f "$PAYLOAD_APP/$BINARY_NAME" ]; then
