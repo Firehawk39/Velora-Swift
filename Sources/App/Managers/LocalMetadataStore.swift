@@ -360,7 +360,6 @@ class LocalMetadataStore {
     }
     
     func fetchAllArtists() -> [PersistentArtist] {
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
         fetchRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         return (try? context.fetch(fetchRequest)) ?? []
@@ -648,7 +647,7 @@ class LocalMetadataStore {
                     if !isValid {
                         track.isDownloaded = false
                         track.localFilePath = nil
-                        AppLogger.shared.log("[Persistence] Fixed stale download status for: \(track.title ?? "Unknown")", level: .info)
+                        AppLogger.shared.log("[Persistence] Fixed stale download status for: \(track.title)", level: .info)
                     }
                 }
                 if self.backgroundContext.hasChanges {

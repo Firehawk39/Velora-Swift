@@ -264,7 +264,7 @@ extension NavidromeClient {
         // 1. Instant local search (Persistence Layer Optimization)
         let localTracks = await LocalMetadataStore.shared.searchTracks(query: query).map { p in
             var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
-                  duration: p.duration ?? 0, coverArt: p.coverArt ?? "",
+                  duration: Int(p.duration), coverArt: p.coverArt ?? "",
                   artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
             t.isStarred = p.isStarred
             t.playCount = p.playCount
@@ -315,7 +315,7 @@ extension NavidromeClient {
             // 1. Return local results immediately
             let localTracks = await LocalMetadataStore.shared.searchTracks(query: query).map { p in
                 var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
-                      duration: p.duration ?? 0, coverArt: p.coverArt ?? "",
+                      duration: Int(p.duration), coverArt: p.coverArt ?? "",
                       artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
                 t.isStarred = p.isStarred
                 t.playCount = p.playCount
@@ -569,7 +569,7 @@ extension NavidromeClient {
         
         // Final update to client state for UI consistency
         let artists = await LocalMetadataStore.shared.fetchAllArtists().map { Artist(id: $0.id, name: $0.name, coverArt: $0.coverArt) }
-        let albums = await LocalMetadataStore.shared.fetchAllAlbums().map { Album(id: $0.id, name: $0.name, artist: $0.artist, artistId: $0.artistId, songCount: $0.songCount, duration: $0.duration, coverArt: $0.coverArt) }
+        let albums = await LocalMetadataStore.shared.fetchAllAlbums().map { Album(id: $0.id, name: $0.name, artist: $0.artist, artistId: $0.artistId, songCount: Int($0.songCount), duration: Int($0.duration), coverArt: $0.coverArt) }
         
         await MainActor.run {
             self.artists = artists
