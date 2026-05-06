@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedCenter="true" userDefinedModelVersionIdentifier="" systemVersion="11E53" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedMetadata="">
-    <entity name="PersistentAlbum" coached="true" syncable="YES" codeGenerationType="manual">
+    <entity name="PersistentAlbum" coached="true" syncable="YES">
         <attribute name="artist" optional="YES" attributeType="String"/>
         <attribute name="artistId" optional="YES" attributeType="String"/>
         <attribute name="coverArt" optional="YES" attributeType="String"/>
@@ -13,7 +13,7 @@
         <attribute name="releaseYear" optional="YES" attributeType="Integer 32" defaultValueString="0"/>
         <attribute name="songCount" optional="YES" attributeType="Integer 32" defaultValueString="0"/>
     </entity>
-    <entity name="PersistentArtist" coached="true" syncable="YES" codeGenerationType="manual">
+    <entity name="PersistentArtist" coached="true" syncable="YES">
         <attribute name="area" optional="YES" attributeType="String"/>
         <attribute name="biography" optional="YES" attributeType="String"/>
         <attribute name="coverArt" optional="YES" attributeType="String"/>
@@ -24,7 +24,7 @@
         <attribute name="name" optional="NO" attributeType="String"/>
         <attribute name="type" optional="YES" attributeType="String"/>
     </entity>
-    <entity name="PersistentTrack" coached="true" syncable="YES" codeGenerationType="manual">
+    <entity name="PersistentTrack" coached="true" syncable="YES">
         <attribute name="aiDescription" optional="YES" attributeType="String"/>
         <attribute name="aiGenrePrediction" optional="YES" attributeType="String"/>
         <attribute name="aiAtmosphere" optional="YES" attributeType="String"/>
