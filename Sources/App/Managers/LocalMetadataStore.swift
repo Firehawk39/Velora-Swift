@@ -448,13 +448,13 @@ class LocalMetadataStore {
     // MARK: - Audit & Enrichment Helpers
     
     func fetchTracksMissingGenre() -> [PersistentTrack] {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "aiGenrePrediction == nil")
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countTracksMissingGenre() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "aiGenrePrediction == nil")
         return (try? context.count(for: fetchRequest)) ?? 0
     }
@@ -469,19 +469,19 @@ class LocalMetadataStore {
     }
     
     func fetchTracksWithUnknownMetadata() -> [PersistentTrack] {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "artist == %@ OR album == %@", "Unknown", "Unknown")
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAlbumsMissingYear() -> [PersistentAlbum] {
-        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "releaseYear == 0 OR releaseYear == nil")
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countAlbumsMissingYear() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "releaseYear == 0 OR releaseYear == nil")
         return (try? context.count(for: fetchRequest)) ?? 0
     }
@@ -496,7 +496,7 @@ class LocalMetadataStore {
     }
     
     func fetchTracksWithLowResArt() -> [PersistentTrack] {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "coverArt != nil")
         let results = (try? context.fetch(fetchRequest)) ?? []
         return results.filter { $0.coverArt?.contains("size=500") == false }
@@ -522,13 +522,13 @@ class LocalMetadataStore {
     }
     
     func fetchArtistsMissingInfo() -> [PersistentArtist] {
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "musicBrainzId == nil OR biography == nil OR area == nil")
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countArtistsMissingInfo() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "musicBrainzId == nil OR biography == nil OR area == nil")
         return (try? context.count(for: fetchRequest)) ?? 0
     }
@@ -543,13 +543,13 @@ class LocalMetadataStore {
     }
     
     func fetchTracksMissingBackdrop() -> [PersistentTrack] {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "hasCustomBackdrop == NO")
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func countTracksMissingBackdrop() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "hasCustomBackdrop == NO")
         return (try? context.count(for: fetchRequest)) ?? 0
     }
@@ -564,7 +564,7 @@ class LocalMetadataStore {
     }
     
     func countTracksWithUnknownMetadata() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "artist == %@ OR album == %@", "Unknown", "Unknown")
         return (try? context.count(for: fetchRequest)) ?? 0
     }
@@ -579,20 +579,20 @@ class LocalMetadataStore {
     }
 
     func fetchAuditTargets() -> [PersistentTrack] {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "aiGenrePrediction == nil AND (artist == %@ OR album == %@)", "Unknown", "Unknown")
         return (try? context.fetch(fetchRequest)) ?? []
     }
 
     func fetchDownloadedTracks() -> [PersistentTrack] {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "isDownloaded == YES")
         return (try? context.fetch(fetchRequest)) ?? []
     }
 
     func verifyLocalPersistence() {
         backgroundContext.perform {
-            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "isDownloaded == YES")
             
             do {
@@ -616,21 +616,21 @@ class LocalMetadataStore {
     }
 }
 
-// MARK: - Core Data Generated Helpers
+// MARK: - Core Data Helpers
 extension PersistentTrack {
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<NSFetchRequestResult> {
-        return NSFetchRequest<NSFetchRequestResult>(entityName: "PersistentTrack")
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<PersistentTrack> {
+        return NSFetchRequest<PersistentTrack>(entityName: "PersistentTrack")
     }
 }
 
 extension PersistentArtist {
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<NSFetchRequestResult> {
-        return NSFetchRequest<NSFetchRequestResult>(entityName: "PersistentArtist")
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<PersistentArtist> {
+        return NSFetchRequest<PersistentArtist>(entityName: "PersistentArtist")
     }
 }
 
 extension PersistentAlbum {
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<NSFetchRequestResult> {
-        return NSFetchRequest<NSFetchRequestResult>(entityName: "PersistentAlbum")
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<PersistentAlbum> {
+        return NSFetchRequest<PersistentAlbum>(entityName: "PersistentAlbum")
     }
 }
