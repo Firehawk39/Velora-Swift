@@ -176,29 +176,29 @@ workflows:
           EOF
           
           # 4.5. Robust Icon Preparation
-          ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
-          if [ -d "$ICON_SOURCE" ]; then
-              echo "Preparing icons from $ICON_SOURCE..."
+          ICON_SOURCE=\"Sources/App/Resources/Assets.xcassets/AppIcon.appiconset\"
+          if [ -d \"$ICON_SOURCE\" ]; then
+              echo \"Preparing icons from $ICON_SOURCE...\"
               # iPhone / iPad Universal
-              cp "$ICON_SOURCE/AppIcon-20@2x.png" "$PAYLOAD_APP/AppIcon20x20@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-20@3x.png" "$PAYLOAD_APP/AppIcon20x20@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@2x.png" "$PAYLOAD_APP/AppIcon29x29@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@3x.png" "$PAYLOAD_APP/AppIcon29x29@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40@2x.png" "$PAYLOAD_APP/AppIcon40x40@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40@3x.png" "$PAYLOAD_APP/AppIcon40x40@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
+              cp \"$ICON_SOURCE/AppIcon-20@2x.png\" \"$PAYLOAD_APP/AppIcon20x20@2x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon-20@3x.png\" \"$PAYLOAD_APP/AppIcon20x20@3x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon-29@2x.png\" \"$PAYLOAD_APP/AppIcon29x29@2x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon-29@3x.png\" \"$PAYLOAD_APP/AppIcon29x29@3x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon-40@2x.png\" \"$PAYLOAD_APP/AppIcon40x40@2x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon-40@3x.png\" \"$PAYLOAD_APP/AppIcon40x40@3x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon@2x.png\" \"$PAYLOAD_APP/AppIcon60x60@2x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon@3x.png\" \"$PAYLOAD_APP/AppIcon60x60@3x.png\" || true
               # iPad specific
-              cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
-              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
-              cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
+              cp \"$ICON_SOURCE/AppIcon~ipad.png\" \"$PAYLOAD_APP/AppIcon76x76.png\" || true
+              cp \"$ICON_SOURCE/AppIcon@2x~ipad.png\" \"$PAYLOAD_APP/AppIcon76x76@2x.png\" || true
+              cp \"$ICON_SOURCE/AppIcon-83.5@2x~ipad.png\" \"$PAYLOAD_APP/AppIcon83.5x83.5@2x.png\" || true
+              cp \"$ICON_SOURCE\"/*.png \"$PAYLOAD_APP/\"
           fi
 
       - name: Create final IPA
         script: |
           rm -f Payload/Velora.app/Info.plist
-          /usr/libexec/PlistBuddy -c "Set:CFBundleExecutable Velora" -c "Set:CFBundleIdentifier com.velora.aistudio" -c "Set:CFBundleName Velora" -c "Set:CFBundlePackageType APPL" -c "Set:CFBundleShortVersionString 1.0" -c "Set:CFBundleVersion 1" -c "Set:LSRequiresIPhoneOS true" -c "Set:MinimumOSVersion 15.0" -c "Set:UIRequiresFullScreen true" Payload/Velora.app/Info.plist || echo "PlistBuddy failed"
+          /usr/libexec/PlistBuddy -c \"Set:CFBundleExecutable Velora\" -c \"Set:CFBundleIdentifier com.velora.aistudio\" -c \"Set:CFBundleName Velora\" -c \"Set:CFBundlePackageType APPL\" -c \"Set:CFBundleShortVersionString 1.0\" -c \"Set:CFBundleVersion 1\" -c \"Set:LSRequiresIPhoneOS true\" -c \"Set:MinimumOSVersion 15.0\" -c \"Set:UIRequiresFullScreen true\" Payload/Velora.app/Info.plist || echo \"PlistBuddy failed\"
           ls -la Payload/Velora.app/
           
           zip -r Velora-Jailbreak.ipa Payload
