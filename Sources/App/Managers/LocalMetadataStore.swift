@@ -68,14 +68,15 @@ class LocalMetadataStore {
     // MARK: - Batch Operations
     
     func saveTracks(_ tracks: [Track]) {
-        backgroundContext.perform {
+        let ctx = backgroundContext
+        ctx.perform {
             let trackIds = tracks.map { $0.id }
             let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id IN %@", trackIds)
             
             let existingTracks: [String: PersistentTrack]
             do {
-                let fetched = try self.backgroundContext.fetch(fetchRequest)
+                let fetched = try ctx.fetch(fetchRequest)
                 existingTracks = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
             } catch {
                 AppLogger.shared.log("LocalMetadataStore: Failed to fetch existing tracks for batch save.", level: .error)
@@ -91,24 +92,25 @@ class LocalMetadataStore {
                     existing.playCount = Int32(track.playCount ?? 0)
                     existing.coverArt = track.coverArt
                 } else {
-                    let newTrack = PersistentTrack(context: self.backgroundContext)
+                    let newTrack = PersistentTrack(context: ctx)
                     newTrack.update(with: track)
                 }
             }
             
-            self.save(context: self.backgroundContext)
+            if ctx.hasChanges { try? ctx.save() }
         }
     }
     
     func saveArtists(_ artists: [Artist]) {
-        backgroundContext.perform {
+        let ctx = backgroundContext
+        ctx.perform {
             let artistIds = artists.map { $0.id }
             let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id IN %@", artistIds)
             
             let existingArtists: [String: PersistentArtist]
             do {
-                let fetched = try self.backgroundContext.fetch(fetchRequest)
+                let fetched = try ctx.fetch(fetchRequest)
                 existingArtists = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
             } catch {
                 return
@@ -123,24 +125,25 @@ class LocalMetadataStore {
                     if let type = artist.type { existing.type = type }
                     if let lifeSpan = artist.lifeSpan { existing.lifeSpan = lifeSpan }
                 } else {
-                    let newArtist = PersistentArtist(context: self.backgroundContext)
+                    let newArtist = PersistentArtist(context: ctx)
                     newArtist.update(with: artist)
                 }
             }
             
-            self.save(context: self.backgroundContext)
+            if ctx.hasChanges { try? ctx.save() }
         }
     }
     
     func saveAlbums(_ albums: [Album]) {
-        backgroundContext.perform {
+        let ctx = backgroundContext
+        ctx.perform {
             let albumIds = albums.map { $0.id }
             let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id IN %@", albumIds)
             
             let existingAlbums: [String: PersistentAlbum]
             do {
-                let fetched = try self.backgroundContext.fetch(fetchRequest)
+                let fetched = try ctx.fetch(fetchRequest)
                 existingAlbums = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
             } catch {
                 return
@@ -161,12 +164,12 @@ class LocalMetadataStore {
                     if let label = album.recordLabel { existing.recordLabel = label }
                     if let frd = album.firstReleaseDate { existing.firstReleaseDate = frd }
                 } else {
-                    let newAlbum = PersistentAlbum(context: self.backgroundContext)
+                    let newAlbum = PersistentAlbum(context: ctx)
                     newAlbum.update(with: album)
                 }
             }
             
-            self.save(context: self.backgroundContext)
+            if ctx.hasChanges { try? ctx.save() }
         }
     }
     
@@ -183,7 +186,7 @@ class LocalMetadataStore {
     func updateAIMetadataBatch(results: [EnrichedMetadata]) {
         for result in results {
             guard let id = result.id else { continue }
-            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id == %@", id)
             
             do {
@@ -208,7 +211,7 @@ class LocalMetadataStore {
     
     func updateArtistInfoBatch(results: [(id: String, bio: String?, mbid: String?, area: String?, type: String?, lifeSpan: String?)]) {
         for result in results {
-            let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+            let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id == %@", result.id)
             
             do {
@@ -234,7 +237,7 @@ class LocalMetadataStore {
     func updateAlbumYearBatch(results: [(id: String, year: Int?, label: String?, firstReleaseDate: String?)]) {
         for result in results {
             let id = result.id
-            let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+            let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id == %@", id)
             do {
                 if let persistent = try context.fetch(fetchRequest).first {
@@ -257,7 +260,7 @@ class LocalMetadataStore {
     func updateCustomArtBatch(results: [(trackIds: [String], albumId: String?, url: String)]) {
         for result in results {
             if let albumId = result.albumId {
-                let albumFetch: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+                let albumFetch: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
                 albumFetch.predicate = NSPredicate(format: "id == %@", albumId)
                 if let persistentAlbum = (try? context.fetch(albumFetch))?.first {
                     persistentAlbum.customCoverArt = result.url
@@ -265,7 +268,7 @@ class LocalMetadataStore {
             }
             
             for trackId in result.trackIds {
-                let trackFetch: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+                let trackFetch: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
                 trackFetch.predicate = NSPredicate(format: "id == %@", trackId)
                 if let persistentTrack = (try? context.fetch(trackFetch))?.first {
                     persistentTrack.customCoverArt = result.url
@@ -282,7 +285,7 @@ class LocalMetadataStore {
     
     func updateBackdropStatusBatch(results: [(artistName: String, hasBackdrop: Bool)]) {
         for result in results {
-            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "artist == %@", result.artistName)
             
             do {
@@ -324,7 +327,7 @@ class LocalMetadataStore {
     
     func updateTrackMetadataBatch(results: [(id: String, title: String?, artist: String?, album: String?)]) {
         for result in results {
-            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id == %@", result.id)
             
             do {
@@ -341,48 +344,48 @@ class LocalMetadataStore {
     }
     
     func fetchTrack(id: String) -> PersistentTrack? {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %@", id)
         return try? context.fetch(fetchRequest).first
     }
     
     func fetchTracksByIds(_ ids: [String]) -> [PersistentTrack] {
         if ids.isEmpty { return [] }
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id IN %@", ids)
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAllTracks() -> [PersistentTrack] {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         fetchRequest.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAllArtists() -> [PersistentArtist] {
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         fetchRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAllAlbums() -> [PersistentAlbum] {
-        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
         fetchRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func trackCount() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func artistCount() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         return (try? context.count(for: fetchRequest)) ?? 0
     }
     
     func albumCount() -> Int {
-        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
         return (try? context.count(for: fetchRequest)) ?? 0
     }
     
@@ -434,46 +437,46 @@ class LocalMetadataStore {
     }
     
     func fetchArtist(name: String) -> PersistentArtist? {
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "name == %@", name)
         return try? context.fetch(fetchRequest).first
     }
     
     func fetchArtistById(id: String) -> PersistentArtist? {
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %@", id)
         return try? context.fetch(fetchRequest).first
     }
     
     func fetchArtistsByIds(_ ids: [String]) -> [PersistentArtist] {
         if ids.isEmpty { return [] }
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id IN %@", ids)
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func fetchAlbum(name: String, artistName: String) -> PersistentAlbum? {
-        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "name == %@ AND artist == %@", name, artistName)
         return try? context.fetch(fetchRequest).first
     }
     
     func fetchAlbumById(id: String) -> PersistentAlbum? {
-        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %@", id)
         return try? context.fetch(fetchRequest).first
     }
     
     func fetchAlbumsByIds(_ ids: [String]) -> [PersistentAlbum] {
         if ids.isEmpty { return [] }
-        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest() as! NSFetchRequest<PersistentAlbum>
+        let fetchRequest: NSFetchRequest<PersistentAlbum> = PersistentAlbum.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id IN %@", ids)
         return (try? context.fetch(fetchRequest)) ?? []
     }
     
     func searchTracks(query: String) -> [PersistentTrack] {
         if query.isEmpty { return [] }
-        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
         // Core Data doesn't have localizedStandardContains in predicates directly for all store types, 
         // but [cd] (case and diacritic insensitive) works well.
         fetchRequest.predicate = NSPredicate(format: "title CONTAINS[cd] %@ OR artist CONTAINS[cd] %@ OR album CONTAINS[cd] %@ OR aiGenrePrediction CONTAINS[cd] %@ OR aiAtmosphere CONTAINS[cd] %@", query, query, query, query, query)
@@ -483,7 +486,7 @@ class LocalMetadataStore {
     
     func searchArtists(query: String) -> [PersistentArtist] {
         if query.isEmpty { return [] }
-        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest() as! NSFetchRequest<PersistentArtist>
+        let fetchRequest: NSFetchRequest<PersistentArtist> = PersistentArtist.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "name CONTAINS[cd] %@", query)
         fetchRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         return (try? context.fetch(fetchRequest)) ?? []
@@ -635,26 +638,27 @@ class LocalMetadataStore {
     }
 
     func verifyLocalPersistence() {
-        backgroundContext.perform {
+        let ctx = backgroundContext
+        ctx.perform {
             let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "isDownloaded == YES")
             
             do {
-                let tracks = try self.backgroundContext.fetch(fetchRequest)
+                let tracks = try ctx.fetch(fetchRequest)
                 for track in tracks {
                     let id = track.id
                     let isValid = IntegrityManager.shared.isTrackValid(id: id)
                     if !isValid {
                         track.isDownloaded = false
                         track.localFilePath = nil
-                        AppLogger.shared.log("[Persistence] Fixed stale download status for: \(track.title)", level: .info)
+                        print("[Persistence] Fixed stale download status for: \(track.title ?? "Unknown")")
                     }
                 }
-                if self.backgroundContext.hasChanges {
-                    try self.backgroundContext.save()
+                if ctx.hasChanges {
+                    try ctx.save()
                 }
             } catch {
-                AppLogger.shared.log("[Persistence] Failed to verify local persistence: \(error)", level: .error)
+                print("[Persistence] Failed to verify local persistence: \(error)")
             }
         }
     }
