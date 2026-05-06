@@ -31,6 +31,7 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package IPA
@@ -91,13 +92,21 @@ workflows:
               <true/>
               <key>UILaunchScreen</key>
               <dict/>
-              <key>UIApplicationSceneManifest</key>
+              <key>CFBundleIconName</key>
+              <string>AppIcon</string>
+              <key>NSAppTransportSecurity</key>
               <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <key>NSAllowsArbitraryLoads</key>
                   <true/>
-                  <key>UISceneConfigurations</key>
-                  <dict/>
               </dict>
+              <key>CADisableMinimumFrameDurationOnPhone</key>
+              <true/>
+              <key>CADisableMinimumFrameDuration</key>
+              <true/>
+              <key>UIStatusBarHidden</key>
+              <true/>
+              <key>UIViewControllerBasedStatusBarAppearance</key>
+              <false/>
           </dict>
           </plist>
           EOF

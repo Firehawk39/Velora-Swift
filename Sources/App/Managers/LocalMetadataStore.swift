@@ -22,12 +22,31 @@ class LocalMetadataStore {
     }()
     
     nonisolated init() {
-        // Find the model in the bundle
-        guard let modelURL = Bundle.module.url(forResource: "Velora", withExtension: "momd") else {
+        // Find the model in the bundle (search main, module, and common bundles)
+        var modelURL = Bundle.main.url(forResource: "Velora", withExtension: "momd")
+        
+        if modelURL == nil {
+            #if SWIFT_PACKAGE
+            modelURL = Bundle.module.url(forResource: "Velora", withExtension: "momd")
+            #endif
+        }
+        
+        if modelURL == nil {
+            let possibleBundleNames = ["AppModule_AppModule", "AppModule", "Velora"]
+            for name in possibleBundleNames {
+                if let bundleUrl = Bundle.main.url(forResource: name, withExtension: "bundle"),
+                   let bundle = Bundle(url: bundleUrl) {
+                    modelURL = bundle.url(forResource: "Velora", withExtension: "momd")
+                    if modelURL != nil { break }
+                }
+            }
+        }
+        
+        guard let finalModelURL = modelURL else {
             fatalError("Failed to find Velora.xcdatamodeld in bundle")
         }
         
-        guard let managedObjectModel = NSManagedObjectModel(contentsOf: modelURL) else {
+        guard let managedObjectModel = NSManagedObjectModel(contentsOf: finalModelURL) else {
             fatalError("Failed to load managed object model")
         }
         
