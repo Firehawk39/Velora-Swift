@@ -137,7 +137,7 @@ final class SyncManager: ObservableObject {
                         if track.isDownloaded {
                             let isValid = IntegrityManager.shared.isTrackValid(id: track.id)
                             if !isValid {
-                                LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: false, localPath: nil)
+                                await LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: false, localPath: nil)
                             }
                         }
                     }
