@@ -56,7 +56,9 @@ class MusicBrainzManager: ObservableObject {
     private let throttler = Throttler()
     
     nonisolated init() {
-        loadCache()
+        Task { @MainActor in
+            MusicBrainzManager.shared.loadCache()
+        }
     }
     
     func getMetadataUrl(for artist: String) -> URL {

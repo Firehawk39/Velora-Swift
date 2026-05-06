@@ -41,10 +41,16 @@ class LocalMetadataStore {
         persistentContainer.loadPersistentStores { (storeDescription, error) in
             if let error = error as NSError? {
                 print("Failed to initialize Core Data: \(error), \(error.userInfo)")
+            } else {
+                // Safely set merge policy on Main Actor
+                Task { @MainActor in
+                    LocalMetadataStore.shared.setupContext()
+                }
             }
         }
-        
-        // Merge policy to handle conflicts (favor in-memory changes)
+    }
+    
+    private func setupContext() {
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
         context.automaticallyMergesChangesFromParent = true
     }
@@ -305,19 +311,17 @@ class LocalMetadataStore {
     }
     
     func updateDownloadStatus(for trackId: String, isDownloaded: Bool, localPath: String?) {
-        context.perform {
-            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
-            fetchRequest.predicate = NSPredicate(format: "id == %@", trackId)
-            
-            do {
-                if let persistent = try self.context.fetch(fetchRequest).first {
-                    persistent.isDownloaded = isDownloaded
-                    persistent.localFilePath = localPath
-                    Task { @MainActor in self.save() }
-                }
-            } catch {
-                print("Error updating download status: \(error)")
+        let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "id == %@", trackId)
+        
+        do {
+            if let persistent = try self.context.fetch(fetchRequest).first {
+                persistent.isDownloaded = isDownloaded
+                persistent.localFilePath = localPath
+                self.save()
             }
+        } catch {
+            print("Error updating download status: \(error)")
         }
     }
 
