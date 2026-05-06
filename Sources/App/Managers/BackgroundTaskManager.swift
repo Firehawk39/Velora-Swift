@@ -54,7 +54,9 @@ final class BackgroundTaskManager {
         scheduleLibraryAudit() // Reschedule for next time
         
         task.expirationHandler = {
-            SyncManager.shared.stopAudit()
+            Task { @MainActor in
+                SyncManager.shared.stopAudit()
+            }
         }
         
         Task {
@@ -67,7 +69,9 @@ final class BackgroundTaskManager {
         scheduleMetadataSync() // Reschedule
         
         task.expirationHandler = {
-            SyncManager.shared.stopMetadataSync()
+            Task { @MainActor in
+                SyncManager.shared.stopMetadataSync()
+            }
         }
         
         Task {

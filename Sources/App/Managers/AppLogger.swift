@@ -28,7 +28,7 @@ class AppLogger: ObservableObject {
     
     nonisolated private init() {}
     
-    func log(_ message: String, level: LogEntry.LogLevel = .debug) {
+    nonisolated func log(_ message: String, level: LogEntry.LogLevel = .debug) {
         DispatchQueue.main.async {
             self.logs.insert(LogEntry(message: message, level: level), at: 0)
             if self.logs.count > 1000 {

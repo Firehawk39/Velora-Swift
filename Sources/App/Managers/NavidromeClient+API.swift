@@ -262,7 +262,7 @@ extension NavidromeClient {
     /// High-performance search that queries the local persistence layer first for instant results.
     func searchAsync(query: String) async -> ([Track], [Album], [Artist]) {
         // 1. Instant local search (Persistence Layer Optimization)
-        let localTracks = await LocalMetadataStore.shared.searchTracks(query: query).map { p in
+        let localTracks = LocalMetadataStore.shared.searchTracks(query: query).map { p in
             var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
                   duration: Int(p.duration), coverArt: p.coverArt ?? "",
                   artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
@@ -271,7 +271,7 @@ extension NavidromeClient {
             return t
         }
         
-        let localArtists = await LocalMetadataStore.shared.searchArtists(query: query).map { p in
+        let localArtists = LocalMetadataStore.shared.searchArtists(query: query).map { p in
             Artist(id: p.id, name: p.name, coverArt: p.coverArt)
         }
         
@@ -313,7 +313,7 @@ extension NavidromeClient {
     func search(query: String, completion: @escaping ([Track], [Album], [Artist]) -> Void) {
         Task {
             // 1. Return local results immediately
-            let localTracks = await LocalMetadataStore.shared.searchTracks(query: query).map { p in
+            let localTracks = LocalMetadataStore.shared.searchTracks(query: query).map { p in
                 var t = Track(id: p.id, title: p.title, album: p.album ?? "", artist: p.artist ?? "",
                       duration: Int(p.duration), coverArt: p.coverArt ?? "",
                       artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
@@ -321,7 +321,7 @@ extension NavidromeClient {
                 t.playCount = Int(p.playCount)
                 return t
             }
-            let localArtists = await LocalMetadataStore.shared.searchArtists(query: query).map { p in
+            let localArtists = LocalMetadataStore.shared.searchArtists(query: query).map { p in
                 Artist(id: p.id, name: p.name, coverArt: p.coverArt)
             }
             
@@ -568,8 +568,8 @@ extension NavidromeClient {
         }
         
         // Final update to client state for UI consistency
-        let artists = await LocalMetadataStore.shared.fetchAllArtists().map { Artist(id: $0.id, name: $0.name, coverArt: $0.coverArt) }
-        let albums = await LocalMetadataStore.shared.fetchAllAlbums().map { Album(id: $0.id, name: $0.name, artist: $0.artist, artistId: $0.artistId, songCount: Int($0.songCount), duration: Int($0.duration), coverArt: $0.coverArt) }
+        let artists = LocalMetadataStore.shared.fetchAllArtists().map { Artist(id: $0.id, name: $0.name, coverArt: $0.coverArt) }
+        let albums = LocalMetadataStore.shared.fetchAllAlbums().map { Album(id: $0.id, name: $0.name, artist: $0.artist, artistId: $0.artistId, songCount: Int($0.songCount), duration: Int($0.duration), coverArt: $0.coverArt) }
         
         await MainActor.run {
             self.artists = artists
