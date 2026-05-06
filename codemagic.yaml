@@ -2,51 +2,74 @@ workflows:
   ios-jailbreak:
     name: Velora Jailbreak IPA (Unsigned)
     instance_type: mac_mini_m1
-    max_build_duration: 60
+    max_build_duration: 30
     cache:
       cache_paths:
         - ~/.swiftpm
     environment:
+      vars:
+        XCODE_SCHEME: "Velora"
       xcode: latest
     scripts:
-      - name: Resolve Swift packages
-        script: |
-          swift package resolve
-
       - name: Build Unsigned App
         script: |
-          # Archive the app without signing
           xcodebuild archive \
             -scheme Velora \
+            -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath Velora.xcarchive \
-            -configuration Release \
+            -derivedDataPath derived_data \
+            -sdk iphoneos \
+            ARCHS=arm64 \
+            TARGETED_DEVICE_FAMILY="1,2" \
+            INSTALL_PATH=/Applications \
+            PRODUCT_NAME=Velora \
+            WRAPPER_EXTENSION=app \
             CODE_SIGNING_ALLOWED=NO \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             CODE_SIGNING_REQUIRED=NO \
-            ARCHS="arm64" \
-            IPHONEOS_DEPLOYMENT_TARGET=15.0
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            SKIP_INSTALL=NO
 
-      - name: Assemble Payload & Inject Plist
+      - name: Build IPA
         script: |
-          # 1. Find the built .app from the xcarchive
-          APP_PATH=$(find Velora.xcarchive -name "*.app" -type d | head -1)
+          # 1. Find the app bundle
+          APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "Error: Could not find .app in xcarchive"
+            echo "CRITICAL: Failed to find .app bundle."
+            find Velora.xcarchive
             exit 1
           fi
           
-          echo "Found app at $APP_PATH"
+          # 2. Find the binary
+          BINARY_NAME="Velora"
+          BINARY_PATH=$(find Velora.xcarchive/Products -type f -name "$BINARY_NAME" | head -n 1)
           
-          # 2. Extract the binary name from Info.plist
-          BINARY_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Info.plist" || echo "Velora")
+          if [ -z "$BINARY_PATH" ]; then
+            BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
+          fi
           
+          if [ -z "$BINARY_PATH" ]; then
+            echo "CRITICAL: Failed to find binary."
+            exit 1
+          fi
+          
+          # 3. Assemble the bundle manually to be 100% sure
+          echo "Assembling bundle from $APP_PATH"
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           
+          # Update internal variable to point to the copy we are patching
           PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
           
-          # 3. Overwrite with a proven working Info.plist structure
+          if [ ! -f "$PAYLOAD_APP/$BINARY_NAME" ]; then
+             echo "Binary $BINARY_NAME not found in bundle, trying to find it in archive..."
+             cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
+          fi
+          chmod +x "$PAYLOAD_APP/$BINARY_NAME"
+          
+          # 4. Force-write the Info.plist to ensure TrollStore compatibility and native iPad resolution
           cat <<EOF > "$PAYLOAD_APP/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -82,18 +105,18 @@ workflows:
               <key>UIBackgroundModes</key>
               <array>
                   <string>audio</string>
-                  <string>fetch</string>
-                  <string>processing</string>
-              </array>
-              <key>BGTaskSchedulerPermittedIdentifiers</key>
-              <array>
-                  <string>com.velora.library.audit</string>
-                  <string>com.velora.library.metadata</string>
               </array>
               <key>UIRequiresFullScreen</key>
               <true/>
               <key>UILaunchScreen</key>
               <dict/>
+              <key>UIApplicationSceneManifest</key>
+              <dict>
+                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <true/>
+                  <key>UISceneConfigurations</key>
+                  <dict/>
+              </dict>
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
@@ -126,13 +149,10 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon20x20</string>
-                          <string>AppIcon29x29</string>
-                          <string>AppIcon40x40</string>
-                          <string>AppIcon60x60</string>
+                          <string>AppIcon</string>
                       </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
+                      <key>UIPrerenderedIcon</key>
+                      <false/>
                   </dict>
               </dict>
               <key>CFBundleIcons~ipad</key>
@@ -141,59 +161,33 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon20x20</string>
-                          <string>AppIcon29x29</string>
-                          <string>AppIcon40x40</string>
-                          <string>AppIcon76x76</string>
-                          <string>AppIcon83.5x83.5</string>
+                          <string>AppIcon</string>
                       </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
+                      <key>UIPrerenderedIcon</key>
+                      <false/>
                   </dict>
               </dict>
               <key>NSLocalNetworkUsageDescription</key>
-              <string>Velora needs to connect to your Navidrome server.</string>
+              <string>Velora needs to connect to your Navidrome server on your local network.</string>
               <key>NSBonjourServices</key>
               <array>
                   <string>_http._tcp</string>
                   <string>_subsonic._tcp</string>
               </array>
-              <key>UIStatusBarHidden</key>
-              <true/>
-              <key>UIViewControllerBasedStatusBarAppearance</key>
-              <false/>
           </dict>
           </plist>
           EOF
           
-          # 4. Manual Icon Copying
-          ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
-          if [ -d "$ICON_SOURCE" ]; then
-              cp "$ICON_SOURCE/AppIcon-20@2x.png" "$PAYLOAD_APP/AppIcon20x20@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-20@3x.png" "$PAYLOAD_APP/AppIcon20x20@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@2x.png" "$PAYLOAD_APP/AppIcon29x29@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@3x.png" "$PAYLOAD_APP/AppIcon29x29@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40@2x.png" "$PAYLOAD_APP/AppIcon40x40@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40@3x.png" "$PAYLOAD_APP/AppIcon40x40@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
-              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
-              cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
-          fi
+          echo "Final bundle contents for $(basename "$APP_PATH"):"
+          ls -F "$PAYLOAD_APP"
           
-          # 5. Copy extra resources if needed
-          find . -name "*.bundle" -type d -exec cp -R {} "$PAYLOAD_APP/" \;
+          echo "Verifying Info.plist keys:"
+          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen" "$PAYLOAD_APP/Info.plist"
           
-          # 6. Final Permissions
-          chmod +x "$PAYLOAD_APP/$BINARY_NAME"
-
-      - name: Create final IPA
-        script: |
+          # 5. Create IPA
           zip -r Velora-Jailbreak.ipa Payload
+          
           mkdir -p artifacts
           mv Velora-Jailbreak.ipa artifacts/
-
     artifacts:
       - artifacts/*.ipa

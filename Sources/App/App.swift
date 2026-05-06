@@ -3,12 +3,6 @@ import CoreText
 import Foundation
 
 class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        BackgroundTaskManager.shared.registerTasks()
-        NotificationManager.shared.requestAuthorization()
-        return true
-    }
-
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         if identifier == "com.velora.downloads" {
             PlaybackManager.sharedBackgroundCompletion = completionHandler
@@ -34,16 +28,9 @@ struct VeloraApp: App {
         URLCache.shared = cache
     }
     
-    @Environment(\.scenePhase) var scenePhase
-    
     var body: some Scene {
         WindowGroup {
             ContentView()
-        }
-        .onChange(of: scenePhase) { newPhase in
-            if newPhase == .background {
-                BackgroundTaskManager.shared.scheduleTasks()
-            }
         }
     }
     
@@ -58,7 +45,7 @@ struct VeloraApp: App {
         
         if url == nil {
             // In some environments, resources are in a separate .bundle folder
-            let possibleBundleNames = ["Velora_AppModule", "AppModule_AppModule", "AppModule", "Velora"]
+            let possibleBundleNames = ["AppModule_AppModule", "AppModule", "Velora"]
             for name in possibleBundleNames {
                 if let bundleUrl = Bundle.main.url(forResource: name, withExtension: "bundle"),
                    let bundle = Bundle(url: bundleUrl) {
@@ -77,11 +64,7 @@ struct VeloraApp: App {
         
         var error: Unmanaged<CFError>?
         if !CTFontManagerRegisterGraphicsFont(font, &error) {
-            if let err = error {
-                print("❌ Error registering font: \(err.takeUnretainedValue())")
-            } else {
-                print("❌ Error registering font: Unknown error")
-            }
+            print("❌ Error registering font: \(error!.takeUnretainedValue())")
         }
     }
 }
