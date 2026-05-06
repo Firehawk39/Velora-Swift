@@ -60,7 +60,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 42 : 48) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 26 : 30) : 32.0)).weight(.bold))
+                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 48 : 54) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0)).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -86,12 +86,12 @@ struct AppHeader: View {
             ZStack {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: isLandscape ? 72 : 64, height: isLandscape ? 36 : 32)
+                    .frame(width: isLandscape ? 84 : 72, height: isLandscape ? 40 : 36)
                 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: isLandscape ? 28 : 24, height: isLandscape ? 28 : 24)
-                    .offset(x: isDarkMode ? (isLandscape ? 18 : 16) : (isLandscape ? -18 : -16))
+                    .frame(width: isLandscape ? 32 : 28, height: isLandscape ? 32 : 28)
+                    .offset(x: isDarkMode ? (isLandscape ? 22 : 18) : (isLandscape ? -22 : -18))
                 
                 HStack {
                     Image(systemName: "sun.max.fill")
@@ -102,7 +102,7 @@ struct AppHeader: View {
                         .font(.system(size: isLandscape ? 13 : 11, weight: .bold))
                         .foregroundColor(isDarkMode ? .blue : .gray)
                 }
-                .frame(width: isLandscape ? 48 : 42)
+                .frame(width: isLandscape ? 56 : 48)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
@@ -118,7 +118,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 30 : 34) : (ScreenTier.isPhone ? 22 : 24)))
+                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 32 : 38) : (ScreenTier.isPhone ? 24 : 26)))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
