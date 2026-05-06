@@ -33,35 +33,28 @@ workflows:
             
       - name: Build IPA
         script: |
-          # 1. Find the bundle (Handling both .app and extensionless SPM bundles)
-          APP_PATH=$(find Velora.xcarchive/Products/Applications -maxdepth 1 -type d | grep -v "Applications$" | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            APP_PATH=$(find Velora.xcarchive/Products/Applications -name "Velora" | head -n 1)
-          fi
+          # 1. Find the binary (the actual executable)
+          BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
+          BINARY_NAME="Velora"
           
-          if [ -z "$APP_PATH" ]; then
-            echo "CRITICAL: Failed to find bundle in Velora.xcarchive/Products/Applications"
-            ls -R Velora.xcarchive/Products/Applications
+          if [ -z "$BINARY_PATH" ]; then
+            echo "CRITICAL: Failed to find binary in Velora.xcarchive"
             exit 1
           fi
           
-          # 2. Find the binary
-          BINARY_NAME="Velora"
-          BINARY_PATH=$(find Velora.xcarchive/Products -type f -name "$BINARY_NAME" | head -n 1)
-          if [ -z "$BINARY_PATH" ]; then
-            BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
-          fi
-          
-          # 3. Assemble the bundle (Ensuring .app extension for iOS)
-          mkdir -p Payload
-          cp -R "$APP_PATH" "Payload/Velora.app"
+          # 2. Create a clean, valid .app bundle structure
+          rm -rf Payload
+          mkdir -p "Payload/Velora.app"
           PAYLOAD_APP="Payload/Velora.app"
           
-          # Ensure binary is in place and executable
-          if [ ! -f "$PAYLOAD_APP/$BINARY_NAME" ]; then
-             cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
-          fi
+          # 3. Copy binary and make it executable
+          cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
+          
+          # 4. Collect and inject resources (Fonts, Assets, etc.)
+          find Velora.xcarchive/Products -name "*.otf" -exec cp {} "$PAYLOAD_APP/" \;
+          find Velora.xcarchive/Products -name "Assets.car" -exec cp {} "$PAYLOAD_APP/" \;
+          find Velora.xcarchive/Products -name "*.png" -exec cp {} "$PAYLOAD_APP/" \;
           
           # 4. Force-write the Info.plist with custom font registration and native iPad support
           cat <<EOF > "$PAYLOAD_APP/Info.plist"
@@ -162,6 +155,14 @@ workflows:
                   <string>_http._tcp</string>
                   <string>_subsonic._tcp</string>
               </array>
+              <key>CFBundleSupportedPlatforms</key>
+              <array>
+                  <string>iPhoneOS</string>
+              </array>
+              <key>DTPlatformName</key>
+              <string>iphoneos</string>
+              <key>DTSDKName</key>
+              <string>iphoneos</string>
           </dict>
           </plist>
           EOF
