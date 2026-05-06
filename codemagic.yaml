@@ -52,9 +52,14 @@ workflows:
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           
           # 4. Collect and inject resources (Fonts, Assets, etc.)
+          # Explicitly copy the font from source as fallback to ensure it exists
+          cp Sources/App/Resources/Stardom-Regular.otf "$PAYLOAD_APP/" || true
+          
+          # Copy everything from build output including resource bundles
           find Velora.xcarchive/Products -name "*.otf" -exec cp {} "$PAYLOAD_APP/" \;
           find Velora.xcarchive/Products -name "Assets.car" -exec cp {} "$PAYLOAD_APP/" \;
           find Velora.xcarchive/Products -name "*.png" -exec cp {} "$PAYLOAD_APP/" \;
+          find Velora.xcarchive/Products -name "*.bundle" -exec cp -R {} "$PAYLOAD_APP/" \;
           
           # 4. Force-write the Info.plist with custom font registration and native iPad support
           cat <<EOF > "$PAYLOAD_APP/Info.plist"
