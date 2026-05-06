@@ -13,11 +13,15 @@ final class BackgroundTaskManager {
     
     func registerTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: auditTaskId, using: nil) { task in
-            self.handleLibraryAudit(task: task as! BGProcessingTask)
+            Task { @MainActor in
+                self.handleLibraryAudit(task: task as! BGProcessingTask)
+            }
         }
         
         BGTaskScheduler.shared.register(forTaskWithIdentifier: metadataTaskId, using: nil) { task in
-            self.handleMetadataSync(task: task as! BGAppRefreshTask)
+            Task { @MainActor in
+                self.handleMetadataSync(task: task as! BGAppRefreshTask)
+            }
         }
     }
     

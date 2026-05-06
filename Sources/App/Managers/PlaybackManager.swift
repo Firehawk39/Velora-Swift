@@ -172,7 +172,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             self.queue = context
             self.queueIndex = context.firstIndex(where: { $0.id == track.id }) ?? 0
         }
-        loadAndPlay(track: track)
+        Task { @MainActor in
+            await loadAndPlay(track: track)
+        }
     }
     
     func shufflePlay(tracks: [Track]) {
@@ -334,7 +336,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
     
-    private func adjustSampleBuffer(_ sampleBuffer: CMSampleBuffer, offset: Double) -> CMSampleBuffer? {
+    private nonisolated func adjustSampleBuffer(_ sampleBuffer: CMSampleBuffer, offset: Double) -> CMSampleBuffer? {
         guard offset > 0 else { return sampleBuffer }
         
         let offsetTime = CMTime(seconds: offset, preferredTimescale: 1000)
@@ -478,7 +480,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         playerItemObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                self?.nextTrack()
+                await self?.nextTrack()
             }
         }
         
@@ -486,7 +488,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             if item.status == .failed {
                 AppLogger.shared.log("Playback failed for \(track.title)", level: .error)
                 Task { @MainActor in
-                    self?.nextTrack()
+                    await self?.nextTrack()
                 }
             }
         }
@@ -575,20 +577,22 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func nextTrack() {
-        if repeatMode == .one {
-            if let current = currentTrack { loadAndPlay(track: current) }
-            return
-        }
-        
-        if queueIndex + 1 < queue.count {
-            queueIndex += 1
-            loadAndPlay(track: queue[queueIndex])
-        } else if repeatMode == .all && !queue.isEmpty {
-            queueIndex = 0
-            loadAndPlay(track: queue[0])
-        } else {
-            isPlaying = false
-            currentTrack = nil
+        Task { @MainActor in
+            if repeatMode == .one {
+                if let current = currentTrack { await loadAndPlay(track: current) }
+                return
+            }
+            
+            if queueIndex + 1 < queue.count {
+                queueIndex += 1
+                await loadAndPlay(track: queue[queueIndex])
+            } else if repeatMode == .all && !queue.isEmpty {
+                queueIndex = 0
+                await loadAndPlay(track: queue[0])
+            } else {
+                isPlaying = false
+                currentTrack = nil
+            }
         }
     }
     
@@ -597,7 +601,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             seek(to: 0)
         } else if queueIndex > 0 {
             queueIndex -= 1
-            loadAndPlay(track: queue[queueIndex])
+            Task { @MainActor in
+                await loadAndPlay(track: queue[queueIndex])
+            }
         } else {
             seek(to: 0)
         }

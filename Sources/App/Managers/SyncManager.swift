@@ -217,12 +217,12 @@ final class SyncManager: ObservableObject {
         // 4. Cleanup Orphaned Files
         if isAuditing {
             auditStatus = "Cleaning up orphaned assets..."
-            await MusicBrainzManager.shared.verifyCacheIntegrity()
+            MusicBrainzManager.shared.verifyCacheIntegrity()
             await cleanupOrphanedFiles(processed: &processed, totalItems: totalItems)
             
             auditStatus = "Audit Finished."
             AppLogger.shared.log("SyncManager: Deep Audit complete. Processed \(processed) items.", level: .info)
-            await self.playback?.refreshDownloadedTracks()
+            self.playback?.refreshDownloadedTracks()
             
             // Reset checkpoints
             auditCheckpointIndex = 0
@@ -292,7 +292,7 @@ final class SyncManager: ObservableObject {
             
             if !hasValid {
                 metadataStatus = "Syncing Info: \(artist.name)"
-                await FanartManager.shared.downloadBackdropSilently(for: artist.name)
+                FanartManager.shared.downloadBackdropSilently(for: artist.name)
                 _ = await FanartManager.shared.fetchArtistPortrait(for: artist.name)
                 await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
                 await Task.yield()

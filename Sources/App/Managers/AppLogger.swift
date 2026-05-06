@@ -4,13 +4,13 @@ import SwiftUI
 class AppLogger: ObservableObject {
     nonisolated static let shared = AppLogger()
     
-    struct LogEntry: Identifiable {
+    struct LogEntry: Identifiable, Sendable {
         let id = UUID()
         let timestamp = Date()
         let message: String
         let level: LogLevel
         
-        enum LogLevel {
+        enum LogLevel: Sendable {
             case debug, info, warning, error
             
             var color: Color {
