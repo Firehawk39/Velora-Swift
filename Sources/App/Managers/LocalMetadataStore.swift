@@ -32,7 +32,7 @@ class LocalMetadataStore {
         }
         
         if modelURL == nil {
-            let possibleBundleNames = ["AppModule_AppModule", "AppModule", "Velora"]
+            let possibleBundleNames = ["Velora_AppModule", "AppModule_AppModule", "AppModule", "Velora"]
             for name in possibleBundleNames {
                 if let bundleUrl = Bundle.main.url(forResource: name, withExtension: "bundle"),
                    let bundle = Bundle(url: bundleUrl) {
