@@ -250,7 +250,7 @@ struct NowPlayingView: View {
                 if !isIdle {
                     // Controls Section for Portrait
                     VStack(spacing: 24) {
-                        HStack(spacing: 24) {
+                        HStack(spacing: 36) {
                             playbackControls
                         }
                         .padding(.horizontal, 32)
@@ -331,7 +331,7 @@ struct NowPlayingView: View {
                         .frame(maxWidth: .infinity)
                         
                         // 2. Center Section: Playback Controls Pill
-                        HStack(spacing: isLargeCanvas ? 32 : 24) {
+                        HStack(spacing: isLargeCanvas ? 48 : 36) {
                             playbackControls
                         }
                         .padding(.horizontal, 32)
@@ -368,14 +368,14 @@ struct NowPlayingView: View {
     private var playbackControls: some View {
         // Shuffle
         Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
-            Image(systemName: "shuffle").font(.system(size: 14)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
+            Image(systemName: "shuffle").font(.system(size: 18)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
         }
         .accessibilityLabel("Shuffle")
         .hoverEffect()
 
         // Previous
         Button { playback.skipBackward(); resetIdleTimer() } label: {
-            Image(systemName: "backward.fill").font(.system(size: 20)).foregroundColor(.white)
+            Image(systemName: "backward.fill").font(.system(size: 32)).foregroundColor(.white)
         }
         .accessibilityLabel("Previous Track")
         .hoverEffect()
@@ -383,9 +383,9 @@ struct NowPlayingView: View {
         // Play/Pause
         Button { playback.togglePlayPause(); resetIdleTimer() } label: {
             ZStack {
-                Circle().fill(Color.white).frame(width: 48, height: 48)
+                Circle().fill(Color.white).frame(width: 64, height: 64)
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18)).foregroundColor(.black)
+                    .font(.system(size: 28)).foregroundColor(.black)
             }
         }
         .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
@@ -393,7 +393,7 @@ struct NowPlayingView: View {
 
         // Next
         Button { playback.skipForward(); resetIdleTimer() } label: {
-            Image(systemName: "forward.fill").font(.system(size: 20)).foregroundColor(.white)
+            Image(systemName: "forward.fill").font(.system(size: 32)).foregroundColor(.white)
         }
         .accessibilityLabel("Next Track")
         .hoverEffect()
@@ -404,7 +404,7 @@ struct NowPlayingView: View {
             resetIdleTimer() 
         } label: {
             Image(systemName: playback.repeatMode == .one ? "repeat.1" : "repeat")
-                .font(.system(size: 14))
+                .font(.system(size: 18))
                 .foregroundColor(playback.repeatMode == .off ? .white.opacity(0.5) : .accentColor)
         }
         .accessibilityLabel("Repeat Mode")

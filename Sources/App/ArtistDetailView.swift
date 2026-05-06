@@ -150,7 +150,7 @@ struct ArtistDetailView: View {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
                             artistLabel
-                            artistNameText(size: 64)
+                            artistNameText(size: 36)
                         }
                         
                         Spacer()
