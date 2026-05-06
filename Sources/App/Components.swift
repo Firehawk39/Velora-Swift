@@ -153,6 +153,9 @@ private struct TabButton: View {
     var isCompact: Bool { hSizeClass == .compact }
 
     var isActive: Bool { activeTab == id }
+    var isLandscape: Bool {
+        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+    }
 
     var body: some View {
         Button(action: { 
