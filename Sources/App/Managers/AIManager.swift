@@ -7,7 +7,7 @@ import UIKit
 /// Orchestrates library audits and intelligent metadata enrichment using Gemini, Discogs, MusicBrainz, and Fanart.tv.
 @MainActor
 class AIManager: ObservableObject {
-    static let shared = AIManager()
+    nonisolated static let shared = AIManager()
     
     // Published State
     @Published var isProcessing = false

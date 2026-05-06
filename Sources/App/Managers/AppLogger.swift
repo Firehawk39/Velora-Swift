@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 class AppLogger: ObservableObject {
-    static let shared = AppLogger()
+    nonisolated nonisolated static let shared = AppLogger()
     
     struct LogEntry: Identifiable {
         let id = UUID()

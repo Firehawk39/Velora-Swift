@@ -6,7 +6,7 @@ import CoreData
 /// Optimized for iOS 15 compatibility.
 @MainActor
 class LocalMetadataStore {
-    static let shared = LocalMetadataStore()
+    nonisolated static let shared = LocalMetadataStore()
     
     private let persistentContainer: NSPersistentContainer
     
@@ -313,7 +313,7 @@ class LocalMetadataStore {
                 if let persistent = try self.context.fetch(fetchRequest).first {
                     persistent.isDownloaded = isDownloaded
                     persistent.localFilePath = localPath
-                    self.save()
+                    Task { @MainActor in self.save() }
                 }
             } catch {
                 print("Error updating download status: \(error)")

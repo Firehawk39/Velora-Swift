@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 class KeychainHelper {
-    static let shared = KeychainHelper()
+    nonisolated static let shared = KeychainHelper()
     private init() {}
     
     func save(_ data: Data, service: String, account: String) {

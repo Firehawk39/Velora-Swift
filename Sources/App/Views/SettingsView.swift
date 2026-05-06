@@ -57,11 +57,9 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .onAppear {
-            DispatchQueue.global(qos: .background).async {
-                let size = client.getMediaCacheSize()
-                DispatchQueue.main.async {
-                    self.cacheSize = size
-                }
+            Task {
+                let size = await client.getMediaCacheSize()
+                self.cacheSize = size
             }
         }
     }

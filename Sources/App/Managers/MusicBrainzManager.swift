@@ -6,7 +6,7 @@ import os
 /// Now features local caching to prevent redundant network hits.
 @MainActor
 class MusicBrainzManager: ObservableObject {
-    static let shared = MusicBrainzManager()
+    nonisolated static let shared = MusicBrainzManager()
     
     @Published var currentArtistInfo: ArtistInfo? = nil
     @Published var currentAlbumInfo: AlbumInfo? = nil

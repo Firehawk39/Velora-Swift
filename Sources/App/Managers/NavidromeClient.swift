@@ -6,7 +6,7 @@ import Combine
 /// Handles authentication, URL construction, and core data fetching operations.
 @MainActor
 class NavidromeClient: ObservableObject {
-    static let shared = NavidromeClient()
+    nonisolated static let shared = NavidromeClient()
     
     @Published var artists: [Artist] = []
     @Published var albums: [Album] = []
@@ -120,7 +120,7 @@ class NavidromeClient: ObservableObject {
     // MARK: - Cache Size
 
     /// Calculates the total size of cached media and backdrops.
-    func getMediaCacheSize() -> String {
+    nonisolated func getMediaCacheSize() -> String {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let mediaDir = docs.appendingPathComponent("Media")
         let backdropDir = docs.appendingPathComponent("Backdrops")

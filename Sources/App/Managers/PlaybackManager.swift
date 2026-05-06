@@ -80,8 +80,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     // Advanced Audio Buffering (The Last 3%)
     private var hiFiRenderer: AVSampleBufferAudioRenderer?
     private var hiFiSynchronizer: AVSampleBufferRenderSynchronizer?
-    private var assetReader: AVAssetReader?
-    private var assetReaderOutput: AVAssetReaderTrackOutput?
+    private nonisolated(unsafe) var assetReader: AVAssetReader?
+    private nonisolated(unsafe) var assetReaderOutput: AVAssetReaderTrackOutput?
     
     // Gapless Look-ahead
     private var nextAssetReader: AVAssetReader?

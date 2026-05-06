@@ -7,7 +7,7 @@ import Combine
 /// Ensures we don't use corrupted, partial, or empty files.
 @MainActor
 class IntegrityManager: ObservableObject {
-    static let shared = IntegrityManager()
+    nonisolated nonisolated static let shared = IntegrityManager()
     private let fileManager = FileManager.default
     
     @Published var isAuditRunning: Bool = false

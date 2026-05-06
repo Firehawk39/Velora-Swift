@@ -54,7 +54,7 @@ struct SearchView: View {
         // 1. Instant Local Search
         let localTracks = LocalMetadataStore.shared.searchTracks(query: trimmed).map { pt in
             Track(id: pt.id, title: pt.title, album: pt.album, artist: pt.artist, 
-                  duration: pt.duration ?? 0, coverArt: pt.coverArt, 
+                  duration: Int(pt.duration), coverArt: pt.coverArt, 
                   artistId: pt.artistId, albumId: pt.albumId, suffix: pt.suffix)
         }
         

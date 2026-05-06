@@ -4,7 +4,7 @@ import UIKit
 
 @MainActor
 final class BackgroundTaskManager {
-    static let shared = BackgroundTaskManager()
+    nonisolated static let shared = BackgroundTaskManager()
     
     private let auditTaskId = "com.velora.library.audit"
     private let metadataTaskId = "com.velora.library.metadata"

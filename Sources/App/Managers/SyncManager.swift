@@ -4,7 +4,7 @@ import UIKit
 
 @MainActor
 final class SyncManager: ObservableObject {
-    static let shared = SyncManager()
+    nonisolated static let shared = SyncManager()
     
     // Global and Specific Flags
     @Published var isSyncing: Bool = false
@@ -135,7 +135,7 @@ final class SyncManager: ObservableObject {
                     
                     group.addTask {
                         if track.isDownloaded {
-                            let isValid = IntegrityManager.shared.isTrackValid(id: track.id)
+                            let isValid = await IntegrityManager.shared.isTrackValid(id: track.id)
                             if !isValid {
                                 await LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: false, localPath: nil)
                             }

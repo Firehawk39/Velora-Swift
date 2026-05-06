@@ -1,7 +1,7 @@
 import Foundation
 
 class DiscogsManager: ObservableObject {
-    static let shared = DiscogsManager()
+    nonisolated static let shared = DiscogsManager()
     
     private init() {}
     

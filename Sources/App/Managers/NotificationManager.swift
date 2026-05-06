@@ -4,7 +4,7 @@ import UIKit
 
 @MainActor
 final class NotificationManager {
-    static let shared = NotificationManager()
+    nonisolated static let shared = NotificationManager()
     
     private init() {}
     

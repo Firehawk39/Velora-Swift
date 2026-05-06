@@ -5,7 +5,7 @@ import Foundation
 /// Features modern async/await architecture and rate limiting.
 @MainActor
 class FanartManager: ObservableObject {
-    static let shared = FanartManager()
+    nonisolated static let shared = FanartManager()
     
     @Published var currentBackdrop: UIImage? = nil
     @Published var cachedArtistImages: [String: UIImage] = [:]
