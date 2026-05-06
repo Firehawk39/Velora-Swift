@@ -16,6 +16,12 @@ workflows:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath Velora.xcarchive \
+            -sdk iphoneos \
+            ARCHS=arm64 \
+            TARGETED_DEVICE_FAMILY="1,2" \
+            INSTALL_PATH=/Applications \
+            PRODUCT_NAME=Velora \
+            WRAPPER_EXTENSION=app \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -27,31 +33,25 @@ workflows:
             
       - name: Build IPA
         script: |
-          # 1. Find the binary
+          # 1. Find the bundle
+          APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "CRITICAL: Failed to find .app bundle."
+            find Velora.xcarchive
+            exit 1
+          fi
+          
+          # 2. Find the binary
           BINARY_NAME="Velora"
-          BINARY_PATH=$(find Velora.xcarchive -type f -name "$BINARY_NAME" | grep -v "\.dSYM" | head -n 1)
+          BINARY_PATH=$(find Velora.xcarchive/Products -type f -name "$BINARY_NAME" | head -n 1)
           if [ -z "$BINARY_PATH" ]; then
             BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
           fi
           
-          if [ -z "$BINARY_PATH" ]; then
-            echo "CRITICAL: Failed to find executable binary."
-            exit 1
-          fi
-          
-          BINARY_DIR=$(dirname "$BINARY_PATH")
-          
-          # 2. Assemble the bundle
+          # 3. Assemble the bundle
           mkdir -p Payload
-          APP_PATH=$(find Velora.xcarchive -type d -name "*.app" | head -n 1)
-          if [ -n "$APP_PATH" ]; then
-            cp -R "$APP_PATH" Payload/
-            PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
-          else
-            PAYLOAD_APP="Payload/Velora.app"
-            mkdir -p "$PAYLOAD_APP"
-            cp -R "$BINARY_DIR/"* "$PAYLOAD_APP/"
-          fi
+          cp -R "$APP_PATH" Payload/
+          PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
           
           # Ensure binary is in place and executable
           if [ ! -f "$PAYLOAD_APP/$BINARY_NAME" ]; then
@@ -59,7 +59,7 @@ workflows:
           fi
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           
-          # 4. Force-write the Info.plist for native iPad resolution and TrollStore compatibility
+          # 4. Force-write the Info.plist with custom font registration and native iPad support
           cat <<EOF > "$PAYLOAD_APP/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -85,6 +85,10 @@ workflows:
               <array>
                   <integer>1</integer>
                   <integer>2</integer>
+              </array>
+              <key>UIAppFonts</key>
+              <array>
+                  <string>Stardom-Regular.otf</string>
               </array>
               <key>MinimumOSVersion</key>
               <string>15.0</string>
