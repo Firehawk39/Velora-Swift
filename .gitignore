@@ -6,3 +6,5 @@ Packages/
 DerivedData/
 *.swp
 *.lock
+build_logs.txt
+latest_build_logs.json

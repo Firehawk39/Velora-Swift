@@ -1,0 +1,3 @@
+[submodule "tools/codemagic-mcp"]
+	path = tools/codemagic-mcp
+	url = https://github.com/stefanoamorelli/codemagic-mcp
