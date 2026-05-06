@@ -129,7 +129,7 @@ final class SyncManager: ObservableObject {
             let start = processed
             let tracksToProcess = Array(tracks[start...])
             
-            await withTaskGroup(of: Void.self) { group in
+            await withTaskGroup(of: Void.self) { @MainActor group in
                 // Limit concurrency to 4 tasks to avoid disk/CPU thrashing on A9
                 var index = 0
                 for track in tracksToProcess {
@@ -137,9 +137,10 @@ final class SyncManager: ObservableObject {
                     
                     group.addTask {
                         if track.isDownloaded {
-                            let isValid = await IntegrityManager.shared.isTrackValid(id: track.id)
+                            // isTrackValid is nonisolated and not async
+                            let isValid = IntegrityManager.shared.isTrackValid(id: track.id)
                             if !isValid {
-                                LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: false, localPath: nil)
+                                await LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: false, localPath: nil)
                             }
                         }
                     }
@@ -150,10 +151,8 @@ final class SyncManager: ObservableObject {
                     // Throttled UI updates
                     if index % 25 == 0 {
                         let currentProgress = Double(processed) / Double(totalItems)
-                        await MainActor.run { 
-                            self.auditProgress = currentProgress 
-                            self.auditCheckpointIndex = processed
-                        }
+                        self.auditProgress = currentProgress 
+                        self.auditCheckpointIndex = processed
                         await Task.yield()
                     }
                     
@@ -172,11 +171,11 @@ final class SyncManager: ObservableObject {
             for artistName in artistsToProcess {
                 if !isAuditing { throw SyncError.userCancelled }
                 
-                let portraitUrl = await FanartManager.shared.getPortraitUrl(for: artistName)
-                let metadataUrl = await MusicBrainzManager.shared.getMetadataUrl(for: artistName)
+                let portraitUrl = FanartManager.shared.getPortraitUrl(for: artistName)
+                let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artistName)
                 
-                _ = await IntegrityManager.shared.isImageValid(at: portraitUrl)
-                _ = await IntegrityManager.shared.isMetadataValid(at: metadataUrl)
+                _ = IntegrityManager.shared.isImageValid(at: portraitUrl)
+                _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
                 
                 processed += 1
                 if processed % 10 == 0 {
@@ -199,9 +198,9 @@ final class SyncManager: ObservableObject {
             for album in albumsToProcess {
                 if !isAuditing { throw SyncError.userCancelled }
                 
-                let metadataUrl = await MusicBrainzManager.shared.getAlbumMetadataUrl(albumName: album.name, artistName: album.artist)
+                let metadataUrl = MusicBrainzManager.shared.getAlbumMetadataUrl(albumName: album.name, artistName: album.artist)
                 
-                _ = await IntegrityManager.shared.isMetadataValid(at: metadataUrl)
+                _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
                 
                 processed += 1
                 if processed % 10 == 0 {
@@ -283,13 +282,13 @@ final class SyncManager: ObservableObject {
         for artist in artists {
             if !isMetadataSyncing { throw SyncError.userCancelled }
             
-            let metadataUrl = await MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
-            let backdropUrl = await FanartManager.shared.getBackdropUrl(for: artist.name)
-            let portraitUrl = await FanartManager.shared.getPortraitUrl(for: artist.name)
+            let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
+            let backdropUrl = FanartManager.shared.getBackdropUrl(for: artist.name)
+            let portraitUrl = FanartManager.shared.getPortraitUrl(for: artist.name)
 
-            let hasValid = await IntegrityManager.shared.isMetadataValid(at: metadataUrl) &&
-                           await IntegrityManager.shared.isImageValid(at: backdropUrl) &&
-                           await IntegrityManager.shared.isImageValid(at: portraitUrl)
+            let hasValid = IntegrityManager.shared.isMetadataValid(at: metadataUrl) &&
+                           IntegrityManager.shared.isImageValid(at: backdropUrl) &&
+                           IntegrityManager.shared.isImageValid(at: portraitUrl)
             
             if !hasValid {
                 metadataStatus = "Syncing Info: \(artist.name)"
@@ -313,7 +312,7 @@ final class SyncManager: ObservableObject {
         for album in albums {
             if !isMetadataSyncing { throw SyncError.userCancelled }
             let artistName = album.artist ?? "Unknown Artist"
-            if await !MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+            if !MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
                 metadataStatus = "Syncing Info: \(album.name)"
                 await MusicBrainzManager.shared.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
                 await Task.yield()

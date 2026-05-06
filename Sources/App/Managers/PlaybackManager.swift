@@ -184,7 +184,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
     
-    private func loadAndPlay(track: Track, isGapless: Bool = false) {
+    private func loadAndPlay(track: Track, isGapless: Bool = false) async {
         if !isGapless {
             stopHiFiRenderer()
             hiFiTimelineOffset = 0
@@ -208,7 +208,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             cleanupObservers()
             player = nil
             
-            setupHiFiRenderer(for: url, isGapless: isGapless)
+            await setupHiFiRenderer(for: url, isGapless: isGapless)
         } else {
             // Stop Hi-Fi if it was running
             stopHiFiRenderer()
@@ -243,7 +243,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     // MARK: - Advanced Audio Buffering & Hi-Fi Gapless
     
-    private func setupHiFiRenderer(for url: URL, isGapless: Bool) {
+    private func setupHiFiRenderer(for url: URL, isGapless: Bool) async {
         let asset = AVAsset(url: url)
         do {
             if isGapless {
@@ -254,15 +254,17 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                     nextAssetReader = nil
                     nextAssetReaderOutput = nil
                 } else {
-                    assetReader = try AVAssetReader(asset: asset)
-                    guard let audioTrack = asset.tracks(withMediaType: .audio).first else { return }
+                    assetReader = try? AVAssetReader(asset: asset)
+                    let tracks = try? await asset.loadTracks(withMediaType: .audio)
+                    guard let audioTrack = tracks?.first else { return }
                     assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
                     assetReader?.add(assetReaderOutput!)
                     assetReader?.startReading()
                 }
             } else {
-                assetReader = try AVAssetReader(asset: asset)
-                guard let audioTrack = asset.tracks(withMediaType: .audio).first else { 
+                assetReader = try? AVAssetReader(asset: asset)
+                let tracks = try? await asset.loadTracks(withMediaType: .audio)
+                guard let audioTrack = tracks?.first else { 
                     fallbackToStandardPlayer(url: url)
                     return 
                 }
@@ -400,7 +402,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         
         queueIndex += 1
         let nextTrack = queue[queueIndex]
-        loadAndPlay(track: nextTrack, isGapless: true)
+        Task { @MainActor in
+            await loadAndPlay(track: nextTrack, isGapless: true)
+        }
     }
     
     private func prepareNextTrackForGapless() {
@@ -409,21 +413,29 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let url = getEffectiveUrl(for: nextTrack)
         guard url.isFileURL else { return } // Gapless look-ahead only for local files
         
-        let asset = AVAsset(url: url)
-        do {
-            nextAssetReader = try AVAssetReader(asset: asset)
-            guard let audioTrack = asset.tracks(withMediaType: .audio).first else { return }
-            nextAssetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
-                AVFormatIDKey: kAudioFormatLinearPCM,
-                AVLinearPCMIsFloatKey: true,
-                AVLinearPCMBitDepthKey: 32,
-                AVLinearPCMIsNonInterleaved: false,
-                AVLinearPCMIsBigEndianKey: false
-            ])
-            nextAssetReader?.add(nextAssetReaderOutput!)
-            nextAssetReader?.startReading()
-            AppLogger.shared.log("Gapless look-ahead prepared for: \(nextTrack.title)", level: .info)
-        } catch { }
+        Task { @MainActor in
+            let asset = AVAsset(url: url)
+            do {
+                let reader = try AVAssetReader(asset: asset)
+                let tracks = try await asset.loadTracks(withMediaType: .audio)
+                guard let audioTrack = tracks.first else { return }
+                let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVLinearPCMIsFloatKey: true,
+                    AVLinearPCMBitDepthKey: 32,
+                    AVLinearPCMIsNonInterleaved: false,
+                    AVLinearPCMIsBigEndianKey: false
+                ])
+                reader.add(output)
+                reader.startReading()
+                
+                self.nextAssetReader = reader
+                self.nextAssetReaderOutput = output
+                AppLogger.shared.log("Gapless look-ahead prepared for: \(nextTrack.title)", level: .info)
+            } catch { 
+                AppLogger.shared.log("Gapless look-ahead failed: \(error)", level: .error)
+            }
+        }
     }
     
     private func fallbackToStandardPlayer(url: URL) {
@@ -616,7 +628,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             let absoluteTime = time + hiFiTimelineOffset
             let cmTime = CMTime(seconds: absoluteTime, preferredTimescale: 1000)
             
-            recreateAssetReader(at: time)
+            Task { @MainActor in
+                await recreateAssetReader(at: time)
+            }
             sync.setRate(isPlaying ? 1.0 : 0, time: cmTime)
         } else {
             let cmTime = CMTime(seconds: time, preferredTimescale: 1000)
@@ -624,7 +638,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
     
-    private func recreateAssetReader(at time: Double) {
+    private func recreateAssetReader(at time: Double) async {
         guard let track = currentTrack else { return }
         let url = getEffectiveUrl(for: track)
         let asset = AVAsset(url: url)
@@ -636,17 +650,20 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         assetReader?.cancelReading()
         
         do {
-            assetReader = try AVAssetReader(asset: asset)
+            let reader = try AVAssetReader(asset: asset)
             // Define time range starting from the seek point
             let startTime = CMTime(seconds: time, preferredTimescale: 1000)
             let durationLimit = CMTime(seconds: Double(track.duration ?? 3600), preferredTimescale: 1000)
-            assetReader?.timeRange = CMTimeRange(start: startTime, duration: durationLimit)
+            reader.timeRange = CMTimeRange(start: startTime, duration: durationLimit)
             
-            guard let audioTrack = asset.tracks(withMediaType: .audio).first else { return }
-            assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
-            assetReader?.add(assetReaderOutput!)
+            let tracks = try await asset.loadTracks(withMediaType: .audio)
+            guard let audioTrack = tracks.first else { return }
+            let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
+            reader.add(output)
             
-            if assetReader?.startReading() == true {
+            if reader.startReading() {
+                self.assetReader = reader
+                self.assetReaderOutput = output
                 // Pre-fill buffer before returning to ensure smoother resumption
                 requestDataFromAssetReader()
                 AppLogger.shared.log("Hi-Fi Reader recreated for seek at \(time)s", level: .debug)
