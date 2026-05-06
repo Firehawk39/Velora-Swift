@@ -7,9 +7,8 @@ let package = Package(
         .iOS(.v15)
     ],
     products: [
-        .library(
+        .executable(
             name: "Velora",
-            type: .executable,
             targets: ["AppModule"]
         )
     ],
