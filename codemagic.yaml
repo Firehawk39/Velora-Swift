@@ -19,11 +19,11 @@ workflows:
       - name: Build iOS app
         script: |
           # Build as a Mach-O executable for iOS
-          xcodebuild archive \
+          # We use xcodebuild directly on the SPM package
+          xcodebuild build \
             -scheme Velora \
             -configuration Debug \
             -destination "generic/platform=iOS" \
-            -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
             -sdk iphoneos \
             ARCHS=arm64 \
@@ -31,18 +31,16 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            SKIP_INSTALL=NO
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package IPA
         script: |
           set -e
-          # Find the binary. For SPM executables, it's usually in Products/usr/local/bin
-          # But xcodebuild archive might put it elsewhere.
-          BINARY_PATH=$(find Velora.xcarchive -name "Velora" -type f | head -1)
+          # Find the binary
+          BINARY_PATH=$(find derived_data -name "Velora" -type f -perm +111 | head -1)
           if [ -z "$BINARY_PATH" ]; then
-            echo "Error: Could not find Velora binary in archive"
-            find Velora.xcarchive
+            echo "Error: Could not find Velora binary"
+            find derived_data -name "Velora"
             exit 1
           fi
           echo "Found binary at $BINARY_PATH"
@@ -80,7 +78,7 @@ workflows:
                   <integer>2</integer>
               </array>
               <key>MinimumOSVersion</key>
-              <string>15.0</string>
+              <string>17.0</string>
               <key>UIRequiredDeviceCapabilities</key>
               <array>
                   <string>arm64</string>
@@ -104,14 +102,12 @@ workflows:
           </plist>
           EOF
 
-          # Copy Resources if they exist (assets, fonts)
-          # We need to find where the compiled resources are. 
-          # For SPM, they are often in a .bundle inside the build folder.
-          RESOURCE_BUNDLE=$(find derived_data -name "*.bundle" -type d | head -1)
-          if [ -d "$RESOURCE_BUNDLE" ]; then
-            echo "Copying resources from $RESOURCE_BUNDLE"
-            cp -R "$RESOURCE_BUNDLE/"* Payload/Velora.app/
-          fi
+          # Find and copy resources
+          # When SPM builds resources, it creates a bundle like "Velora_AppModule.bundle"
+          find derived_data -name "*.bundle" -type d -exec cp -R {} Payload/Velora.app/ \;
+          
+          # Also copy compiled assets
+          find derived_data -name "Assets.car" -exec cp {} Payload/Velora.app/ \;
 
           # Create the IPA
           zip -r Velora-Jailbreak.ipa Payload
