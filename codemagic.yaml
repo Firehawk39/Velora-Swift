@@ -38,38 +38,28 @@ workflows:
           APP_PATH=$(find Velora.xcarchive -name "*.app" | head -n 1)
           if [ -z "$APP_PATH" ]; then
             echo "CRITICAL: Failed to find .app bundle."
-            find Velora.xcarchive
             exit 1
           fi
           
           # 2. Find the binary
           BINARY_NAME="Velora"
           BINARY_PATH=$(find Velora.xcarchive/Products -type f -name "$BINARY_NAME" | head -n 1)
-          
           if [ -z "$BINARY_PATH" ]; then
             BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
           fi
           
-          if [ -z "$BINARY_PATH" ]; then
-            echo "CRITICAL: Failed to find binary."
-            exit 1
-          fi
-          
-          # 3. Assemble the bundle manually to be 100% sure
-          echo "Assembling bundle from $APP_PATH"
+          # 3. Assemble the bundle
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          
-          # Update internal variable to point to the copy we are patching
           PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
           
+          # Ensure binary is in place and executable
           if [ ! -f "$PAYLOAD_APP/$BINARY_NAME" ]; then
-             echo "Binary $BINARY_NAME not found in bundle, trying to find it in archive..."
              cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
           fi
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           
-          # 4. Force-write the Info.plist to ensure TrollStore compatibility and native iPad resolution
+          # 4. Force-write the Info.plist for native iPad resolution and TrollStore compatibility
           cat <<EOF > "$PAYLOAD_APP/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -110,13 +100,6 @@ workflows:
               <true/>
               <key>UILaunchScreen</key>
               <dict/>
-              <key>UIApplicationSceneManifest</key>
-              <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key>
-                  <true/>
-                  <key>UISceneConfigurations</key>
-                  <dict/>
-              </dict>
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
@@ -137,10 +120,6 @@ workflows:
                   <key>NSAllowsLocalNetworking</key>
                   <true/>
               </dict>
-              <key>CADisableMinimumFrameDuration</key>
-              <true/>
-              <key>CADisableMinimumFrameDurationOnPhone</key>
-              <true/>
               <key>CFBundleIconName</key>
               <string>AppIcon</string>
               <key>CFBundleIcons</key>
@@ -149,10 +128,13 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon</string>
+                          <string>AppIcon20x20</string>
+                          <string>AppIcon29x29</string>
+                          <string>AppIcon40x40</string>
+                          <string>AppIcon60x60</string>
                       </array>
-                      <key>UIPrerenderedIcon</key>
-                      <false/>
+                      <key>CFBundleIconName</key>
+                      <string>AppIcon</string>
                   </dict>
               </dict>
               <key>CFBundleIcons~ipad</key>
@@ -161,14 +143,18 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon</string>
+                          <string>AppIcon20x20</string>
+                          <string>AppIcon29x29</string>
+                          <string>AppIcon40x40</string>
+                          <string>AppIcon76x76</string>
+                          <string>AppIcon83.5x83.5</string>
                       </array>
-                      <key>UIPrerenderedIcon</key>
-                      <false/>
+                      <key>CFBundleIconName</key>
+                      <string>AppIcon</string>
                   </dict>
               </dict>
               <key>NSLocalNetworkUsageDescription</key>
-              <string>Velora needs to connect to your Navidrome server on your local network.</string>
+              <string>Velora needs to connect to your Navidrome server.</string>
               <key>NSBonjourServices</key>
               <array>
                   <string>_http._tcp</string>
@@ -178,16 +164,29 @@ workflows:
           </plist>
           EOF
           
-          echo "Final bundle contents for $(basename "$APP_PATH"):"
-          ls -F "$PAYLOAD_APP"
+          # 5. Robust Icon Mapping (Ensures icons appear on Home Screen)
+          ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
+          if [ -d "$ICON_SOURCE" ]; then
+              echo "Injecting icons from $ICON_SOURCE..."
+              cp "$ICON_SOURCE/AppIcon-20@2x.png" "$PAYLOAD_APP/AppIcon20x20@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-20@3x.png" "$PAYLOAD_APP/AppIcon20x20@3x.png" || true
+              cp "$ICON_SOURCE/AppIcon-29@2x.png" "$PAYLOAD_APP/AppIcon29x29@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-29@3x.png" "$PAYLOAD_APP/AppIcon29x29@3x.png" || true
+              cp "$ICON_SOURCE/AppIcon-40@2x.png" "$PAYLOAD_APP/AppIcon40x40@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-40@3x.png" "$PAYLOAD_APP/AppIcon40x40@3x.png" || true
+              cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
+              cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
+              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
+              cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
+          fi
           
-          echo "Verifying Info.plist keys:"
-          grep -E "UIDeviceFamily|UIRequiresFullScreen|UILaunchScreen" "$PAYLOAD_APP/Info.plist"
-          
-          # 5. Create IPA
+          # 6. Final Permissions and Package
+          chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           zip -r Velora-Jailbreak.ipa Payload
-          
           mkdir -p artifacts
           mv Velora-Jailbreak.ipa artifacts/
+
     artifacts:
       - artifacts/*.ipa
