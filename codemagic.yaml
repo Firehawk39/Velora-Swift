@@ -7,14 +7,6 @@ workflows:
       vars:
         XCODE_PROJECT: "Velora.xcodeproj"
         XCODE_SCHEME: "Velora"
-    
-    # --- OPTIMIZATION (Remove if not wanted) ---
-    caching:
-      cache_paths:
-        - $HOME/Library/Developer/Xcode/DerivedData
-    
-    git_fetch_depth: 1
-    # -------------------------------------------
 
     scripts:
       - name: Build XCArchive (Unsigned)
