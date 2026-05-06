@@ -60,7 +60,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 38 : 42) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0)).weight(.bold))
+                .font(.custom("Stardom-Regular", size: isLandscape ? (ScreenTier.isPhone ? 48 : 58) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 32 : 40) : 48.0)).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -138,7 +138,7 @@ struct AppHeader: View {
             (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.0 : 1.05) : (ScreenTier.isPhone ? 0.9 : 0.95)) // Slightly larger in landscape
+        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.05 : 1.15) : (ScreenTier.isPhone ? 1.0 : 1.05)) // Bold, large scaling
     }
 }
 

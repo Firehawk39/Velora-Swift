@@ -17,7 +17,7 @@ struct ContentView: View {
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
 
-    var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 80 }
+    var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 80 : 100 }
 
     @AppStorage("velora_username") var username: String = ""
 
