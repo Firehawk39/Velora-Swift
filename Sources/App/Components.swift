@@ -60,7 +60,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom-Regular", size: isLandscape ? (ScreenTier.isPhone ? 48 : 58) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 32 : 40) : 48.0)).weight(.bold))
+                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 48 : 54) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0)).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -118,7 +118,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 28 : 32) : (ScreenTier.isPhone ? 24 : 26)))
+                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 32 : 38) : (ScreenTier.isPhone ? 24 : 26)))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -138,7 +138,7 @@ struct AppHeader: View {
             (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.05 : 1.15) : (ScreenTier.isPhone ? 1.0 : 1.05)) // Bold, large scaling
+        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.15 : 1.25) : (ScreenTier.isPhone ? 0.9 : 0.95)) // Significant boost in landscape
     }
 }
 
@@ -162,10 +162,10 @@ private struct TabButton: View {
             } 
         }) {
             Text(label)
-                .font(.system(size: ScreenTier.isPhone ? 15 : 14, weight: isActive ? .bold : .medium))
+                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 18) : (ScreenTier.isPhone ? 15 : 16), weight: isActive ? .bold : .medium))
                 .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, isLandscape ? 20 : 16)
+                .padding(.vertical, isLandscape ? 10 : 8)
                 .background(
                     isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
                 )
