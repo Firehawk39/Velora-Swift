@@ -4,6 +4,7 @@ import os
 
 /// Manages interaction with MusicBrainz API for artist metadata and MBID resolution.
 /// Now features local caching to prevent redundant network hits.
+@MainActor
 class MusicBrainzManager: ObservableObject {
     static let shared = MusicBrainzManager()
     
@@ -33,7 +34,7 @@ class MusicBrainzManager: ObservableObject {
     
     private var nameToMBIDCache: [String: CacheEntry] = [:]
     private var mbidCache: [String: String] = [:]
-    private let mbidCacheLock = OSAllocatedUnfairLock(initialState: [String: String]())
+    private let mbidCacheLock = NSLock()
     
     // Throttling for MusicBrainz (1 request per second limit)
     private actor Throttler {
@@ -61,6 +62,12 @@ class MusicBrainzManager: ObservableObject {
     func getMetadataUrl(for artist: String) -> URL {
         let mbid = nameToMBIDCache[artist]?.mbid ?? "unknown"
         return metadataDir.appendingPathComponent("artist_\(mbid).json")
+    }
+
+    func getAlbumMetadataUrl(albumName: String, artistName: String) -> URL {
+        let key = "\(artistName)_\(albumName)"
+        let hash = key.hash
+        return metadataDir.appendingPathComponent("album_\(hash).json")
     }
     
     private func loadCache() {
@@ -260,7 +267,11 @@ class MusicBrainzManager: ObservableObject {
         let primary = extractPrimaryArtist(artist)
         
         // Check in-memory cache
-        if let cached = mbidCacheLock.withLock({ $0[primary.lowercased()] }) {
+        mbidCacheLock.lock()
+        let cached = mbidCache[primary.lowercased()]
+        mbidCacheLock.unlock()
+        
+        if let cached = cached {
             return cached
         }
 
@@ -268,9 +279,9 @@ class MusicBrainzManager: ObservableObject {
         
         // Use a recursive search strategy
         if let mbid = await performMBIDResolutionAsync(primary: primary, step: .exactMusicBrainz) {
-            mbidCacheLock.withLock { cache in
-                cache[primary.lowercased()] = mbid
-            }
+            mbidCacheLock.lock()
+            mbidCache[primary.lowercased()] = mbid
+            mbidCacheLock.unlock()
             
             // Also update persistent cache
             await MainActor.run {

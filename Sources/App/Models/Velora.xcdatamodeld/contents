@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedCenter="true" userDefinedModelVersionIdentifier="" systemVersion="11E53" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedMetadata="">
+    <entity name="PersistentAlbum" coached="true" syncable="YES">
+        <attribute name="artist" optional="YES" attributeType="String"/>
+        <attribute name="artistId" optional="YES" attributeType="String"/>
+        <attribute name="coverArt" optional="YES" attributeType="String"/>
+        <attribute name="customCoverArt" optional="YES" attributeType="String"/>
+        <attribute name="duration" optional="YES" attributeType="Integer 32" defaultValueString="0"/>
+        <attribute name="firstReleaseDate" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="NO" attributeType="String"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="recordLabel" optional="YES" attributeType="String"/>
+        <attribute name="releaseYear" optional="YES" attributeType="Integer 32" defaultValueString="0"/>
+        <attribute name="songCount" optional="YES" attributeType="Integer 32" defaultValueString="0"/>
+    </entity>
+    <entity name="PersistentArtist" coached="true" syncable="YES">
+        <attribute name="area" optional="YES" attributeType="String"/>
+        <attribute name="biography" optional="YES" attributeType="String"/>
+        <attribute name="coverArt" optional="YES" attributeType="String"/>
+        <attribute name="id" optional="NO" attributeType="String"/>
+        <attribute name="lastAuditDate" optional="YES" attributeType="Date"/>
+        <attribute name="lifeSpan" optional="YES" attributeType="String"/>
+        <attribute name="musicBrainzId" optional="YES" attributeType="String"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="type" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="PersistentTrack" coached="true" syncable="YES">
+        <attribute name="aiDescription" optional="YES" attributeType="String"/>
+        <attribute name="aiGenrePrediction" optional="YES" attributeType="String"/>
+        <attribute name="aiAtmosphere" optional="YES" attributeType="String"/>
+        <attribute name="aiStyle" optional="YES" attributeType="String"/>
+        <attribute name="album" optional="YES" attributeType="String"/>
+        <attribute name="albumId" optional="YES" attributeType="String"/>
+        <attribute name="artist" optional="YES" attributeType="String"/>
+        <attribute name="artistId" optional="YES" attributeType="String"/>
+        <attribute name="coverArt" optional="YES" attributeType="String"/>
+        <attribute name="customCoverArt" optional="YES" attributeType="String"/>
+        <attribute name="duration" optional="YES" attributeType="Integer 32" defaultValueString="0"/>
+        <attribute name="hasCustomBackdrop" optional="NO" attributeType="Boolean" defaultValueString="NO"/>
+        <attribute name="id" optional="NO" attributeType="String"/>
+        <attribute name="isDownloaded" optional="NO" attributeType="Boolean" defaultValueString="NO"/>
+        <attribute name="isStarred" optional="NO" attributeType="Boolean" defaultValueString="NO"/>
+        <attribute name="lastAuditDate" optional="YES" attributeType="Date"/>
+        <attribute name="lastPlayedAt" optional="YES" attributeType="Date"/>
+        <attribute name="localBackdropPath" optional="YES" attributeType="String"/>
+        <attribute name="localFilePath" optional="YES" attributeType="String"/>
+        <attribute name="playCount" optional="NO" attributeType="Integer 32" defaultValueString="0"/>
+        <attribute name="suffix" optional="YES" attributeType="String"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+    </entity>
+    <elements>
+        <element name="PersistentAlbum" positionX="-63" positionY="-18" width="128" height="225"/>
+        <element name="PersistentArtist" positionX="117" positionY="-18" width="128" height="180"/>
+        <element name="PersistentTrack" positionX="297" positionY="-18" width="128" height="420"/>
+    </elements>
+</model>

@@ -2,6 +2,12 @@ import Foundation
 @preconcurrency import AVFoundation
 import MediaPlayer
 import UIKit
+import Combine
+
+enum DownloadEvent {
+    case success(trackId: String)
+    case failure(trackId: String, error: Error?)
+}
 
 struct LyricLine: Hashable {
     let time: Double
@@ -28,6 +34,18 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var isShuffle: Bool = false
     @Published var repeatMode: RepeatMode = .off
     @Published var downloadedTrackIds = Set<String>()
+    let downloadEvents = PassthroughSubject<DownloadEvent, Never>()
+    
+    var downloadStream: AsyncStream<DownloadEvent> {
+        AsyncStream { continuation in
+            let cancellable = downloadEvents.sink { event in
+                continuation.yield(event)
+            }
+            continuation.onTermination = { _ in
+                cancellable.cancel()
+            }
+        }
+    }
     @Published var failedDownloadIds = Set<String>()
     @Published var activeDownloadCount = 0
     @Published var showOfflineOnly: Bool = false
@@ -299,8 +317,14 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             
             // Performance Optimization: Limit samples per block to keep the UI and background threads responsive.
             // AVSampleBufferAudioRenderer will call this block again if it needs more data.
+            // Increased from 32 to 512 to reduce overhead while maintaining responsiveness.
             var samplesEnqueued = 0
-            while renderer.isReadyForMoreMediaData && samplesEnqueued < 15 {
+            while renderer.isReadyForMoreMediaData && samplesEnqueued < 512 {
+                guard self.assetReader?.status == .reading else { 
+                    renderer.stopRequestingMediaData()
+                    break 
+                }
+                
                 if let sampleBuffer = output.copyNextSampleBuffer() {
                     let adjustedBuffer = self.adjustSampleBuffer(sampleBuffer, offset: offset)
                     renderer.enqueue(adjustedBuffer ?? sampleBuffer)
@@ -351,8 +375,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 let currentTime = CMTimeGetSeconds(sync.currentTime())
                 self.progress = max(0, currentTime - self.hiFiTimelineOffset)
                 
-                // Gapless Transition Trigger (The Last 3%)
-                if self.duration > 0 && self.progress >= self.duration - 0.05 {
+                // Gapless Transition Trigger (The Last 0.1s)
+                if self.duration > 0 && self.progress >= self.duration - 0.1 {
                     AppLogger.shared.log("[Gapless] Track end reached. Transitioning...", level: .info)
                     self.executeGaplessTransition()
                     timer.invalidate()
@@ -375,8 +399,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             return
         }
         
-        // Calculate new offset
-        hiFiTimelineOffset += duration
+        // Use the synchronizer's current time to align the new track perfectly
+        let syncTime = hiFiSynchronizer?.currentTime().seconds ?? (hiFiTimelineOffset + duration)
+        hiFiTimelineOffset = syncTime
         
         queueIndex += 1
         let nextTrack = queue[queueIndex]
@@ -589,8 +614,10 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     func seek(to time: Double) {
         if let sync = hiFiSynchronizer {
-            // Strategy: Hi-Fi seeking requires recreating the forward-only AVAssetReader.
-            // We flush the renderer to prevent old samples from playing.
+            // Flush renderer immediately to stop audio output from previous reader
+            hiFiRenderer?.stopRequestingMediaData()
+            hiFiRenderer?.flush()
+            
             let absoluteTime = time + hiFiTimelineOffset
             let cmTime = CMTime(seconds: absoluteTime, preferredTimescale: 1000)
             
@@ -938,9 +965,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 downloadedTrackIds.insert(trackId)
                 LocalMetadataStore.shared.updateDownloadStatus(for: trackId, isDownloaded: true, localPath: dest.path)
                 AppLogger.shared.log("Downloaded: \(trackId) as \(ext)", level: .info)
+                downloadEvents.send(.success(trackId: trackId))
             } catch {
                 AppLogger.shared.log("Failed to move download: \(error)", level: .error)
                 failedDownloadIds.insert(trackId)
+                downloadEvents.send(.failure(trackId: trackId, error: error))
             }
             downloadTasks.removeValue(forKey: taskId)
             activeDownloadCount -= 1
@@ -965,6 +994,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 failedDownloadIds.insert(trackId)
                 downloadTasks.removeValue(forKey: taskId)
                 activeDownloadCount -= 1
+                downloadEvents.send(.failure(trackId: trackId, error: error))
             }
         }
     }

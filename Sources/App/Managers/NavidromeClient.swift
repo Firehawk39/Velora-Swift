@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Combine
 
 /// The primary client for communicating with a Navidrome (Subsonic) server.
 /// Handles authentication, URL construction, and core data fetching operations.

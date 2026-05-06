@@ -13,6 +13,12 @@ class LocalMetadataStore {
         return persistentContainer.viewContext
     }
     
+    private lazy var backgroundContext: NSManagedObjectContext = {
+        let ctx = persistentContainer.newBackgroundContext()
+        ctx.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        return ctx
+    }()
+    
     init() {
         // Find the model in the bundle
         guard let modelURL = Bundle.module.url(forResource: "Velora", withExtension: "momd") else {
@@ -497,11 +503,22 @@ class LocalMetadataStore {
     }
     
     func countTracksWithLowResArt() -> Int {
-        return fetchTracksWithLowResArt().count
+        return fetchTracksWithLowResArtIds().count
     }
     
     func fetchTracksWithLowResArtIds() -> [String] {
-        return fetchTracksWithLowResArt().map { $0.id }
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = PersistentTrack.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "coverArt != nil")
+        fetchRequest.resultType = .dictionaryResultType
+        fetchRequest.propertiesToFetch = ["id", "coverArt"]
+        
+        guard let results = (try? context.fetch(fetchRequest)) as? [[String: String]] else { return [] }
+        
+        // Filter in memory but only on strings, not full objects
+        return results.filter { 
+            let art = $0["coverArt"] ?? ""
+            return !art.contains("size=500") 
+        }.compactMap { $0["id"] }
     }
     
     func fetchArtistsMissingInfo() -> [PersistentArtist] {
@@ -574,16 +591,26 @@ class LocalMetadataStore {
     }
 
     func verifyLocalPersistence() {
-        Task {
-            let tracks = self.fetchDownloadedTracks()
-            for track in tracks {
-                let id = track.id
-                let isValid = IntegrityManager.shared.isTrackValid(id: id)
-                if !isValid {
-                    self.updateDownloadStatus(for: id, isDownloaded: false, localPath: nil)
-                    AppLogger.shared.log("[Persistence] Fixed stale download status for: \(track.title)", level: .info)
+        backgroundContext.perform {
+            let fetchRequest: NSFetchRequest<PersistentTrack> = PersistentTrack.fetchRequest() as! NSFetchRequest<PersistentTrack>
+            fetchRequest.predicate = NSPredicate(format: "isDownloaded == YES")
+            
+            do {
+                let tracks = try self.backgroundContext.fetch(fetchRequest)
+                for track in tracks {
+                    let id = track.id
+                    let isValid = IntegrityManager.shared.isTrackValid(id: id)
+                    if !isValid {
+                        track.isDownloaded = false
+                        track.localFilePath = nil
+                        AppLogger.shared.log("[Persistence] Fixed stale download status for: \(track.title ?? "Unknown")", level: .info)
+                    }
                 }
-                await Task.yield()
+                if self.backgroundContext.hasChanges {
+                    try self.backgroundContext.save()
+                }
+            } catch {
+                AppLogger.shared.log("[Persistence] Failed to verify local persistence: \(error)", level: .error)
             }
         }
     }

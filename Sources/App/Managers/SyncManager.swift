@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 @MainActor
 final class SyncManager: ObservableObject {
@@ -30,7 +31,7 @@ final class SyncManager: ObservableObject {
     @Published var metadataEtaString: String = ""
     
     // Error & Retry Tracking
-    @Published var lastErrorMessage: String? = nil
+    var lastErrorMessage: String? = nil
     private var mediaRetryCounts: [String: Int] = [:]
     private let maxRetries = 2 // 3 attempts total
     
@@ -283,6 +284,17 @@ final class SyncManager: ObservableObject {
         mediaStatus = "Analyzing library..."
         lastErrorMessage = nil
         
+        // Background Task Management
+        let bgTask = UIApplication.shared.beginBackgroundTask(withName: "VeloraMediaSync") {
+            Task { @MainActor in
+                self.stopMediaSync()
+            }
+        }
+        
+        defer {
+            UIApplication.shared.endBackgroundTask(bgTask)
+        }
+        
         do {
             // Ensure library is synced
             if client.allSongs.isEmpty {
@@ -309,6 +321,9 @@ final class SyncManager: ObservableObject {
                 return true
             }
             
+            // Subscribe to events before starting downloads
+            let stream = playback.downloadStream
+            
             // Initial Queue
             for track in tracksToDownload {
                 if !isMediaSyncing { return false }
@@ -317,53 +332,61 @@ final class SyncManager: ObservableObject {
             }
             
             let startTime = Date()
-            var lastCompletedCount = -1
-            var tracksPendingRetry = Set<String>()
+            var completedCount = 0
             var failedCount = 0
-            var completed = 0
-            var downloadedCount = 0
+            var finishedIds = Set<String>()
             
-            while isMediaSyncing {
-                downloadedCount = tracksToDownload.filter { playback.isDownloaded(id: $0.id) }.count
-                let currentlyFailed = playback.tracks.filter { playback.failedDownloadIds.contains($0.id) }
+            mediaStatus = "Downloading: 0/\(totalToDownload)"
+            
+            for await event in stream {
+                if !isMediaSyncing { break }
                 
-                // Retry Logic
-                for failedTrack in currentlyFailed {
-                    let retryCount = mediaRetryCounts[failedTrack.id, default: 0]
+                switch event {
+                case .success(let trackId):
+                    if !finishedIds.contains(trackId) {
+                        completedCount += 1
+                        finishedIds.insert(trackId)
+                    }
+                case .failure(let trackId, let error):
+                    let retryCount = mediaRetryCounts[trackId, default: 0]
                     if retryCount < maxRetries {
-                        AppLogger.shared.log("SyncManager: Retrying download for \(failedTrack.title) (\(retryCount + 1)/\(maxRetries))", level: .warning)
-                        mediaRetryCounts[failedTrack.id] = retryCount + 1
-                        playback.failedDownloadIds.remove(failedTrack.id) // Clear failure from manager
-                        playback.downloadTrack(failedTrack)
+                        AppLogger.shared.log("SyncManager: Retrying \(trackId) (\(retryCount + 1)/\(maxRetries))", level: .warning)
+                        mediaRetryCounts[trackId] = retryCount + 1
+                        playback.failedDownloadIds.remove(trackId)
+                        if let track = tracksToDownload.first(where: { $0.id == trackId }) {
+                            playback.downloadTrack(track)
+                        }
+                    } else if !finishedIds.contains(trackId) {
+                        failedCount += 1
+                        finishedIds.insert(trackId)
+                        AppLogger.shared.log("SyncManager: Final failure for \(trackId): \(error?.localizedDescription ?? "Unknown")", level: .error)
+                    }
+                }
+                
+                let totalFinished = completedCount + failedCount
+                mediaProgress = Double(alreadyDownloaded + totalFinished) / totalTracks
+                mediaStatus = "Downloading: \(completedCount)/\(totalToDownload) (\(failedCount) errors)"
+                
+                // Smoothed ETA Calculation
+                let elapsed = Date().timeIntervalSince(startTime)
+                if totalFinished > 0 {
+                    let rate = Double(totalFinished) / elapsed
+                    let remainingSeconds = Double(totalToDownload - totalFinished) / rate
+                    if remainingSeconds > 60 {
+                        mediaEtaString = "\(Int(remainingSeconds / 60))m remaining"
                     } else {
-                        tracksPendingRetry.insert(failedTrack.id)
+                        mediaEtaString = "\(Int(remainingSeconds))s remaining"
                     }
                 }
                 
-                failedCount = tracksPendingRetry.count
-                completed = downloadedCount + failedCount
-                
-                if completed != lastCompletedCount {
-                    lastCompletedCount = completed
-                    mediaProgress = Double(alreadyDownloaded + completed) / totalTracks
-                    mediaStatus = "Downloading: \(downloadedCount)/\(totalToDownload) (\(failedCount) errors)"
-                    
-                    // ETA Calculation (Smoothed)
-                    if completed > 0 {
-                        let elapsed = Date().timeIntervalSince(startTime)
-                        let rate = Double(completed) / elapsed
-                        let remaining = Double(totalToDownload - completed) / rate
-                        mediaEtaString = remaining > 60 ? "\(Int(remaining/60))m remaining" : "\(Int(remaining))s remaining"
-                    }
+                if totalFinished >= totalToDownload {
+                    break
                 }
-                
-                if completed >= totalToDownload { break }
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // Poll every 2s to allow batching
             }
             
             isMediaSyncing = false
             if !isMetadataSyncing && !isAuditing { isSyncing = false }
-            mediaStatus = completed == downloadedCount ? "Media Sync Complete" : "Sync Finished (\(failedCount) failed)"
+            mediaStatus = completedCount == totalToDownload ? "Media Sync Complete" : "Sync Finished (\(failedCount) failed)"
             lastMediaSyncDate = Date().timeIntervalSince1970
             
             if failedCount == 0 {
