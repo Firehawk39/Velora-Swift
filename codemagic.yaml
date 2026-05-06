@@ -1,37 +1,33 @@
 workflows:
-  ios-jailbreak:
-    name: Velora Jailbreak IPA (Unsigned)
-    instance_type: mac_mini_m1
-    max_build_duration: 30
-    cache:
-      cache_paths:
-        - ~/.swiftpm
+  velora-native-jailbreak:
+    name: Velora Native (Jailbreak Optimized)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
     environment:
+      ios_codesigning:
+        provisioning_profiles: []
+        certificates: []
       vars:
+        XCODE_PROJECT: "Velora.xcodeproj"
         XCODE_SCHEME: "Velora"
-      xcode: latest
     scripts:
-      - name: Build Unsigned App
+      - name: Build XCArchive (Unsigned)
         script: |
-          xcodebuild archive \
-            -scheme Velora \
+          xcodebuild build \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath Velora.xcarchive \
-            -derivedDataPath derived_data \
-            -sdk iphoneos \
-            ARCHS=arm64 \
-            TARGETED_DEVICE_FAMILY="1,2" \
-            INSTALL_PATH=/Applications \
-            PRODUCT_NAME=Velora \
-            WRAPPER_EXTENSION=app \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            AD_HOC_CODE_SIGNING_ALLOWED=YES \
-            SKIP_INSTALL=NO
-
+            PROVISIONING_PROFILE="" \
+            ENTITLEMENTS_ALLOWED=NO \
+            ARCHIVE=YES \
+            generate_infoplist_file=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO
+            
       - name: Build IPA
         script: |
           # 1. Find the app bundle
@@ -100,13 +96,6 @@ workflows:
               <true/>
               <key>UILaunchScreen</key>
               <dict/>
-              <key>UIApplicationSceneManifest</key>
-              <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key>
-                  <true/>
-                  <key>UISceneConfigurations</key>
-                  <dict/>
-              </dict>
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
@@ -133,13 +122,11 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon-20</string>
-                          <string>AppIcon-29</string>
-                          <string>AppIcon-40</string>
-                          <string>AppIcon</string>
+                          <string>AppIcon20x20</string>
+                          <string>AppIcon29x29</string>
+                          <string>AppIcon40x40</string>
+                          <string>AppIcon60x60</string>
                       </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
                   </dict>
               </dict>
               <key>CFBundleIcons~ipad</key>
@@ -148,14 +135,12 @@ workflows:
                   <dict>
                       <key>CFBundleIconFiles</key>
                       <array>
-                          <string>AppIcon-20</string>
-                          <string>AppIcon-29</string>
-                          <string>AppIcon-40</string>
-                          <string>AppIcon-76</string>
-                          <string>AppIcon-83.5</string>
+                          <string>AppIcon20x20</string>
+                          <string>AppIcon29x29</string>
+                          <string>AppIcon40x40</string>
+                          <string>AppIcon76x76</string>
+                          <string>AppIcon83.5x83.5</string>
                       </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
                   </dict>
               </dict>
               <key>NSLocalNetworkUsageDescription</key>
@@ -172,37 +157,44 @@ workflows:
           # 5. Robust Icon Mapping (Ensures icons appear on Home Screen)
           ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
           if [ -d "$ICON_SOURCE" ]; then
-              echo "Injecting icons from $ICON_SOURCE..."
-              # Rename them during copy to standard flat names that match the plist
-              cp "$ICON_SOURCE/AppIcon-20@2x.png" "$PAYLOAD_APP/AppIcon-20@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-20@3x.png" "$PAYLOAD_APP/AppIcon-20@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-20@2x~ipad.png" "$PAYLOAD_APP/AppIcon-20@2x~ipad.png" || true
-              cp "$ICON_SOURCE/AppIcon-20~ipad.png" "$PAYLOAD_APP/AppIcon-20~ipad.png" || true
+              echo "Injecting icons from $ICON_SOURCE for iPhone SE, iPad Pro, and CarPlay..."
+              # iPhone SE / CarPlay / Standard iPhone
+              cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
               
-              cp "$ICON_SOURCE/AppIcon-29.png" "$PAYLOAD_APP/AppIcon-29.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@2x.png" "$PAYLOAD_APP/AppIcon-29@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29@3x.png" "$PAYLOAD_APP/AppIcon-29@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-29~ipad.png" "$PAYLOAD_APP/AppIcon-29~ipad.png" || true
+              # iPad Pro (83.5)
+              cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
               
-              cp "$ICON_SOURCE/AppIcon-40@2x.png" "$PAYLOAD_APP/AppIcon-40@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40@3x.png" "$PAYLOAD_APP/AppIcon-40@3x.png" || true
-              cp "$ICON_SOURCE/AppIcon-40~ipad.png" "$PAYLOAD_APP/AppIcon-40~ipad.png" || true
+              # Standard iPad (76)
+              cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
+              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
               
-              cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon@3x.png" || true
+              # CarPlay Specific (if explicitly named)
+              cp "$ICON_SOURCE/AppIcon-60@2x~car.png" "$PAYLOAD_APP/AppIcon60x60@2x~car.png" || true
+              cp "$ICON_SOURCE/AppIcon-60@3x~car.png" "$PAYLOAD_APP/AppIcon60x60@3x~car.png" || true
               
-              cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon-76.png" || true
-              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon-76@2x.png" || true
-              cp "$ICON_SOURCE/AppIcon-83.5@2x.png" "$PAYLOAD_APP/AppIcon-83.5@2x.png" || true
+              # Small Icons (Notifications, Settings)
+              cp "$ICON_SOURCE/AppIcon-20@2x.png" "$PAYLOAD_APP/AppIcon20x20@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-20@3x.png" "$PAYLOAD_APP/AppIcon20x20@3x.png" || true
+              cp "$ICON_SOURCE/AppIcon-20~ipad.png" "$PAYLOAD_APP/AppIcon20x20~ipad.png" || true
               
+              cp "$ICON_SOURCE/AppIcon-29.png" "$PAYLOAD_APP/AppIcon29x29.png" || true
+              cp "$ICON_SOURCE/AppIcon-29@2x.png" "$PAYLOAD_APP/AppIcon29x29@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-29@3x.png" "$PAYLOAD_APP/AppIcon29x29@3x.png" || true
+              
+              cp "$ICON_SOURCE/AppIcon-40@2x.png" "$PAYLOAD_APP/AppIcon40x40@2x.png" || true
+              cp "$ICON_SOURCE/AppIcon-40@3x.png" "$PAYLOAD_APP/AppIcon40x40@3x.png" || true
+              cp "$ICON_SOURCE/AppIcon-40~ipad.png" "$PAYLOAD_APP/AppIcon40x40~ipad.png" || true
+
+              # Copy all original files as fallback
               cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
           fi
           
           # 6. Final Permissions and Package
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           zip -r Velora-Jailbreak.ipa Payload
-          
           mkdir -p artifacts
           mv Velora-Jailbreak.ipa artifacts/
+
     artifacts:
       - artifacts/*.ipa
