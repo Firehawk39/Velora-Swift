@@ -9,12 +9,11 @@ workflows:
         XCODE_SCHEME: "Velora"
     
     # --- OPTIMIZATION (Remove if not wanted) ---
-    cacheing:
+    caching:
       cache_paths:
         - $HOME/Library/Developer/Xcode/DerivedData
     
-    fetching:
-      depth: 1
+    git_fetch_depth: 1
     # -------------------------------------------
 
     scripts:
