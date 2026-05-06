@@ -18,168 +18,66 @@ workflows:
 
       - name: Build iOS app
         script: |
-          # Build as a Mach-O executable for iOS
-          # We use xcodebuild directly on the SPM package
-          xcodebuild build \
+          # Build a complete iOS app using xcodebuild archive on the Swift Package
+          xcodebuild archive \
             -scheme Velora \
             -configuration Debug \
             -destination "generic/platform=iOS" \
+            -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
             -sdk iphoneos \
             ARCHS=arm64 \
+            TARGETED_DEVICE_FAMILY="1,2" \
+            IPHONEOS_DEPLOYMENT_TARGET=17.0 \
+            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon \
+            ENTITLEMENTS_ALLOWED=NO \
             AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Package IPA
         script: |
           set -e
-          # Find the binary
-          BINARY_PATH=$(find derived_data -name "Velora" -type f -perm +111 | head -1)
-          if [ -z "$BINARY_PATH" ]; then
-            echo "Error: Could not find Velora binary"
-            find derived_data -name "Velora"
+          
+          # Find the built .app from the xcarchive
+          APP_PATH=$(find Velora.xcarchive -name "*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: Could not find .app in xcarchive"
             exit 1
           fi
-          echo "Found binary at $BINARY_PATH"
-
-          # Create the App Bundle structure
-          mkdir -p Payload/Velora.app
-          cp "$BINARY_PATH" Payload/Velora.app/Velora
-          chmod +x Payload/Velora.app/Velora
-
-          # Create Info.plist
-          cat <<EOF > Payload/Velora.app/Info.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>Velora</string>
-              <key>CFBundleIdentifier</key>
-              <string>$BUNDLE_ID</string>
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
-              <key>CFBundleName</key>
-              <string>$APP_NAME</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>LSRequiresIPhoneOS</key>
-              <true/>
-              <key>UIDeviceFamily</key>
-              <array>
-                  <integer>1</integer>
-                  <integer>2</integer>
-              </array>
-              <key>MinimumOSVersion</key>
-              <string>17.0</string>
-              <key>UIRequiredDeviceCapabilities</key>
-              <array>
-                  <string>arm64</string>
-              </array>
-              <key>UIBackgroundModes</key>
-              <array>
-                  <string>audio</string>
-                  <string>fetch</string>
-                  <string>processing</string>
-              </array>
-              <key>BGTaskSchedulerPermittedIdentifiers</key>
-              <array>
-                  <string>com.velora.library.audit</string>
-                  <string>com.velora.library.metadata</string>
-              </array>
-              <key>UIRequiresFullScreen</key>
-              <true/>
-              <key>UILaunchScreen</key>
-              <dict/>
-              <key>UIApplicationSceneManifest</key>
-              <dict>
-                  <key>UIApplicationSupportsMultipleScenes</key>
-                  <true/>
-                  <key>UISceneConfigurations</key>
-                  <dict/>
-              </dict>
-              <key>CFBundleIconName</key>
-              <string>AppIcon</string>
-              <key>CFBundleIcons</key>
-              <dict>
-                  <key>CFBundlePrimaryIcon</key>
-                  <dict>
-                      <key>CFBundleIconFiles</key>
-                      <array>
-                          <string>AppIcon20x20</string>
-                          <string>AppIcon29x29</string>
-                          <string>AppIcon40x40</string>
-                          <string>AppIcon60x60</string>
-                      </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
-                  </dict>
-              </dict>
-              <key>CFBundleIcons~ipad</key>
-              <dict>
-                  <key>CFBundlePrimaryIcon</key>
-                  <dict>
-                      <key>CFBundleIconFiles</key>
-                      <array>
-                          <string>AppIcon20x20</string>
-                          <string>AppIcon29x29</string>
-                          <string>AppIcon40x40</string>
-                          <string>AppIcon76x76</string>
-                          <string>AppIcon83.5x83.5</string>
-                      </array>
-                      <key>CFBundleIconName</key>
-                      <string>AppIcon</string>
-                  </dict>
-              </dict>
-              <key>NSAppTransportSecurity</key>
-              <dict>
-                  <key>NSAllowsArbitraryLoads</key>
-                  <true/>
-              </dict>
-              <key>CADisableMinimumFrameDurationOnPhone</key>
-              <true/>
-              <key>CADisableMinimumFrameDuration</key>
-              <true/>
-              <key>UIStatusBarHidden</key>
-              <true/>
-              <key>UIViewControllerBasedStatusBarAppearance</key>
-              <false/>
-          </dict>
-          </plist>
-          EOF
           
-          # Robust Icon Preparation
-          ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
-          if [ -d "$ICON_SOURCE" ]; then
-              echo "Preparing icons from $ICON_SOURCE..."
-              cp "$ICON_SOURCE/AppIcon-20@2x.png" Payload/Velora.app/AppIcon20x20@2x.png || true
-              cp "$ICON_SOURCE/AppIcon-20@3x.png" Payload/Velora.app/AppIcon20x20@3x.png || true
-              cp "$ICON_SOURCE/AppIcon-29@2x.png" Payload/Velora.app/AppIcon29x29@2x.png || true
-              cp "$ICON_SOURCE/AppIcon-29@3x.png" Payload/Velora.app/AppIcon29x29@3x.png || true
-              cp "$ICON_SOURCE/AppIcon-40@2x.png" Payload/Velora.app/AppIcon40x40@2x.png || true
-              cp "$ICON_SOURCE/AppIcon-40@3x.png" Payload/Velora.app/AppIcon40x40@3x.png || true
-              cp "$ICON_SOURCE/AppIcon@2x.png" Payload/Velora.app/AppIcon60x60@2x.png || true
-              cp "$ICON_SOURCE/AppIcon@3x.png" Payload/Velora.app/AppIcon60x60@3x.png || true
-              cp "$ICON_SOURCE/AppIcon~ipad.png" Payload/Velora.app/AppIcon76x76.png || true
-              cp "$ICON_SOURCE/AppIcon@2x~ipad.png" Payload/Velora.app/AppIcon76x76@2x.png || true
-              cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" Payload/Velora.app/AppIcon83.5x83.5@2x.png || true
-              cp "$ICON_SOURCE"/*.png Payload/Velora.app/ || true
-          fi
-
-          # Find and copy resources
-          # When SPM builds resources, it creates a bundle like "Velora_AppModule.bundle"
-          find derived_data -name "*.bundle" -type d -exec cp -R {} Payload/Velora.app/ \;
+          echo "Found app at $APP_PATH"
           
-          # Also copy compiled assets
-          find derived_data -name "Assets.car" -exec cp {} Payload/Velora.app/ \;
+          # Extract the binary name from Info.plist
+          BINARY_NAME=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP_PATH/Info.plist" || echo "Velora")
+          BINARY_PATH="$APP_PATH/$BINARY_NAME"
+          
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          
+          PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
+          
+          # Inject any missing essential Info.plist keys using PlistBuddy so we don't break the compiled bundle
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes: string audio" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes: string fetch" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes: string processing" "$PAYLOAD_APP/Info.plist" || true
+          
+          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers array" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers: string com.velora.library.audit" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers: string com.velora.library.metadata" "$PAYLOAD_APP/Info.plist" || true
+          
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PAYLOAD_APP/Info.plist" || true
+          
+          /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 'Velora needs to connect to your Navidrome server on your local network.'" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices array" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices: string _http._tcp" "$PAYLOAD_APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices: string _subsonic._tcp" "$PAYLOAD_APP/Info.plist" || true
+          
+          # We don't manually copy raw PNG icons anymore; xcodebuild archive handles Assets.car perfectly!
 
           # Create the IPA
           zip -r Velora-Jailbreak.ipa Payload
