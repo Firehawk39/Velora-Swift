@@ -57,7 +57,7 @@ class LocalMetadataStore {
             } else {
                 // Safely set merge policy on Main Actor
                 Task { @MainActor in
-                    LocalMetadataStore.shared.setupContext()
+                    self.setupContext()
                 }
             }
         }

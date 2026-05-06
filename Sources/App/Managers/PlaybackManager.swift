@@ -257,16 +257,16 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                     nextAssetReaderOutput = nil
                 } else {
                     assetReader = try? AVAssetReader(asset: asset)
-                    let tracks = try? await asset.loadTracks(withMediaType: .audio)
-                    guard let audioTrack = tracks?.first else { return }
+                    let tracks = asset.tracks(withMediaType: .audio)
+                    guard let audioTrack = tracks.first else { return }
                     assetReaderOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
                     assetReader?.add(assetReaderOutput!)
                     assetReader?.startReading()
                 }
             } else {
                 assetReader = try? AVAssetReader(asset: asset)
-                let tracks = try? await asset.loadTracks(withMediaType: .audio)
-                guard let audioTrack = tracks?.first else { 
+                let tracks = asset.tracks(withMediaType: .audio)
+                guard let audioTrack = tracks.first else { 
                     fallbackToStandardPlayer(url: url)
                     return 
                 }
@@ -419,7 +419,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             let asset = AVAsset(url: url)
             do {
                 let reader = try AVAssetReader(asset: asset)
-                let tracks = try await asset.loadTracks(withMediaType: .audio)
+                let tracks = asset.tracks(withMediaType: .audio)
                 guard let audioTrack = tracks.first else { return }
                 let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
                     AVFormatIDKey: kAudioFormatLinearPCM,
@@ -662,7 +662,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             let durationLimit = CMTime(seconds: Double(track.duration ?? 3600), preferredTimescale: 1000)
             reader.timeRange = CMTimeRange(start: startTime, duration: durationLimit)
             
-            let tracks = try await asset.loadTracks(withMediaType: .audio)
+            let tracks = asset.tracks(withMediaType: .audio)
             guard let audioTrack = tracks.first else { return }
             let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: hifiOutputSettings)
             reader.add(output)
