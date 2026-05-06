@@ -265,9 +265,7 @@ class MusicBrainzManager: ObservableObject {
         let primary = extractPrimaryArtist(artist)
         
         // Check in-memory cache
-        mbidCacheLock.lock()
-        let cached = mbidCache[primary.lowercased()]
-        mbidCacheLock.unlock()
+        let cached = mbidCacheLock.withLock { mbidCache[primary.lowercased()] }
         
         if let cached = cached {
             return cached
@@ -277,9 +275,9 @@ class MusicBrainzManager: ObservableObject {
         
         // Use a recursive search strategy
         if let mbid = await performMBIDResolutionAsync(primary: primary, step: .exactMusicBrainz) {
-            mbidCacheLock.lock()
-            mbidCache[primary.lowercased()] = mbid
-            mbidCacheLock.unlock()
+            mbidCacheLock.withLock {
+                mbidCache[primary.lowercased()] = mbid
+            }
             
             // Also update persistent cache
             await MainActor.run {

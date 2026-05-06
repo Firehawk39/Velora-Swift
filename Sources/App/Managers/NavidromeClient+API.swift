@@ -267,7 +267,7 @@ extension NavidromeClient {
                   duration: Int(p.duration), coverArt: p.coverArt ?? "",
                   artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
             t.isStarred = p.isStarred
-            t.playCount = p.playCount
+            t.playCount = Int(p.playCount)
             return t
         }
         
@@ -318,7 +318,7 @@ extension NavidromeClient {
                       duration: Int(p.duration), coverArt: p.coverArt ?? "",
                       artistId: p.artistId, albumId: p.albumId, suffix: p.suffix)
                 t.isStarred = p.isStarred
-                t.playCount = p.playCount
+                t.playCount = Int(p.playCount)
                 return t
             }
             let localArtists = await LocalMetadataStore.shared.searchArtists(query: query).map { p in
