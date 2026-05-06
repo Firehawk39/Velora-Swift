@@ -12,7 +12,6 @@ workflows:
       - name: Build XCArchive (Unsigned)
         script: |
           xcodebuild build \
-            -project "$XCODE_PROJECT" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -destination "generic/platform=iOS" \
