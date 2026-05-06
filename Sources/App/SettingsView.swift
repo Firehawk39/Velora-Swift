@@ -15,7 +15,7 @@ struct SettingsView: View {
     @State private var serverAddress: String = UserDefaults.standard.string(forKey: "velora_server_url") ?? "http://"
     @State private var username: String     = UserDefaults.standard.string(forKey: "velora_username") ?? ""
     @State private var password: String     = ""
-    @State private var displayName: String  = UserDefaults.standard.string(forKey: "velora_display_name") ?? ""
+    @State private var password: String     = ""
     @State private var showPassword: Bool   = false
     @State private var status: ConnStatus  = .idle
     @State private var cacheCleared: Bool   = false
@@ -49,7 +49,7 @@ struct SettingsView: View {
                 switch step {
                 case .server: serverStep
                 case .login:  loginStep
-                case .client: clientStep
+                case .client: EmptyView()
                 }
 
                 Spacer()
@@ -194,43 +194,6 @@ struct SettingsView: View {
         .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .trailing)).combined(with: .opacity))
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // STEP 3 — Personalization
-    // ─────────────────────────────────────────────────────────────
-    private var clientStep: some View {
-        VStack(spacing: 0) {
-            FloatingLabelField(
-                label: "Greeting Name",
-                placeholder: "e.g. Tony Stark",
-                text: $displayName,
-                isDark: isDark,
-                borderCol: borderCol,
-                labelCol: labelCol
-            )
-
-            Text("This changes how the system greets you on the home screen.")
-                .font(.system(size: 12))
-                .foregroundColor(Color(hex: "#6b7280"))
-                .multilineTextAlignment(.center)
-                .padding(.top, 12)
-
-            Button(action: {
-                UserDefaults.standard.set(displayName, forKey: "velora_display_name")
-                withAnimation { step = .server }
-            }) {
-                Text("Done")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(accentBg)
-                    .foregroundColor(accentFg)
-                    .cornerRadius(100)
-            }
-            .padding(.top, 28)
-        }
-        .padding(.horizontal, 24)
-        .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .bottom)).combined(with: .opacity))
-    }
 
     // ─────────────────────────────────────────────────────────────
     // Logic
@@ -347,7 +310,6 @@ struct AppSettingsView: View {
     @EnvironmentObject var sync: SyncManager
     @AppStorage("velora_server_url") private var serverUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""
-    @AppStorage("velora_display_name") private var displayName: String = ""
     @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
@@ -393,14 +355,6 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
-                            FloatingLabelField(
-                                label: "Display Name",
-                                placeholder: "Enter your name",
-                                text: $displayName,
-                                isDark: isDark,
-                                borderCol: borderCol,
-                                labelCol: labelCol
-                            )
                             
                             Toggle(isOn: Binding(
                                 get: { isOnlineMode },
@@ -693,7 +647,7 @@ struct AppSettingsView: View {
     private func reconnectWithCurrentMode() {
         let localUrl = serverUrl.isEmpty ? "http://192.168.1.13:4533" : serverUrl
         let finalUrl = isOnlineMode ? "https://sopranosnavi.share.zrok.io" : localUrl
-        let finalUser = username.isEmpty ? "tony" : username
+        let finalUser = username.isEmpty ? "Harsh" : username
         let finalPass = "u4vTyG7BcBxR-9-"
         
         client.configure(url: finalUrl, user: finalUser, pass: finalPass)

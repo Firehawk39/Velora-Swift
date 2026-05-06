@@ -205,7 +205,7 @@ struct ContentView: View {
         let localUrl = savedUrl.isEmpty ? "http://192.168.1.13:4533" : savedUrl
         let finalUrl = isOnline ? "https://sopranosnavi.share.zrok.io" : localUrl
         
-        let finalUser = savedUser.isEmpty ? "tony" : savedUser
+        let finalUser = savedUser.isEmpty ? "Harsh" : savedUser
         let finalPass = "u4vTyG7BcBxR-9-"
         
         client.configure(url: finalUrl, user: finalUser, pass: finalPass)
