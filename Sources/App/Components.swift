@@ -13,7 +13,7 @@ public enum ScreenTier {
         return .huge // iPad Pro 12.9"
     }
     public static var isSE: Bool { current == .tiny }
-    public static var isPhone: Bool { UIScreen.main.bounds.width < 768 }
+    public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
     public static var isHuge: Bool { current == .huge }
 }
 
@@ -25,8 +25,11 @@ struct AppHeader: View {
     let toggleDark: () -> Void
     var onAction: () -> Void
 
-    @Environment(\.horizontalSizeClass) var hSizeClass
+    @Environment(\.verticalSizeClass) var vSizeClass
     var isCompact: Bool { hSizeClass == .compact }
+    var isLandscape: Bool {
+        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+    }
 
     var isPlayingTab: Bool { activeTab == "now-playing" }
     var headerFG: Color { isPlayingTab ? .white : (isDarkMode ? .white : .black) }
@@ -56,7 +59,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0).weight(.bold))
+                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 38 : 42) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0)).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -82,23 +85,23 @@ struct AppHeader: View {
             ZStack {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: 72, height: 36)
+                    .frame(width: isLandscape ? 84 : 72, height: isLandscape ? 40 : 36)
                 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 28, height: 28)
-                    .offset(x: isDarkMode ? 18 : -18)
+                    .frame(width: isLandscape ? 32 : 28, height: isLandscape ? 32 : 28)
+                    .offset(x: isDarkMode ? (isLandscape ? 22 : 18) : (isLandscape ? -22 : -18))
                 
                 HStack {
                     Image(systemName: "sun.max.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: isLandscape ? 13 : 11, weight: .bold))
                         .foregroundColor(isDarkMode ? .gray : .yellow)
                     Spacer()
                     Image(systemName: "moon.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: isLandscape ? 13 : 11, weight: .bold))
                         .foregroundColor(isDarkMode ? .blue : .gray)
                 }
-                .frame(width: 48)
+                .frame(width: isLandscape ? 56 : 48)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
@@ -114,7 +117,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: ScreenTier.isPhone ? 24 : 26))
+                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 28 : 32) : (ScreenTier.isPhone ? 24 : 26)))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -128,13 +131,13 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(ScreenTier.isPhone ? 6 : 8)
+        .padding(isLandscape ? (ScreenTier.isPhone ? 8 : 10) : (ScreenTier.isPhone ? 6 : 8))
         .background(
             isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
             (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(ScreenTier.isPhone ? 0.9 : 0.95) // Slightly smaller on everything
+        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.0 : 1.05) : (ScreenTier.isPhone ? 0.9 : 0.95)) // Slightly larger in landscape
     }
 }
 

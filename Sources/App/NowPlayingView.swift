@@ -21,7 +21,9 @@ struct NowPlayingView: View {
     var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 96 }
 
     var isCompact:     Bool { hSizeClass == .compact }
-    var isLandscape:   Bool { vSizeClass == .compact }
+    var isLandscape: Bool {
+        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+    }
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1000 }
     var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
@@ -29,19 +31,16 @@ struct NowPlayingView: View {
     
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
-        if isLargeCanvas { return 220 }
-        if !isCompact { return 160 }
-        return isSE ? 130.0 : 120.0
+        let base: CGFloat = isLargeCanvas ? 220 : (!isCompact ? 160 : (isSE ? 130.0 : 120.0))
+        return isLandscape ? base * 1.25 : base // 25% increase in landscape
     }
-    private var tabletTitleSize:   CGFloat { 
-        if isLargeCanvas { return 32 }
-        if !isCompact { return 26 }
-        return isSE ? 18.0 : 20.0
+    private var tabletTitleSize: CGFloat { 
+        let base: CGFloat = isLargeCanvas ? 32 : (!isCompact ? 26 : (isSE ? 18.0 : 20.0))
+        return isLandscape ? base * 1.2 : base // 20% increase in landscape
     }
-    private var tabletArtistSize:  CGFloat { 
-        if isLargeCanvas { return 18 }
-        if !isCompact { return 16 }
-        return isSE ? 14.0 : 14.0
+    private var tabletArtistSize: CGFloat { 
+        let base: CGFloat = isLargeCanvas ? 18 : (!isCompact ? 16 : 14.0)
+        return isLandscape ? base * 1.2 : base // 20% increase in landscape
     }
 
     var displayProgress: Double {
@@ -66,7 +65,8 @@ struct NowPlayingView: View {
                         Image(uiImage: backdrop)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top) // Align to top to avoid chopping heads
+                            .clipped()
                             .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                             .opacity(isIdle ? 0.45 : 0.35)
                     } else if let track = playback.currentTrack, let url = track.coverArtUrl {
@@ -74,7 +74,8 @@ struct NowPlayingView: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width, height: proxy.size.height)
+                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                .clipped()
                                 .blur(radius: 15) // Subtle blur for ambient feel when backdrop is missing
                                 .opacity(isIdle ? 0.4 : 0.3)
                         } placeholder: {
