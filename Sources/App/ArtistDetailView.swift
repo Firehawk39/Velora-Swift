@@ -441,6 +441,8 @@ struct ArtistBackdropView: View {
                         image
                             .resizable()
                             .scaledToFill()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .clipped()
                     } else {
                         fallbackView
                     }
@@ -468,6 +470,8 @@ struct ArtistBackdropView: View {
                 image
                     .resizable()
                     .scaledToFill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .clipped()
                     .blur(radius: 30) // Decreased blur intensity as requested
             } else {
                 Color.gray.opacity(0.1)
