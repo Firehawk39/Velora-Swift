@@ -51,7 +51,7 @@ class FanartManager: ObservableObject {
     private var currentArtistName: String?
     private var currentTask: Task<Void, Never>?
 
-    init() {
+    nonisolated init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.backdropDir = docs.appendingPathComponent("Backdrops", isDirectory: true)
         self.portraitDir = docs.appendingPathComponent("ArtistPortraits", isDirectory: true)

@@ -26,7 +26,7 @@ class AppLogger: ObservableObject {
     
     @Published var logs: [LogEntry] = []
     
-    private init() {}
+    nonisolated private init() {}
     
     func log(_ message: String, level: LogEntry.LogLevel = .debug) {
         DispatchQueue.main.async {

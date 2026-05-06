@@ -8,6 +8,8 @@ import Combine
 @MainActor
 class IntegrityManager: ObservableObject {
     nonisolated static let shared = IntegrityManager()
+    
+    nonisolated init() {}
     private let fileManager = FileManager.default
     
     @Published var isAuditRunning: Bool = false

@@ -84,8 +84,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     private nonisolated(unsafe) var assetReaderOutput: AVAssetReaderTrackOutput?
     
     // Gapless Look-ahead
-    private var nextAssetReader: AVAssetReader?
-    private var nextAssetReaderOutput: AVAssetReaderTrackOutput?
+    private nonisolated(unsafe) var nextAssetReader: AVAssetReader?
+    private nonisolated(unsafe) var nextAssetReaderOutput: AVAssetReaderTrackOutput?
     
     private var hiFiTimelineOffset: Double = 0
     private var isCrossfading = false

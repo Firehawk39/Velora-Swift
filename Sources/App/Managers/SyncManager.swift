@@ -6,6 +6,8 @@ import UIKit
 final class SyncManager: ObservableObject {
     nonisolated static let shared = SyncManager()
     
+    nonisolated init() {}
+    
     // Global and Specific Flags
     @Published var isSyncing: Bool = false
     @Published var isMetadataSyncing: Bool = false
@@ -108,9 +110,9 @@ final class SyncManager: ObservableObject {
     }
     
     private func performDeepAudit() async throws -> Bool {
-        let tracks = LocalMetadataStore.shared.fetchAllTracks().map { (id: $0.id, isDownloaded: $0.isDownloaded) }
-        let artists = LocalMetadataStore.shared.fetchAllArtists().map { $0.name }
-        let albums = LocalMetadataStore.shared.fetchAllAlbums().map { (name: $0.name, artist: $0.artist ?? "Unknown Artist") }
+        let tracks = await LocalMetadataStore.shared.fetchAllTracks().map { (id: $0.id, isDownloaded: $0.isDownloaded) }
+        let artists = await LocalMetadataStore.shared.fetchAllArtists().map { $0.name }
+        let albums = await LocalMetadataStore.shared.fetchAllAlbums().map { (name: $0.name, artist: $0.artist ?? "Unknown Artist") }
         
         let totalItems = tracks.count + artists.count + albums.count + 4
         if totalItems == 0 {
@@ -119,7 +121,7 @@ final class SyncManager: ObservableObject {
         }
         
         var processed = isAuditResuming ? auditCheckpointIndex : 0
-        AppLogger.shared.log("SyncManager: Starting audit at index \(processed)/\(totalItems) (Resuming: \(isAuditResuming))", level: .info)
+        await AppLogger.shared.log("SyncManager: Starting audit at index \(processed)/\(totalItems) (Resuming: \(isAuditResuming))", level: .info)
         
         // 1. Audit Tracks (Parallelized)
         if processed < tracks.count {
@@ -170,11 +172,11 @@ final class SyncManager: ObservableObject {
             for artistName in artistsToProcess {
                 if !isAuditing { throw SyncError.userCancelled }
                 
-                let portraitUrl = FanartManager.shared.getPortraitUrl(for: artistName)
-                let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artistName)
+                let portraitUrl = await FanartManager.shared.getPortraitUrl(for: artistName)
+                let metadataUrl = await MusicBrainzManager.shared.getMetadataUrl(for: artistName)
                 
-                _ = IntegrityManager.shared.isImageValid(at: portraitUrl)
-                _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
+                _ = await IntegrityManager.shared.isImageValid(at: portraitUrl)
+                _ = await IntegrityManager.shared.isMetadataValid(at: metadataUrl)
                 
                 processed += 1
                 if processed % 10 == 0 {
@@ -197,9 +199,9 @@ final class SyncManager: ObservableObject {
             for album in albumsToProcess {
                 if !isAuditing { throw SyncError.userCancelled }
                 
-                let metadataUrl = MusicBrainzManager.shared.getAlbumMetadataUrl(albumName: album.name, artistName: album.artist)
+                let metadataUrl = await MusicBrainzManager.shared.getAlbumMetadataUrl(albumName: album.name, artistName: album.artist)
                 
-                _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
+                _ = await IntegrityManager.shared.isMetadataValid(at: metadataUrl)
                 
                 processed += 1
                 if processed % 10 == 0 {
@@ -220,8 +222,8 @@ final class SyncManager: ObservableObject {
             await cleanupOrphanedFiles(processed: &processed, totalItems: totalItems)
             
             auditStatus = "Audit Finished."
-            AppLogger.shared.log("SyncManager: Deep Audit complete. Processed \(processed) items.", level: .info)
-            self.playback?.refreshDownloadedTracks()
+            await AppLogger.shared.log("SyncManager: Deep Audit complete. Processed \(processed) items.", level: .info)
+            await self.playback?.refreshDownloadedTracks()
             
             // Reset checkpoints
             auditCheckpointIndex = 0
@@ -281,17 +283,17 @@ final class SyncManager: ObservableObject {
         for artist in artists {
             if !isMetadataSyncing { throw SyncError.userCancelled }
             
-            let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
-            let backdropUrl = FanartManager.shared.getBackdropUrl(for: artist.name)
-            let portraitUrl = FanartManager.shared.getPortraitUrl(for: artist.name)
+            let metadataUrl = await MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
+            let backdropUrl = await FanartManager.shared.getBackdropUrl(for: artist.name)
+            let portraitUrl = await FanartManager.shared.getPortraitUrl(for: artist.name)
 
-            let hasValid = IntegrityManager.shared.isMetadataValid(at: metadataUrl) &&
-                           IntegrityManager.shared.isImageValid(at: backdropUrl) &&
-                           IntegrityManager.shared.isImageValid(at: portraitUrl)
+            let hasValid = await IntegrityManager.shared.isMetadataValid(at: metadataUrl) &&
+                           await IntegrityManager.shared.isImageValid(at: backdropUrl) &&
+                           await IntegrityManager.shared.isImageValid(at: portraitUrl)
             
             if !hasValid {
                 metadataStatus = "Syncing Info: \(artist.name)"
-                FanartManager.shared.downloadBackdropSilently(for: artist.name)
+                await FanartManager.shared.downloadBackdropSilently(for: artist.name)
                 _ = await FanartManager.shared.fetchArtistPortrait(for: artist.name)
                 await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
                 await Task.yield()
@@ -311,7 +313,7 @@ final class SyncManager: ObservableObject {
         for album in albums {
             if !isMetadataSyncing { throw SyncError.userCancelled }
             let artistName = album.artist ?? "Unknown Artist"
-            if !MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+            if !await MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
                 metadataStatus = "Syncing Info: \(album.name)"
                 await MusicBrainzManager.shared.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
                 await Task.yield()
@@ -354,11 +356,13 @@ final class SyncManager: ObservableObject {
             }
             
             let tracks = client.allSongs
-            let tracksToDownload = tracks.filter { track in
-                if let persistent = LocalMetadataStore.shared.fetchTrack(id: track.id), persistent.isDownloaded {
-                    return false
+            var tracksToDownload: [Track] = []
+            for track in tracks {
+                let persistent = await LocalMetadataStore.shared.fetchTrack(id: track.id)
+                let isDownloaded = persistent?.isDownloaded ?? false
+                if !isDownloaded && !playback.checkFileSystemForTrack(track.id) {
+                    tracksToDownload.append(track)
                 }
-                return !playback.checkFileSystemForTrack(track.id)
             }
             
             let totalTracks = Double(tracks.count)
@@ -402,7 +406,7 @@ final class SyncManager: ObservableObject {
                 case .failure(let trackId, let error):
                     let retryCount = mediaRetryCounts[trackId, default: 0]
                     if retryCount < maxRetries {
-                        AppLogger.shared.log("SyncManager: Retrying \(trackId) (\(retryCount + 1)/\(maxRetries))", level: .warning)
+                        await AppLogger.shared.log("SyncManager: Retrying \(trackId) (\(retryCount + 1)/\(maxRetries))", level: .warning)
                         mediaRetryCounts[trackId] = retryCount + 1
                         playback.failedDownloadIds.remove(trackId)
                         if let track = tracksToDownload.first(where: { $0.id == trackId }) {
@@ -411,7 +415,7 @@ final class SyncManager: ObservableObject {
                     } else if !finishedIds.contains(trackId) {
                         failedCount += 1
                         finishedIds.insert(trackId)
-                        AppLogger.shared.log("SyncManager: Final failure for \(trackId): \(error?.localizedDescription ?? "Unknown")", level: .error)
+                        await AppLogger.shared.log("SyncManager: Final failure for \(trackId): \(error?.localizedDescription ?? "Unknown")", level: .error)
                     }
                 }
                 
@@ -474,22 +478,22 @@ final class SyncManager: ObservableObject {
         
         do {
             if needsMetadataSync {
-                AppLogger.shared.log("SyncManager: Auto-starting metadata sync...", level: .info)
+                await AppLogger.shared.log("SyncManager: Auto-starting metadata sync...", level: .info)
                 let success = await startMetadataSync()
                 if !success && lastErrorMessage != nil {
-                    AppLogger.shared.log("SyncManager: Auto-metadata sync failed: \(lastErrorMessage!)", level: .warning)
+                    await AppLogger.shared.log("SyncManager: Auto-metadata sync failed: \(lastErrorMessage!)", level: .warning)
                 }
             }
             
             if needsAudit {
-                AppLogger.shared.log("SyncManager: Auto-starting deep audit...", level: .info)
+                await AppLogger.shared.log("SyncManager: Auto-starting deep audit...", level: .info)
                 let success = await startDeepAudit()
                 if !success && lastErrorMessage != nil {
-                    AppLogger.shared.log("SyncManager: Auto-audit failed: \(lastErrorMessage!)", level: .warning)
+                    await AppLogger.shared.log("SyncManager: Auto-audit failed: \(lastErrorMessage!)", level: .warning)
                 }
             }
         } catch {
-            AppLogger.shared.log("SyncManager: Auto-maintenance encountered an error: \(error.localizedDescription)", level: .error)
+            await AppLogger.shared.log("SyncManager: Auto-maintenance encountered an error: \(error.localizedDescription)", level: .error)
         }
     }
     
@@ -558,7 +562,7 @@ final class SyncManager: ObservableObject {
                 }
                 
                 if isOrphaned {
-                    AppLogger.shared.log("SyncManager: Deleting orphaned file: \(file.lastPathComponent)", level: .info)
+                    await AppLogger.shared.log("SyncManager: Deleting orphaned file: \(file.lastPathComponent)", level: .info)
                     try? fileManager.removeItem(at: file)
                 }
                 
@@ -578,11 +582,11 @@ final class SyncManager: ObservableObject {
         }
         
         // 1. Tracks (Document Root)
-        let trackIds = LocalMetadataStore.shared.fetchDownloadedTrackIds()
+        let trackIds = await LocalMetadataStore.shared.fetchDownloadedTrackIds()
         await cleanupDir(url: docs, validNames: trackIds, isTrack: true, categoryName: "Tracks")
         
         // 2. Backdrops (Sanitized Artist Names)
-        let rawArtistNames = LocalMetadataStore.shared.fetchArtistNames()
+        let rawArtistNames = await LocalMetadataStore.shared.fetchArtistNames()
         let sanitizedArtistNames = Set(rawArtistNames.map { FileHelper.sanitize($0) })
         await cleanupDir(url: backdropsDir, validNames: sanitizedArtistNames, categoryName: "Backdrops")
         
@@ -591,12 +595,12 @@ final class SyncManager: ObservableObject {
         
         // 4. Metadata (MBIDs or Artist/Album names)
         var validMeta = Set<String>()
-        let mbids = LocalMetadataStore.shared.fetchArtistMBIDs()
+        let mbids = await LocalMetadataStore.shared.fetchArtistMBIDs()
         for mbid in mbids {
             validMeta.insert(FileHelper.artistMetadataBaseName(mbid: mbid))
         }
         
-        let albumInfos = LocalMetadataStore.shared.fetchAlbumNamesAndArtists()
+        let albumInfos = await LocalMetadataStore.shared.fetchAlbumNamesAndArtists()
         for alb in albumInfos {
             validMeta.insert(FileHelper.albumMetadataBaseName(albumName: alb.name, artistName: alb.artist))
         }

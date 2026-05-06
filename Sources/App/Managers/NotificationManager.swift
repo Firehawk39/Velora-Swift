@@ -6,7 +6,7 @@ import UIKit
 final class NotificationManager {
     nonisolated static let shared = NotificationManager()
     
-    private init() {}
+    nonisolated private init() {}
     
     func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in

@@ -21,7 +21,7 @@ class LocalMetadataStore {
         return ctx
     }()
     
-    init() {
+    nonisolated init() {
         // Find the model in the bundle
         guard let modelURL = Bundle.module.url(forResource: "Velora", withExtension: "momd") else {
             fatalError("Failed to find Velora.xcdatamodeld in bundle")

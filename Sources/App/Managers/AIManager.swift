@@ -9,6 +9,8 @@ import UIKit
 class AIManager: ObservableObject {
     nonisolated static let shared = AIManager()
     
+    nonisolated init() {}
+    
     // Published State
     @Published var isProcessing = false
     @Published var lastAIResponse: String? = nil
@@ -56,19 +58,19 @@ class AIManager: ObservableObject {
         isProcessing = true
         auditStatus = "Scanning library for gaps..."
         
-        let localCount = LocalMetadataStore.shared.trackCount()
+        let localCount = await LocalMetadataStore.shared.trackCount()
         if forceRefresh || localCount == 0 {
             auditStatus = "Syncing with Navidrome (full scan)..."
             await NavidromeClient.shared.syncLibrary()
             auditStatus = "Scanning library for gaps..."
         }
         
-        let missingGenreCount = LocalMetadataStore.shared.countTracksMissingGenre()
-        let missingYearCount = LocalMetadataStore.shared.countAlbumsMissingYear()
-        let lowResArtCount = LocalMetadataStore.shared.countTracksWithLowResArt()
-        let missingBackdropCount = LocalMetadataStore.shared.countTracksMissingBackdrop()
-        let missingMetadataCount = LocalMetadataStore.shared.countArtistsMissingInfo()
-        let unknownMetaCount = LocalMetadataStore.shared.countTracksWithUnknownMetadata()
+        let missingGenreCount = await LocalMetadataStore.shared.countTracksMissingGenre()
+        let missingYearCount = await LocalMetadataStore.shared.countAlbumsMissingYear()
+        let lowResArtCount = await LocalMetadataStore.shared.countTracksWithLowResArt()
+        let missingBackdropCount = await LocalMetadataStore.shared.countTracksMissingBackdrop()
+        let missingMetadataCount = await LocalMetadataStore.shared.countArtistsMissingInfo()
+        let unknownMetaCount = await LocalMetadataStore.shared.countTracksWithUnknownMetadata()
         
         var results: [AuditResult] = []
         if missingGenreCount > 0 { results.append(AuditResult(type: .missingGenre, count: missingGenreCount, description: "\(missingGenreCount) tracks missing genre prediction")) }

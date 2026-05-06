@@ -8,6 +8,8 @@ import Combine
 class NavidromeClient: ObservableObject {
     nonisolated static let shared = NavidromeClient()
     
+    nonisolated init() {}
+    
     @Published var artists: [Artist] = []
     @Published var albums: [Album] = []
     @Published var recentlyPlayed: [Track] = []

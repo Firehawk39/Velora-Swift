@@ -55,7 +55,7 @@ class MusicBrainzManager: ObservableObject {
     
     private let throttler = Throttler()
     
-    init() {
+    nonisolated init() {
         loadCache()
     }
     
