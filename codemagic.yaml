@@ -13,14 +13,9 @@ workflows:
         script: |
           swift package resolve
 
-      - name: Generate Xcode project
-        script: |
-          swift package generate-xcodeproj --scheme Velora
-
       - name: Build iOS app
         script: |
           xcodebuild archive \
-            -project Velora.xcodeproj \
             -scheme Velora \
             -configuration Debug \
             -destination "generic/platform=iOS" \
