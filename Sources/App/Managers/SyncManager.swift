@@ -313,7 +313,7 @@ final class SyncManager: ObservableObject {
         for album in albums {
             if !isMetadataSyncing { throw SyncError.userCancelled }
             let artistName = album.artist ?? "Unknown Artist"
-            if !await MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+            if await !MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
                 metadataStatus = "Syncing Info: \(album.name)"
                 await MusicBrainzManager.shared.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
                 await Task.yield()
