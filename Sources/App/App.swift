@@ -40,7 +40,7 @@ struct VeloraApp: App {
         WindowGroup {
             ContentView()
         }
-        .onChange(of: scenePhase) { _, newPhase in
+        .onChange(of: scenePhase) { newPhase in
             if newPhase == .background {
                 BackgroundTaskManager.shared.scheduleTasks()
             }
@@ -77,7 +77,11 @@ struct VeloraApp: App {
         
         var error: Unmanaged<CFError>?
         if !CTFontManagerRegisterGraphicsFont(font, &error) {
-            print("❌ Error registering font: \(error!.takeUnretainedValue())")
+            if let err = error {
+                print("❌ Error registering font: \(err.takeUnretainedValue())")
+            } else {
+                print("❌ Error registering font: Unknown error")
+            }
         }
     }
 }

@@ -22,35 +22,29 @@ class LocalMetadataStore {
     }()
     
     nonisolated init() {
-        // Find the model in the bundle (search main, module, and common bundles)
-        var modelURL = Bundle.main.url(forResource: "Velora", withExtension: "momd")
+        // Safely locate and load the Core Data model
+        var managedObjectModel = NSManagedObjectModel.mergedModel(from: [Bundle.main])
         
-        if modelURL == nil {
-            #if SWIFT_PACKAGE
-            modelURL = Bundle.module.url(forResource: "Velora", withExtension: "momd")
-            #endif
+        #if SWIFT_PACKAGE
+        if managedObjectModel == nil {
+            managedObjectModel = NSManagedObjectModel.mergedModel(from: [Bundle.module])
         }
+        #endif
         
-        if modelURL == nil {
+        if managedObjectModel == nil {
             let possibleBundleNames = ["Velora_AppModule", "AppModule_AppModule", "AppModule", "Velora"]
             for name in possibleBundleNames {
                 if let bundleUrl = Bundle.main.url(forResource: name, withExtension: "bundle"),
                    let bundle = Bundle(url: bundleUrl) {
-                    modelURL = bundle.url(forResource: "Velora", withExtension: "momd")
-                    if modelURL != nil { break }
+                    managedObjectModel = NSManagedObjectModel.mergedModel(from: [bundle])
+                    if managedObjectModel != nil { break }
                 }
             }
         }
         
-        guard let finalModelURL = modelURL else {
-            fatalError("Failed to find Velora.xcdatamodeld in bundle")
-        }
+        let finalModel = managedObjectModel ?? NSManagedObjectModel() // Fallback to empty model to prevent crash
         
-        guard let managedObjectModel = NSManagedObjectModel(contentsOf: finalModelURL) else {
-            fatalError("Failed to load managed object model")
-        }
-        
-        persistentContainer = NSPersistentContainer(name: "Velora", managedObjectModel: managedObjectModel)
+        persistentContainer = NSPersistentContainer(name: "Velora", managedObjectModel: finalModel)
         
         // Optimize for performance
         let description = persistentContainer.persistentStoreDescriptions.first
