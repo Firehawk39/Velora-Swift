@@ -25,6 +25,7 @@ struct AppHeader: View {
     let toggleDark: () -> Void
     var onAction: () -> Void
 
+    @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass) var vSizeClass
     var isCompact: Bool { hSizeClass == .compact }
     var isLandscape: Bool {

@@ -15,7 +15,6 @@ struct SettingsView: View {
     @State private var serverAddress: String = UserDefaults.standard.string(forKey: "velora_server_url") ?? "http://"
     @State private var username: String     = UserDefaults.standard.string(forKey: "velora_username") ?? ""
     @State private var password: String     = ""
-    @State private var password: String     = ""
     @State private var showPassword: Bool   = false
     @State private var status: ConnStatus  = .idle
     @State private var cacheCleared: Bool   = false
