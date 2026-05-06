@@ -234,14 +234,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
         
         // Fallback to dynamic lookup if store is stale
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let extensions = ["flac", "mp3", "m4a", "wav"]
-        for ext in extensions {
-            let url = docs.appendingPathComponent("\(track.id).\(ext)")
-            if FileManager.default.fileExists(atPath: url.path) { 
-                LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: true, localPath: url.path)
-                return url 
-            }
+        if let url = FileHelper.getTrackLocalURL(for: track.id) {
+            LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: true, localPath: url.path)
+            return url
         }
         return client.getStreamUrl(id: track.id) ?? URL(string: "about:blank")!
     }
@@ -931,6 +926,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         if let contents = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil) {
             let ids = contents.compactMap { url -> String? in
+                let ext = url.pathExtension.lowercased()
+                guard FileHelper.isSupportedAudioExtension(ext) else { return nil }
+                
                 let name = url.deletingPathExtension().lastPathComponent
                 return IntegrityManager.shared.isTrackValid(id: name) ? name : nil
             }
@@ -953,9 +951,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         try? FileManager.default.copyItem(at: location, to: tempDest)
         
         Task { @MainActor in
-            guard let trackId = downloadTasks[taskId] else { return }
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let dest = docs.appendingPathComponent("\(trackId).\(ext)")
+            guard let trackId = downloadTasks[taskId],
+                  let dest = FileHelper.getTrackDestinationURL(for: trackId, extension: ext) else { return }
             
             // Clean up existing if any
             try? FileManager.default.removeItem(at: dest)

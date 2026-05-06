@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import ImageIO
 import Combine
 
 /// Centralized manager for verifying file integrity across the application.
@@ -13,15 +14,9 @@ class IntegrityManager: ObservableObject {
     @Published var auditProgress: Double = 0.0
     
     /// Checks if a music track is valid on disk
-    func isTrackValid(id: String) -> Bool {
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let extensions = ["mp3", "flac", "m4a", "wav"]
-        
-        for ext in extensions {
-            let url = docs.appendingPathComponent("\(id).\(ext)")
-            if fileManager.fileExists(atPath: url.path) {
-                return isFileContentValid(at: url)
-            }
+    nonisolated func isTrackValid(id: String) -> Bool {
+        if let url = FileHelper.getTrackLocalURL(for: id) {
+            return isFileContentValid(at: url)
         }
         return false
     }
@@ -65,7 +60,8 @@ class IntegrityManager: ObservableObject {
         return corruptedCount
     }
     
-    private func isFileContentValid(at url: URL) -> Bool {
+    private nonisolated func isFileContentValid(at url: URL) -> Bool {
+        let fileManager = FileManager.default
         guard let attrs = try? fileManager.attributesOfItem(atPath: url.path),
               let size = attrs[.size] as? UInt64 else { return false }
         
@@ -103,28 +99,50 @@ class IntegrityManager: ObservableObject {
         return false
     }
     
-    /// Checks if an image (Backdrop/Portrait) is valid on disk
-    func isImageValid(at url: URL) -> Bool {
+    /// Checks if an image (Backdrop/Portrait) is valid on disk without loading full bitmap
+    nonisolated func isImageValid(at url: URL) -> Bool {
+        let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: url.path) else { return false }
         
-        if let data = try? Data(contentsOf: url), let _ = UIImage(data: data) {
-            return true
-        } else {
-            AppLogger.shared.log("[Integrity] Image at \(url.lastPathComponent) is corrupted. Deleting.", level: .warning)
+        // Check size first (at least 1KB)
+        if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
+           let size = attrs[.size] as? UInt64, size < 1024 {
+            AppLogger.shared.log("[Integrity] Image at \(url.lastPathComponent) is too small (\(size) bytes). Deleting.", level: .warning)
             try? fileManager.removeItem(at: url)
             return false
         }
+        
+        // Use CGImageSource to verify image integrity without full decoding
+        if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+            let status = CGImageSourceGetStatus(source)
+            if status == .statusComplete {
+                return true
+            }
+        }
+        
+        AppLogger.shared.log("[Integrity] Image at \(url.lastPathComponent) is corrupted or invalid. Deleting.", level: .warning)
+        try? fileManager.removeItem(at: url)
+        return false
     }
     
     /// Checks if a metadata JSON file is valid
-    func isMetadataValid(at url: URL) -> Bool {
+    nonisolated func isMetadataValid(at url: URL) -> Bool {
+        let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: url.path) else { return false }
+        
+        // Check size (at least 10 bytes for valid JSON)
+        if let attrs = try? fileManager.attributesOfItem(atPath: url.path),
+           let size = attrs[.size] as? UInt64, size < 10 {
+            AppLogger.shared.log("[Integrity] Metadata at \(url.lastPathComponent) is too small. Deleting.", level: .warning)
+            try? fileManager.removeItem(at: url)
+            return false
+        }
         
         if let data = try? Data(contentsOf: url),
            let _ = try? JSONSerialization.jsonObject(with: data) {
             return true
         } else {
-            AppLogger.shared.log("[Integrity] Metadata at \(url.lastPathComponent) is invalid. Deleting.", level: .warning)
+            AppLogger.shared.log("[Integrity] Metadata at \(url.lastPathComponent) is invalid JSON. Deleting.", level: .warning)
             try? fileManager.removeItem(at: url)
             return false
         }

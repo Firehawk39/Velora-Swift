@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "Velora",
     platforms: [
-        .iOS(.v15)
+        .iOS(.v17)
     ],
     products: [
         .executable(

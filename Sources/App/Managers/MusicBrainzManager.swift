@@ -61,13 +61,11 @@ class MusicBrainzManager: ObservableObject {
     
     func getMetadataUrl(for artist: String) -> URL {
         let mbid = nameToMBIDCache[artist]?.mbid ?? "unknown"
-        return metadataDir.appendingPathComponent("artist_\(mbid).json")
+        return metadataDir.appendingPathComponent(FileHelper.artistMetadataFilename(mbid: mbid))
     }
 
     func getAlbumMetadataUrl(albumName: String, artistName: String) -> URL {
-        let key = "\(artistName)_\(albumName)"
-        let hash = key.hash
-        return metadataDir.appendingPathComponent("album_\(hash).json")
+        return metadataDir.appendingPathComponent(FileHelper.albumMetadataFilename(albumName: albumName, artistName: artistName))
     }
     
     private func loadCache() {
@@ -478,9 +476,7 @@ class MusicBrainzManager: ObservableObject {
     // MARK: - Album Metadata Helpers
     
     func hasAlbumMetadata(albumName: String, artistName: String) -> Bool {
-        let safeAlbum = albumName.replacingOccurrences(of: "/", with: "_")
-        let safeArtist = artistName.replacingOccurrences(of: "/", with: "_")
-        let fileUrl = metadataDir.appendingPathComponent("album_\(safeArtist)_\(safeAlbum).json")
+        let fileUrl = getAlbumMetadataUrl(albumName: albumName, artistName: artistName)
         return fileManager.fileExists(atPath: fileUrl.path)
     }
     
@@ -492,9 +488,7 @@ class MusicBrainzManager: ObservableObject {
             guard let url = URL(string: urlString) else { return }
             
             if let data = await performThrottledRequest(url: url) {
-                let safeAlbum = albumName.replacingOccurrences(of: "/", with: "_")
-                let safeArtist = artistName.replacingOccurrences(of: "/", with: "_")
-                let fileUrl = self.metadataDir.appendingPathComponent("album_\(safeArtist)_\(safeAlbum).json")
+                let fileUrl = getAlbumMetadataUrl(albumName: albumName, artistName: artistName)
                 try? data.write(to: fileUrl)
             }
         }

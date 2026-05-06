@@ -197,6 +197,8 @@ class AIManager: ObservableObject {
         let stageCount = targetIds.count
         var stageProcessed = 0
         
+        var batchResults: [(id: String, year: Int?, label: String?, firstReleaseDate: String?)] = []
+        
         for albumId in targetIds {
             if !isProcessing { break }
             guard let pAlbum = LocalMetadataStore.shared.fetchAlbumById(id: albumId) else {
@@ -207,7 +209,6 @@ class AIManager: ObservableObject {
             
             auditStatus = "Discogs Year: \(pAlbum.name)"
             
-            // Try Discogs for year first (already exists)
             var yearFound: Int?
             if let discogs = await DiscogsManager.shared.searchAlbum(artist: pAlbum.artist ?? "", album: pAlbum.name) {
                 if let yearStr = discogs.year, let year = Int(yearStr) {
@@ -215,7 +216,6 @@ class AIManager: ObservableObject {
                 }
             }
             
-            // Then MusicBrainz for granular info
             var label: String?
             var releaseDate: String?
             
@@ -226,15 +226,20 @@ class AIManager: ObservableObject {
             }
             
             if yearFound != nil || label != nil || releaseDate != nil {
-                LocalMetadataStore.shared.updateAlbumYear(for: pAlbum.id, year: yearFound, label: label, firstReleaseDate: releaseDate)
+                batchResults.append((id: pAlbum.id, year: yearFound, label: label, firstReleaseDate: releaseDate))
+            }
+            
+            if batchResults.count >= 10 {
+                LocalMetadataStore.shared.updateAlbumYearBatch(results: batchResults)
+                batchResults.removeAll()
             }
             
             processed += 1
             stageProcessed += 1
             fixProgress = Double(processed) / Double(totalItems)
             yearProgress = Double(stageProcessed) / Double(stageCount)
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
+        if !batchResults.isEmpty { LocalMetadataStore.shared.updateAlbumYearBatch(results: batchResults) }
     }
     
     // MARK: - Artist Metadata (MusicBrainz)
@@ -243,6 +248,8 @@ class AIManager: ObservableObject {
         guard !targetIds.isEmpty else { return }
         let stageCount = targetIds.count
         var stageProcessed = 0
+        
+        var batchResults: [(id: String, bio: String?, mbid: String?, area: String?, type: String?, lifeSpan: String?)] = []
         
         for artistId in targetIds {
             if !isProcessing { break }
@@ -275,7 +282,12 @@ class AIManager: ObservableObject {
             }
             
             if bio != nil || finalMbid != nil || type != nil || area != nil || lifeSpan != nil {
-                LocalMetadataStore.shared.updateArtistInfo(for: pArtist.id, bio: bio, mbid: finalMbid, area: area, type: type, lifeSpan: lifeSpan)
+                batchResults.append((id: pArtist.id, bio: bio, mbid: finalMbid, area: area, type: type, lifeSpan: lifeSpan))
+            }
+            
+            if batchResults.count >= 5 {
+                LocalMetadataStore.shared.updateArtistInfoBatch(results: batchResults)
+                batchResults.removeAll()
             }
             
             processed += 1
@@ -284,6 +296,7 @@ class AIManager: ObservableObject {
             artistProgress = Double(stageProcessed) / Double(stageCount)
             await Task.yield()
         }
+        if !batchResults.isEmpty { LocalMetadataStore.shared.updateArtistInfoBatch(results: batchResults) }
     }
     
     // MARK: - Media Assets (Fanart.tv)
@@ -296,6 +309,8 @@ class AIManager: ObservableObject {
         let stageCount = artistNames.count
         var stageProcessed = 0
         
+        var batchResults: [(artistName: String, hasBackdrop: Bool)] = []
+        
         for artist in artistNames {
             if !isProcessing { break }
             auditStatus = "Backdrop: \(artist)"
@@ -305,14 +320,21 @@ class AIManager: ObservableObject {
             let mbid = pArtist?.musicBrainzId
             
             if let _ = await FanartManager.shared.fetchBackdropAsync(for: artist, mbid: mbid) {
-                LocalMetadataStore.shared.updateBackdropStatus(for: artist, hasBackdrop: true)
+                batchResults.append((artistName: artist, hasBackdrop: true))
+            }
+            
+            if batchResults.count >= 10 {
+                LocalMetadataStore.shared.updateBackdropStatusBatch(results: batchResults)
+                batchResults.removeAll()
             }
             
             processed += tracksForArtist.count
             stageProcessed += 1
             fixProgress = Double(processed) / Double(totalItems)
             backdropProgress = Double(stageProcessed) / Double(stageCount)
+            await Task.yield()
         }
+        if !batchResults.isEmpty { LocalMetadataStore.shared.updateBackdropStatusBatch(results: batchResults) }
     }
     
     private func fixLowResArt(targetIds: [String], totalItems: Int, processed: inout Int) async {
@@ -334,10 +356,17 @@ class AIManager: ObservableObject {
             auditStatus = "Upgrading Art: \(firstTrack.album ?? "Album")"
             
             if let discogs = await DiscogsManager.shared.searchAlbum(artist: firstTrack.artist ?? "", album: firstTrack.album ?? "") {
-                // Validate the URL is reachable before storing it
-                if let highResUrl = discogs.cover_image, await isUrlReachable(highResUrl) {
-                    batchArtUpdates.append((trackIds: tracks.map { $0.id }, albumId: firstTrack.albumId, url: highResUrl))
+                if let highResUrl = discogs.cover_image {
+                    // Check reachability in parallel if multiple candidates exist, 
+                    // but here we just have one. Still, we can use TaskGroup if we were checking many.
+                    if await isUrlReachable(highResUrl) {
+                        batchArtUpdates.append((trackIds: tracks.map { $0.id }, albumId: firstTrack.albumId, url: highResUrl))
+                    } else {
+                        AppLogger.shared.log("AIManager: Art URL provided by Discogs was unreachable: \(highResUrl)", level: .warning)
+                    }
                 }
+            } else {
+                AppLogger.shared.log("AIManager: No art found on Discogs for \(firstTrack.artist ?? "Unknown") - \(firstTrack.album ?? "Unknown")", level: .info)
             }
             
             if batchArtUpdates.count >= 5 {
@@ -349,7 +378,6 @@ class AIManager: ObservableObject {
             stageProcessed += 1
             fixProgress = Double(processed) / Double(totalItems)
             artProgress = Double(stageProcessed) / Double(stageCount)
-            try? await Task.sleep(nanoseconds: 1_100_000_000)
         }
         if !batchArtUpdates.isEmpty { LocalMetadataStore.shared.updateCustomArtBatch(results: batchArtUpdates) }
     }
@@ -374,6 +402,8 @@ class AIManager: ObservableObject {
     private func fixUnknownMetadata(targetIds: [String], totalItems: Int, processed: inout Int) async {
         guard !targetIds.isEmpty else { return }
         
+        var batchResults: [(id: String, title: String?, artist: String?, album: String?)] = []
+        
         for trackId in targetIds {
             if !isProcessing { break }
             guard let track = LocalMetadataStore.shared.fetchTrack(id: trackId) else {
@@ -383,23 +413,27 @@ class AIManager: ObservableObject {
             
             auditStatus = "Fixing Metadata: \(track.title)"
             
-            // For 'Unknown' tracks, we try MusicBrainz resolution first
-            // We search by title since artist/album are 'Unknown'
             if let mbid = await MusicBrainzManager.shared.resolveAlbumMBIDAsync(album: "", artist: "", query: track.title) {
                 let details = await MusicBrainzManager.shared.fetchReleaseDetailsAsync(mbid: mbid)
                 
                 if let title = details.title, let artist = details.artist {
-                    LocalMetadataStore.shared.updateTrackMetadata(for: track.id, title: title, artist: artist, album: details.album)
+                    batchResults.append((id: track.id, title: title, artist: artist, album: details.album))
                     AppLogger.shared.log("AIManager: Resolved 'Unknown' metadata for \(track.id) -> \(artist) - \(title)", level: .info)
                 }
+            } else {
+                AppLogger.shared.log("AIManager: Could not resolve 'Unknown' metadata for \(track.title) (\(track.id))", level: .warning)
+            }
+            
+            if batchResults.count >= 5 {
+                LocalMetadataStore.shared.updateTrackMetadataBatch(results: batchResults)
+                batchResults.removeAll()
             }
             
             processed += 1
             fixProgress = Double(processed) / Double(totalItems)
             await Task.yield()
-            // Respect rate limits for MusicBrainz
-            try? await Task.sleep(nanoseconds: 1_100_000_000)
         }
+        if !batchResults.isEmpty { LocalMetadataStore.shared.updateTrackMetadataBatch(results: batchResults) }
     }
 }
 

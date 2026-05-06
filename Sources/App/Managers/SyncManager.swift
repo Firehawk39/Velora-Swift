@@ -37,6 +37,8 @@ final class SyncManager: ObservableObject {
     
     // Last Run Tracking
     @AppStorage("velora_last_audit_date") var lastAuditDate: Double = 0
+    @AppStorage("velora_audit_checkpoint_index") var auditCheckpointIndex: Int = 0
+    @AppStorage("velora_audit_is_resuming") var isAuditResuming: Bool = false
     @AppStorage("velora_last_metadata_sync_date") var lastMetadataSyncDate: Double = 0
     @AppStorage("velora_last_media_sync_date") var lastMediaSyncDate: Double = 0
     
@@ -106,75 +108,125 @@ final class SyncManager: ObservableObject {
     }
     
     private func performDeepAudit() async throws -> Bool {
-        let tracks = LocalMetadataStore.shared.fetchAllTracks()
-        let artists = LocalMetadataStore.shared.fetchAllArtists()
-        let albums = LocalMetadataStore.shared.fetchAllAlbums()
+        let tracks = LocalMetadataStore.shared.fetchAllTracks().map { (id: $0.id, isDownloaded: $0.isDownloaded) }
+        let artists = LocalMetadataStore.shared.fetchAllArtists().map { $0.name }
+        let albums = LocalMetadataStore.shared.fetchAllAlbums().map { (name: $0.name, artist: $0.artist ?? "Unknown Artist") }
         
-        // Step 4 is orphaned cleanup - we count the directories we scan
-        let totalItems = tracks.count + artists.count + albums.count + 4 
+        let totalItems = tracks.count + artists.count + albums.count + 4
         if totalItems == 0 {
             auditStatus = "Audit Complete: Database empty."
             return true
         }
         
-        var processed = 0
+        var processed = isAuditResuming ? auditCheckpointIndex : 0
+        AppLogger.shared.log("SyncManager: Starting audit at index \(processed)/\(totalItems) (Resuming: \(isAuditResuming))", level: .info)
         
-        // 1. Audit Tracks (Downloads)
-        for track in tracks {
-            if !isAuditing { throw SyncError.userCancelled }
-            auditStatus = "Verifying: \(track.title)"
+        // 1. Audit Tracks (Parallelized)
+        if processed < tracks.count {
+            auditStatus = "Verifying Tracks..."
+            let start = processed
+            let tracksToProcess = Array(tracks[start...])
             
-            if track.isDownloaded {
-                let isValid = IntegrityManager.shared.isTrackValid(id: track.id)
-                if !isValid {
-                    LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: false, localPath: nil)
+            await withTaskGroup(of: Void.self) { group in
+                // Limit concurrency to 4 tasks to avoid disk/CPU thrashing on A9
+                var index = 0
+                for track in tracksToProcess {
+                    if !isAuditing { break }
+                    
+                    group.addTask {
+                        if track.isDownloaded {
+                            let isValid = IntegrityManager.shared.isTrackValid(id: track.id)
+                            if !isValid {
+                                LocalMetadataStore.shared.updateDownloadStatus(for: track.id, isDownloaded: false, localPath: nil)
+                            }
+                        }
+                    }
+                    
+                    index += 1
+                    processed += 1
+                    
+                    // Throttled UI updates
+                    if index % 25 == 0 {
+                        let currentProgress = Double(processed) / Double(totalItems)
+                        await MainActor.run { 
+                            self.auditProgress = currentProgress 
+                            self.auditCheckpointIndex = processed
+                        }
+                        await Task.yield()
+                    }
+                    
+                    // Simple concurrency limiting: wait for some tasks to finish if we have too many
+                    if index % 4 == 0 { await group.next() }
                 }
             }
-            
-            processed += 1
-            await MainActor.run { auditProgress = Double(processed) / Double(totalItems) }
-            if processed % 50 == 0 { await Task.yield() }
         }
         
-        // 2. Audit Artists (Portraits & Metadata)
-        for artist in artists {
-            if !isAuditing { throw SyncError.userCancelled }
-            auditStatus = "Verifying: \(artist.name)"
+        // 2. Audit Artists
+        if isAuditing && processed < (tracks.count + artists.count) {
+            auditStatus = "Verifying Artists..."
+            let start = max(0, processed - tracks.count)
+            let artistsToProcess = Array(artists[start...])
             
-            let portraitUrl = FanartManager.shared.getPortraitUrl(for: artist.name)
-            let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artist.name)
-            
-            _ = IntegrityManager.shared.isImageValid(at: portraitUrl)
-            _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
-            
-            processed += 1
-            await MainActor.run { auditProgress = Double(processed) / Double(totalItems) }
-            await Task.yield() // Yield more frequently for UI
+            for artistName in artistsToProcess {
+                if !isAuditing { throw SyncError.userCancelled }
+                
+                let portraitUrl = FanartManager.shared.getPortraitUrl(for: artistName)
+                let metadataUrl = MusicBrainzManager.shared.getMetadataUrl(for: artistName)
+                
+                _ = IntegrityManager.shared.isImageValid(at: portraitUrl)
+                _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
+                
+                processed += 1
+                if processed % 10 == 0 {
+                    let currentProgress = Double(processed) / Double(totalItems)
+                    await MainActor.run { 
+                        self.auditProgress = currentProgress
+                        self.auditCheckpointIndex = processed
+                    }
+                    await Task.yield()
+                }
+            }
         }
         
-        // 3. Audit Albums (Metadata)
-        for album in albums {
-            if !isAuditing { throw SyncError.userCancelled }
-            auditStatus = "Verifying: \(album.name)"
+        // 3. Audit Albums
+        if isAuditing && processed < (tracks.count + artists.count + albums.count) {
+            auditStatus = "Verifying Albums..."
+            let start = max(0, processed - tracks.count - artists.count)
+            let albumsToProcess = Array(albums[start...])
             
-            let artistName = album.artist ?? "Unknown Artist"
-            let metadataUrl = MusicBrainzManager.shared.getAlbumMetadataUrl(albumName: album.name, artistName: artistName)
-            
-            _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
-            
-            processed += 1
-            await MainActor.run { auditProgress = Double(processed) / Double(totalItems) }
-            await Task.yield()
+            for album in albumsToProcess {
+                if !isAuditing { throw SyncError.userCancelled }
+                
+                let metadataUrl = MusicBrainzManager.shared.getAlbumMetadataUrl(albumName: album.name, artistName: album.artist)
+                
+                _ = IntegrityManager.shared.isMetadataValid(at: metadataUrl)
+                
+                processed += 1
+                if processed % 10 == 0 {
+                    let currentProgress = Double(processed) / Double(totalItems)
+                    await MainActor.run { 
+                        self.auditProgress = currentProgress
+                        self.auditCheckpointIndex = processed
+                    }
+                    await Task.yield()
+                }
+            }
         }
         
         // 4. Cleanup Orphaned Files
-        auditStatus = "Cleaning up orphaned assets..."
-        await MusicBrainzManager.shared.verifyCacheIntegrity()
-        await cleanupOrphanedFiles(processed: &processed, totalItems: totalItems)
-        
-        auditStatus = "Audit Finished."
-        AppLogger.shared.log("SyncManager: Deep Audit complete. Processed \(processed) items.", level: .info)
-        self.playback?.refreshDownloadedTracks()
+        if isAuditing {
+            auditStatus = "Cleaning up orphaned assets..."
+            await MusicBrainzManager.shared.verifyCacheIntegrity()
+            await cleanupOrphanedFiles(processed: &processed, totalItems: totalItems)
+            
+            auditStatus = "Audit Finished."
+            AppLogger.shared.log("SyncManager: Deep Audit complete. Processed \(processed) items.", level: .info)
+            self.playback?.refreshDownloadedTracks()
+            
+            // Reset checkpoints
+            auditCheckpointIndex = 0
+            isAuditResuming = false
+        }
         
         return true
     }
@@ -497,7 +549,7 @@ final class SyncManager: ObservableObject {
                 var isOrphaned = false
                 if isTrack {
                     // For tracks, we only care about audio extensions
-                    if ["mp3", "flac", "m4a", "wav"].contains(ext) {
+                    if FileHelper.supportedAudioExtensions.contains(ext) {
                         isOrphaned = !validNames.contains(fileName)
                     }
                 } else {
@@ -526,12 +578,12 @@ final class SyncManager: ObservableObject {
         }
         
         // 1. Tracks (Document Root)
-        let trackIds = LocalMetadataStore.shared.fetchTrackIds()
+        let trackIds = LocalMetadataStore.shared.fetchDownloadedTrackIds()
         await cleanupDir(url: docs, validNames: trackIds, isTrack: true, categoryName: "Tracks")
         
         // 2. Backdrops (Sanitized Artist Names)
         let rawArtistNames = LocalMetadataStore.shared.fetchArtistNames()
-        let sanitizedArtistNames = Set(rawArtistNames.map { sanitizeFileName($0) })
+        let sanitizedArtistNames = Set(rawArtistNames.map { FileHelper.sanitize($0) })
         await cleanupDir(url: backdropsDir, validNames: sanitizedArtistNames, categoryName: "Backdrops")
         
         // 3. Portraits (Sanitized Artist Names)
@@ -541,21 +593,13 @@ final class SyncManager: ObservableObject {
         var validMeta = Set<String>()
         let mbids = LocalMetadataStore.shared.fetchArtistMBIDs()
         for mbid in mbids {
-            validMeta.insert("artist_\(mbid)")
+            validMeta.insert(FileHelper.artistMetadataBaseName(mbid: mbid))
         }
         
         let albumInfos = LocalMetadataStore.shared.fetchAlbumNamesAndArtists()
         for alb in albumInfos {
-            let safeAlb = alb.name.replacingOccurrences(of: "/", with: "_")
-            let safeArt = alb.artist.replacingOccurrences(of: "/", with: "_")
-            validMeta.insert("album_\(safeArt)_\(safeAlb)")
+            validMeta.insert(FileHelper.albumMetadataBaseName(albumName: alb.name, artistName: alb.artist))
         }
         await cleanupDir(url: metadataDir, validNames: validMeta, categoryName: "Metadata Cache")
-    }
-    
-    private func sanitizeFileName(_ name: String) -> String {
-        return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
-            .components(separatedBy: .whitespaces).joined(separator: "_")
-            .lowercased()
     }
 }

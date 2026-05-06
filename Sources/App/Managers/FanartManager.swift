@@ -66,8 +66,7 @@ class FanartManager: ObservableObject {
     // MARK: - Path Helpers
     
     func getBackdropUrl(for artist: String) -> URL {
-        let sanitized = sanitizeFileName(artist)
-        return self.backdropDir.appendingPathComponent(sanitized + ".jpg")
+        return self.backdropDir.appendingPathComponent(FileHelper.artistBackdropFilename(artistName: artist))
     }
 
     func hasBackdrop(for artist: String) -> Bool {
@@ -76,8 +75,7 @@ class FanartManager: ObservableObject {
     }
 
     func getPortraitUrl(for artist: String) -> URL {
-        let sanitized = sanitizeFileName(artist)
-        return self.portraitDir.appendingPathComponent(sanitized + ".jpg")
+        return self.portraitDir.appendingPathComponent(FileHelper.artistPortraitFilename(artistName: artist))
     }
 
     func hasPortrait(for artist: String) -> Bool {
@@ -181,7 +179,7 @@ class FanartManager: ObservableObject {
     }
     
     private func fetchImageAsync(mbid: String, artistName: String, type: FanartType) async -> UIImage? {
-        let sanitized = sanitizeFileName(artistName)
+        let sanitized = FileHelper.sanitize(artistName)
         let storageUrl = type == .background ? getBackdropUrl(for: artistName) : getPortraitUrl(for: artistName)
         
         // Prevent redundant simultaneous fetches
@@ -267,9 +265,4 @@ class FanartManager: ObservableObject {
         return Int(truncatingIfNeeded: h)
     }
     
-    private func sanitizeFileName(_ name: String) -> String {
-        return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
-            .components(separatedBy: .whitespaces).joined(separator: "_")
-            .lowercased()
-    }
 }
