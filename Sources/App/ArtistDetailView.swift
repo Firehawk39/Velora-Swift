@@ -150,7 +150,7 @@ struct ArtistDetailView: View {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
                             artistLabel
-                            artistNameText(size: 36)
+                            artistNameText(size: 64)
                         }
                         
                         Spacer()
@@ -428,53 +428,31 @@ struct ArtistBackdropView: View {
     let isDarkMode: Bool
     let client: NavidromeClient
     
-    var backdropPath: URL {
-        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return documentsDir.appendingPathComponent("Backdrops").appendingPathComponent("\(artistId).jpg")
-    }
-    
     var body: some View {
         ZStack {
-            if FileManager.default.fileExists(atPath: backdropPath.path) {
-                AsyncImage(url: backdropPath) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                            .clipped()
-                    } else {
-                        fallbackView
-                    }
-                }
-            } else {
-                fallbackView
-            }
+            // Plain background color
+            (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+                .ignoresSafeArea()
             
-            // Premium Vignette (Restored to previous default)
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    .black.opacity(0.8),
-                    .clear,
-                    isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa")
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-    
-    private var fallbackView: some View {
-        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
-            if let image = phase.image {
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .clipped()
-                    .blur(radius: 30) // Decreased blur intensity as requested
-            } else {
-                Color.gray.opacity(0.1)
+            // The "Radiating Glow" behind the portrait
+            GeometryReader { proxy in
+                ZStack {
+                    // Subtle multi-colored radiating glow
+                    RadialGradient(
+                        gradient: Gradient(colors: [
+                            Color.pink.opacity(isDarkMode ? 0.12 : 0.08),
+                            Color.blue.opacity(isDarkMode ? 0.08 : 0.05),
+                            Color.clear
+                        ]),
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: proxy.size.width * 0.4
+                    )
+                    .frame(width: proxy.size.width * 0.8, height: proxy.size.width * 0.8)
+                    .blur(radius: 60)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, proxy.size.height * 0.35) // Centered behind the portrait location
             }
         }
     }
