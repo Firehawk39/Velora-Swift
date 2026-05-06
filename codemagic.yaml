@@ -18,12 +18,11 @@ workflows:
 
       - name: Build iOS app
         script: |
-          # Build a native iOS app using xcodebuild archive now that Package.swift uses .iOSApplication!
-          xcodebuild archive \
+          # Build using xcodebuild build (reliable for SPM executables)
+          xcodebuild build \
             -scheme Velora \
             -configuration Debug \
             -destination "generic/platform=iOS" \
-            -archivePath Velora.xcarchive \
             -derivedDataPath derived_data \
             -sdk iphoneos \
             ARCHS=arm64 \
@@ -38,32 +37,90 @@ workflows:
         script: |
           set -e
           
-          # Find the natively built .app from the xcarchive
-          APP_PATH=$(find Velora.xcarchive -name "*.app" -type d | head -1)
-          if [ -z "$APP_PATH" ]; then
-            echo "Error: Could not find .app in xcarchive"
+          # 1. Find the binary
+          BINARY_PATH=$(find derived_data -name "Velora" -type f -perm +111 | head -1)
+          if [ -z "$BINARY_PATH" ]; then
+            echo "Error: Could not find Velora binary"
             exit 1
           fi
-          echo "Found app at $APP_PATH"
-          
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          PAYLOAD_APP="Payload/$(basename "$APP_PATH")"
-          
-          # Inject ONLY the missing privacy and background keys that AppleProductTypes doesn't natively support
-          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers array" "$PAYLOAD_APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers:0 string com.velora.library.audit" "$PAYLOAD_APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers:1 string com.velora.library.metadata" "$PAYLOAD_APP/Info.plist" || true
-          
-          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PAYLOAD_APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PAYLOAD_APP/Info.plist" || true
-          
-          /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 'Velora needs to connect to your Navidrome server on your local network.'" "$PAYLOAD_APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices array" "$PAYLOAD_APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:0 string _http._tcp" "$PAYLOAD_APP/Info.plist" || true
-          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:1 string _subsonic._tcp" "$PAYLOAD_APP/Info.plist" || true
+          echo "Found binary at $BINARY_PATH"
 
-          # Create the IPA
+          # 2. Setup the App Bundle
+          mkdir -p Payload/Velora.app
+          cp "$BINARY_PATH" Payload/Velora.app/Velora
+          chmod +x Payload/Velora.app/Velora
+
+          # 3. Create the Info.plist
+          # We use a robust template and then inject custom keys
+          cat <<EOF > Payload/Velora.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>Velora</string>
+              <key>CFBundleIdentifier</key>
+              <string>$BUNDLE_ID</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>$APP_NAME</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>MinimumOSVersion</key>
+              <string>17.0</string>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UIApplicationSceneManifest</key>
+              <dict>
+                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <true/>
+                  <key>UISceneConfigurations</key>
+                  <dict/>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          # 4. Compile Assets (App Icon) natively for 1.2MB size
+          echo "Compiling App Icons..."
+          mkdir -p build
+          xcrun actool Sources/App/Resources/Assets.xcassets \
+            --compile Payload/Velora.app \
+            --platform iphoneos \
+            --minimum-deployment-target 17.0 \
+            --app-icon AppIcon \
+            --output-partial-info-plist build/partial.plist || true
+          
+          if [ -f "build/partial.plist" ]; then
+             /usr/libexec/PlistBuddy -x -c "Merge build/partial.plist" Payload/Velora.app/Info.plist || true
+          fi
+
+          # 5. Inject Background and Privacy keys (FIXED PlistBuddy indexing)
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" Payload/Velora.app/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" Payload/Velora.app/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:1 string fetch" Payload/Velora.app/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:2 string processing" Payload/Velora.app/Info.plist || true
+
+          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers array" Payload/Velora.app/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers:0 string com.velora.library.audit" Payload/Velora.app/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :BGTaskSchedulerPermittedIdentifiers:1 string com.velora.library.metadata" Payload/Velora.app/Info.plist || true
+
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" Payload/Velora.app/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" Payload/Velora.app/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 'Velora needs to connect to your Navidrome server.'" Payload/Velora.app/Info.plist || true
+
+          # 6. Copy Resource Bundles (Core Data)
+          # ONLY copy from Products directory to avoid empty intermediate overwrites
+          find derived_data/Build/Products -name "*.bundle" -type d -exec cp -R {} Payload/Velora.app/ \;
+
+          # 7. Create the IPA
           zip -r Velora-Jailbreak.ipa Payload
           mkdir -p artifacts
           mv Velora-Jailbreak.ipa artifacts/
