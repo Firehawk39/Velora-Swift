@@ -219,26 +219,26 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer()
             
-            VStack(spacing: isSmallDevice ? 16 : 32) {
+            VStack(spacing: isSE ? 12 : (isSmallDevice ? 16 : 32)) {
                 if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
-                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSmallDevice ? 0.55 : 0.7), 280) : tabletArtworkSize)
-                        .padding(.bottom, isSmallDevice ? 6 : 12)
+                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.48 : (isSmallDevice ? 0.55 : 0.7)), 280) : tabletArtworkSize)
+                        .padding(.bottom, isSE ? 4 : (isSmallDevice ? 6 : 12))
                     
                     // Centered Metadata
-                    VStack(alignment: .center, spacing: 6) {
+                    VStack(alignment: .center, spacing: isSE ? 4 : 6) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
-                            .font(.system(size: isSmallDevice ? 20 : 26, weight: .black))
+                            .font(.system(size: isSE ? 18 : (isSmallDevice ? 20 : 26), weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                         
                         Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                            .font(.system(size: isSmallDevice ? 14 : 16, weight: .bold))
+                            .font(.system(size: isSE ? 13 : (isSmallDevice ? 14 : 16), weight: .bold))
                             .foregroundColor(.white.opacity(0.6))
                             .lineLimit(1)
                             .multilineTextAlignment(.center)
@@ -252,12 +252,12 @@ struct NowPlayingView: View {
                 
                 if !isIdle {
                     // Controls Section for Portrait
-                    VStack(spacing: isSmallDevice ? 16 : 24) {
-                        HStack(spacing: isSmallDevice ? 28 : 36) {
+                    VStack(spacing: isSE ? 12 : (isSmallDevice ? 16 : 24)) {
+                        HStack(spacing: isSE ? 24 : (isSmallDevice ? 28 : 36)) {
                             playbackControls
                         }
-                        .padding(.horizontal, isSmallDevice ? 24 : 32)
-                        .padding(.vertical, isSmallDevice ? 12 : 16)
+                        .padding(.horizontal, isSE ? 20 : (isSmallDevice ? 24 : 32))
+                        .padding(.vertical, isSE ? 10 : (isSmallDevice ? 12 : 16))
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
@@ -267,7 +267,7 @@ struct NowPlayingView: View {
                             queueButton
                             downloadButton
                         }
-                        .scaleEffect(isSmallDevice ? 0.85 : 0.9)
+                        .scaleEffect(isSE ? 0.8 : (isSmallDevice ? 0.85 : 0.9))
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }

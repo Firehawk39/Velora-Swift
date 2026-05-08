@@ -6,9 +6,9 @@ public enum ScreenTier {
     case tiny, compact, regular, large, huge
     public static var current: ScreenTier {
         let w = UIScreen.main.bounds.width
-        if w <= 320 { return .tiny } // iPhone SE 1st Gen
-        if w < 414 { return .compact } // Standard iPhone / mini
-        if w < 768 { return .regular } // Plus/Max iPhones
+        if w <= 330 { return .tiny } // iPhone SE 1st Gen
+        if w <= 395 { return .compact } // Standard iPhone / mini (375-393pt)
+        if w <= 440 { return .regular } // Plus/Max iPhones (414-430pt)
         if w < 1024 { return .large } // 10.25" Displays / standard iPads
         return .huge // iPad Pro 12.9"
     }
