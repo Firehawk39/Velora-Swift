@@ -64,7 +64,7 @@ struct NowPlayingView: View {
             ZStack {
                 // Dynamic Ambient Background
                 Group {
-                    if isCompact && !isLandscape {
+                    if ScreenTier.isPhone {
                         // Dynamic Gradient based on Album Art (No Blur)
                         LinearGradient(
                             gradient: Gradient(colors: [
