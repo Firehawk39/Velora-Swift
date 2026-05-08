@@ -13,6 +13,7 @@ public enum ScreenTier {
         return .huge // iPad Pro 12.9"
     }
     public static var isSE: Bool { current == .tiny }
+    public static var isSmall: Bool { UIScreen.main.bounds.width <= 375 }
     public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
     public static var isHuge: Bool { current == .huge }
 }
@@ -37,7 +38,7 @@ struct AppHeader: View {
 
     var body: some View {
         Group {
-            if ScreenTier.isSE && !isLandscape {
+            if ScreenTier.isSmall && !isLandscape {
                 mainHeaderContent
             } else {
                 ZStack {
@@ -46,7 +47,7 @@ struct AppHeader: View {
                 }
             }
         }
-        .padding(.vertical, ScreenTier.isSE ? 12.0 : 20.0)
+        .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
     }
     
     private var mainHeaderContent: some View {
@@ -55,7 +56,7 @@ struct AppHeader: View {
             Spacer()
             headerActions
         }
-        .padding(.horizontal, isCompact ? 24.0 : 48.0)
+        .padding(.horizontal, ScreenTier.isSmall ? 16.0 : (isCompact ? 24.0 : 48.0))
     }
     
     private var logoButton: some View {
@@ -66,7 +67,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 48 : 54) : (ScreenTier.isPhone ? (ScreenTier.isSE ? 28 : 32) : 34.0)).weight(.bold))
+                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 48 : 54) : (ScreenTier.isPhone ? (ScreenTier.isSmall ? 26 : 32) : 34.0)).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -75,7 +76,7 @@ struct AppHeader: View {
     }
     
     private var headerActions: some View {
-        HStack(spacing: ScreenTier.isSE ? 16.0 : 20.0) {
+        HStack(spacing: ScreenTier.isSmall ? 12.0 : 20.0) {
             if !isPlayingTab {
                 if isLandscape {
                     themeToggle

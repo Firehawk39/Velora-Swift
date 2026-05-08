@@ -18,7 +18,10 @@ struct NowPlayingView: View {
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     // Header height to avoid overlap
-    var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 96 }
+    var headerHeight: CGFloat { 
+        if isSmallDevice && !isLandscape { return 64 }
+        return UIScreen.main.bounds.width < 768 ? 72 : 96 
+    }
 
     var isCompact:     Bool { hSizeClass == .compact }
     var isLandscape: Bool {
@@ -216,26 +219,26 @@ struct NowPlayingView: View {
         VStack(spacing: 0) {
             Spacer()
             
-            VStack(spacing: isSE ? 24 : 32) {
+            VStack(spacing: isSmallDevice ? 16 : 32) {
                 if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
-                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.55 : 0.65), 260) : tabletArtworkSize)
-                        .padding(.bottom, isSE ? 8 : 12)
+                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSmallDevice ? 0.55 : 0.7), 280) : tabletArtworkSize)
+                        .padding(.bottom, isSmallDevice ? 6 : 12)
                     
                     // Centered Metadata
-                    VStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .center, spacing: 6) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
-                            .font(.system(size: isSE ? 20 : 26, weight: .black))
+                            .font(.system(size: isSmallDevice ? 20 : 26, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                         
                         Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                            .font(.system(size: isSE ? 14 : 16, weight: .bold))
+                            .font(.system(size: isSmallDevice ? 14 : 16, weight: .bold))
                             .foregroundColor(.white.opacity(0.6))
                             .lineLimit(1)
                             .multilineTextAlignment(.center)
@@ -249,12 +252,12 @@ struct NowPlayingView: View {
                 
                 if !isIdle {
                     // Controls Section for Portrait
-                    VStack(spacing: 24) {
-                        HStack(spacing: 36) {
+                    VStack(spacing: isSmallDevice ? 16 : 24) {
+                        HStack(spacing: isSmallDevice ? 28 : 36) {
                             playbackControls
                         }
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 16)
+                        .padding(.horizontal, isSmallDevice ? 24 : 32)
+                        .padding(.vertical, isSmallDevice ? 12 : 16)
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
@@ -264,7 +267,7 @@ struct NowPlayingView: View {
                             queueButton
                             downloadButton
                         }
-                        .scaleEffect(0.9)
+                        .scaleEffect(isSmallDevice ? 0.85 : 0.9)
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
