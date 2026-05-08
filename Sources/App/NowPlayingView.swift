@@ -92,6 +92,7 @@ struct NowPlayingView: View {
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                                     .clipped()
+                                    .blur(radius: 15) // Restored blur for fallback
                                     .opacity(isIdle ? 0.4 : 0.3)
                             } placeholder: {
                                 Color.black
