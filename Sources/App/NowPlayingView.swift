@@ -118,7 +118,7 @@ struct NowPlayingView: View {
                                 tabletLayout(proxy: proxy)
                             }
                         }
-                        .frame(height: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
+                        .frame(minHeight: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
                         
                         metadataCards
                             .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))

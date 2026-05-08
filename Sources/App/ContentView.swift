@@ -17,7 +17,12 @@ struct ContentView: View {
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
 
-    var headerHeight: CGFloat { UIScreen.main.bounds.width < 768 ? 72 : 80 }
+    var headerHeight: CGFloat { 
+        if ScreenTier.isSE && UIScreen.main.bounds.width <= UIScreen.main.bounds.height {
+            return 110
+        }
+        return UIScreen.main.bounds.width < 768 ? 72 : 80 
+    }
 
     @AppStorage("velora_username") var username: String = ""
 
@@ -59,7 +64,7 @@ struct ContentView: View {
                 .zIndex(300) // Ensure header is ALWAYS on top, above ArtistDetailView (200)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea()
+            .ignoresSafeArea(.container, edges: .top)
 
             // ── Layer 5: Profile menu dropdown ──────────────────────
             if showProfileMenu {
@@ -79,7 +84,8 @@ struct ContentView: View {
                                     showProfileMenu = false
                                     client.logout()
                                     showSettings = true
-                                }
+                                },
+                            isLandscape: isLandscape
                         )
                         .padding(.trailing, isCompact ? 24.0 : 48.0)
                         .padding(.top, headerHeight + 8)

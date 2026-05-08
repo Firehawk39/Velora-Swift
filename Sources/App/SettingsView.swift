@@ -392,6 +392,9 @@ struct AppSettingsView: View {
                         }
                         
                         // Storage Section
+                        StorageInfoView(isDark: isDark)
+                        
+                        // App Data Section
                         VStack(alignment: .leading, spacing: 12) {
                             Text("App Data")
                                 .font(.system(size: 14, weight: .bold))
@@ -651,5 +654,71 @@ struct AppSettingsView: View {
         
         client.configure(url: finalUrl, user: finalUser, pass: finalPass)
         client.fetchEverything()
+    }
+}
+
+// MARK: - Storage Monitor Component
+struct StorageInfoView: View {
+    @StateObject private var integrity = IntegrityManager.shared
+    @State private var storage: IntegrityManager.StorageInfo?
+    let isDark: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("System Storage")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(Color(hex: "#60a5fa"))
+                .textCase(.uppercase)
+                .padding(.leading, 4)
+            
+            if let info = storage {
+                VStack(spacing: 16) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Available Space")
+                                .font(.system(size: 14))
+                                .foregroundColor(.gray)
+                            Text(info.availableGB)
+                                .font(.system(size: ScreenTier.isSE ? 20 : 24, weight: .bold))
+                                .foregroundColor(isDark ? .white : .black)
+                        }
+                        Spacer()
+                        Image(systemName: "iphone")
+                            .font(.system(size: 30))
+                            .foregroundColor(.gray.opacity(0.5))
+                    }
+                    
+                    // Progress Bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                            let usedRatio = 1.0 - (Double(info.available) / Double(info.total))
+                            Capsule()
+                                .fill(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                                .frame(width: geo.size.width * CGFloat(usedRatio))
+                        }
+                    }
+                    .frame(height: 8)
+                    
+                    HStack {
+                        Text("Velora Data: \(info.usedByAppMB)")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                        Spacer()
+                        let totalGB = info.total / 1_000_000_000
+                        Text("\(totalGB) GB Total")
+                            .font(.system(size: 12))
+                            .foregroundColor(.gray)
+                    }
+                }
+                .padding()
+                .background(isDark ? Color.white.opacity(0.03) : Color.white)
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            }
+        }
+        .onAppear {
+            storage = integrity.getStorageInfo()
+        }
     }
 }

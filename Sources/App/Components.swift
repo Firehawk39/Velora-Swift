@@ -36,9 +36,18 @@ struct AppHeader: View {
     var headerFG: Color { isPlayingTab ? .white : (isDarkMode ? .white : .black) }
 
     var body: some View {
-        ZStack {
-            mainHeaderContent
-            navigationPill
+        Group {
+            if ScreenTier.isSE && !isLandscape {
+                VStack(spacing: 12) {
+                    mainHeaderContent
+                    navigationPill
+                }
+            } else {
+                ZStack {
+                    mainHeaderContent
+                    navigationPill
+                }
+            }
         }
         .padding(.vertical, ScreenTier.isSE ? 12.0 : 20.0)
     }
@@ -71,7 +80,9 @@ struct AppHeader: View {
     private var headerActions: some View {
         HStack(spacing: ScreenTier.isSE ? 16.0 : 20.0) {
             if !isPlayingTab {
-                themeToggle
+                if isLandscape {
+                    themeToggle
+                }
             }
             profileButton
         }
@@ -342,9 +353,27 @@ struct ProfileDropdown: View {
     let toggleDark: () -> Void
     let onSettings: () -> Void
     let onLogout: () -> Void
+    var isLandscape: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !isLandscape {
+                Button(action: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        toggleDark()
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
+                            .foregroundColor(isDarkMode ? .yellow : .blue)
+                        Text(isDarkMode ? "Light Mode" : "Dark Mode")
+                        Spacer()
+                    }
+                    .padding()
+                    .foregroundColor(isDarkMode ? .white : .black)
+                }
+                Divider().background(Color.white.opacity(0.1))
+            }
             Button(action: onSettings) {
                 HStack {
                     Image(systemName: "gearshape.fill")

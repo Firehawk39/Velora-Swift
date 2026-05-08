@@ -29,6 +29,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var failedDownloadIds = Set<String>()
     @Published var activeDownloadCount = 0
     
+    private var integrityManager = IntegrityManager.shared
+    private var integrityCancellable: Any?
+    
     func isDownloaded(_ trackId: String) -> Bool {
         return downloadedTrackIds.contains(trackId)
     }
@@ -74,7 +77,9 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
-        let configuration = URLSessionConfiguration.default
+        let configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
+        configuration.isDiscretionary = false
+        configuration.sessionSendsLaunchEvents = true
         // Maximize connections to the same host for faster concurrent downloads
         configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
         return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
@@ -85,7 +90,13 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         super.init()
         PlaybackManager.shared = self
         configureAudioSession()
-        setupRemoteCommandCenter() // Activate steering wheel and lock screen controls
+        setupRemoteCommandCenter()
+        
+        // Bind to IntegrityManager's indexed IDs
+        self.downloadedTrackIds = integrityManager.downloadedIds
+        // Use a simple sink or notification to keep it in sync
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in }
+        
         loadDownloadedTracks()
         
         // Listen for app termination to clear now playing info
@@ -477,14 +488,21 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
 
     
     func loadDownloadedTracks() {
+        // Optimization: Use IntegrityManager's index if it's already populated
+        if !integrityManager.downloadedIds.isEmpty {
+            self.downloadedTrackIds = integrityManager.downloadedIds
+            return
+        }
+        
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         do {
             let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
-            let ids = fileURLs
-                .filter { ["mp3", "flac", "m4a"].contains($0.pathExtension.lowercased()) }
-                .map { $0.deletingPathExtension().lastPathComponent }
+            
+            // Rebuild index from disk (First run or recovery)
+            integrityManager.rebuildIndex(from: fileURLs)
+            
             DispatchQueue.main.async {
-                self.downloadedTrackIds = Set(ids)
+                self.downloadedTrackIds = self.integrityManager.downloadedIds
                 self.objectWillChange.send()
             }
         } catch {
@@ -605,10 +623,22 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
         
         do {
+            // Integrity Check: Verify that the downloaded file is valid
+            let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
+            let fileSize = attributes[.size] as? Int64 ?? 0
+            
+            if fileSize < 1024 {
+                 AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is empty or corrupted (\(fileSize) bytes)", level: .error)
+                 throw NSError(domain: "com.velora.integrity", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty or corrupted file download"])
+            }
+
             if FileManager.default.fileExists(atPath: destinationUrl.path) {
                 try FileManager.default.removeItem(at: destinationUrl)
             }
             try FileManager.default.moveItem(at: location, to: destinationUrl)
+            
+            // Register in the Lightning Index
+            integrityManager.registerDownload(trackId: trackId, fileName: destinationUrl.lastPathComponent, size: fileSize)
             
             DispatchQueue.main.async {
                 self.downloadedTrackIds.insert(trackId)
@@ -621,6 +651,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         } catch {
             AppLogger.shared.log("Failed to save track \(trackId): \(error.localizedDescription)", level: .error)
             DispatchQueue.main.async {
+                self.failedDownloadIds.insert(trackId)
                 self.downloadProgress.removeValue(forKey: trackId)
             }
         }
@@ -651,6 +682,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         DispatchQueue.main.async {
             PlaybackManager.sharedBackgroundCompletion?()
             PlaybackManager.sharedBackgroundCompletion = nil
+            // Ensure the manifest is persisted after a background sync completes
+            IntegrityManager.shared.saveIndex()
         }
     }
     
