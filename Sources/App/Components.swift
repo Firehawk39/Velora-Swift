@@ -38,10 +38,7 @@ struct AppHeader: View {
     var body: some View {
         Group {
             if ScreenTier.isSE && !isLandscape {
-                VStack(spacing: 12) {
-                    mainHeaderContent
-                    navigationPill
-                }
+                mainHeaderContent
             } else {
                 ZStack {
                     mainHeaderContent
@@ -153,13 +150,47 @@ struct AppHeader: View {
     }
 }
 
-private struct TabButton: View {
+// MARK: - Bottom Navigation Pill (Spotify Style)
+struct BottomNavigationPill: View {
+    @Binding var activeTab: String
+    let isDarkMode: Bool
+    var onAction: () -> Void
+    
+    var isPlayingTab: Bool { activeTab == "now-playing" }
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            ZStack {
+                Capsule()
+                    .fill(isDarkMode || isPlayingTab ? Color.black.opacity(0.7) : Color.white.opacity(0.85))
+                Capsule()
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            }
+        )
+        .background(Capsule().fill(.ultraThinMaterial))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 20)
+        .shadow(color: .black.opacity(0.2), radius: 15, x: 0, y: 8)
+    }
+}
+
+struct TabButton: View {
     let id: String
     let label: String
     @Binding var activeTab: String
     let isDarkMode: Bool
     let isPlayingTab: Bool
     let onAction: () -> Void
+    var isBottomNav: Bool = false
+    
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
@@ -185,18 +216,22 @@ private struct TabButton: View {
                 activeTab = id 
             } 
         }) {
-            Group {
-                if ScreenTier.isSE && !isLandscape {
-                    Image(systemName: iconName)
-                        .font(.system(size: 18, weight: .bold))
-                } else {
+            VStack(spacing: isBottomNav ? 4 : 0) {
+                Image(systemName: iconName)
+                    .font(.system(size: isBottomNav ? 22 : 18, weight: .bold))
+                
+                if isBottomNav {
+                    Text(label)
+                        .font(.system(size: 10, weight: .bold))
+                } else if !(ScreenTier.isSE && !isLandscape) {
                     Text(label)
                         .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 18) : (ScreenTier.isSE ? 13 : 16), weight: isActive ? .bold : .medium))
                 }
             }
-            .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
-            .padding(.horizontal, isLandscape ? 20 : (ScreenTier.isSE ? (isActive ? 16 : 12) : 16))
-            .padding(.vertical, isLandscape ? 10 : 8)
+            .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : .gray)
+            .padding(.horizontal, isBottomNav ? 16 : (isLandscape ? 20 : (ScreenTier.isSE ? (isActive ? 16 : 12) : 16)))
+            .padding(.vertical, isBottomNav ? 8 : (isLandscape ? 10 : 8))
+            .frame(maxWidth: isBottomNav ? .infinity : nil)
             .background(
                 isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
             )

@@ -19,8 +19,8 @@ struct ContentView: View {
     var isLandscape: Bool { UIScreen.main.bounds.width > UIScreen.main.bounds.height }
 
     var headerHeight: CGFloat { 
-        if ScreenTier.isSE && UIScreen.main.bounds.width <= UIScreen.main.bounds.height {
-            return 110
+        if ScreenTier.isSE && !isLandscape {
+            return 70
         }
         return UIScreen.main.bounds.width < 768 ? 72 : 80 
     }
@@ -63,6 +63,24 @@ struct ContentView: View {
                 .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) // Ensure header is ALWAYS on top, above ArtistDetailView (200)
+
+                if ScreenTier.isSE && !isLandscape {
+                    VStack {
+                        Spacer()
+                        BottomNavigationPill(
+                            activeTab: $activeTab,
+                            isDarkMode: isDarkMode,
+                            onAction: {
+                                withAnimation {
+                                    selectedArtistId = nil
+                                    selectedArtistName = nil
+                                }
+                            }
+                        )
+                    }
+                    .ignoresSafeArea(.keyboard)
+                    .zIndex(400)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.container, edges: .top)
