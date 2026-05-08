@@ -452,6 +452,13 @@ struct ArtistBackdropView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, proxy.size.height * 0.35) // Centered behind the portrait location
+                
+                // Top-to-Bottom Vignette for readability
+                LinearGradient(
+                    gradient: Gradient(colors: [.black.opacity(0.4), .clear, .black.opacity(0.6)]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             }
         }
     }
