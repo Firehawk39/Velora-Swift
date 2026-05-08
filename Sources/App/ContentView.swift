@@ -16,6 +16,7 @@ struct ContentView: View {
 
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
+    var isLandscape: Bool { UIScreen.main.bounds.width > UIScreen.main.bounds.height }
 
     var headerHeight: CGFloat { 
         if ScreenTier.isSE && UIScreen.main.bounds.width <= UIScreen.main.bounds.height {
