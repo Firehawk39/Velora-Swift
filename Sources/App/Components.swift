@@ -38,7 +38,7 @@ struct AppHeader: View {
 
     var body: some View {
         Group {
-            if ScreenTier.isPhone && !isLandscape {
+            if ScreenTier.isSmall && !isLandscape {
                 mainHeaderContent
             } else {
                 ZStack {
@@ -47,7 +47,7 @@ struct AppHeader: View {
                 }
             }
         }
-        .padding(.vertical, ScreenTier.isPhone ? 10.0 : 20.0)
+        .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
     }
     
     private var mainHeaderContent: some View {
@@ -217,20 +217,24 @@ struct TabButton: View {
                 activeTab = id 
             } 
         }) {
-            VStack(spacing: isBottomNav ? 4 : 0) {
-                Image(systemName: iconName)
-                    .font(.system(size: isBottomNav ? 22 : 18, weight: .bold))
-                
+            Group {
                 if isBottomNav {
+                    VStack(spacing: 4) {
+                        Image(systemName: iconName)
+                            .font(.system(size: 22, weight: .bold))
+                        Text(label)
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                } else if ScreenTier.isSmall && !isLandscape {
+                    Image(systemName: iconName)
+                        .font(.system(size: 18, weight: .bold))
+                } else {
                     Text(label)
-                        .font(.system(size: 10, weight: .bold))
-                } else if !(ScreenTier.isSE && !isLandscape) {
-                    Text(label)
-                        .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 18) : (ScreenTier.isSE ? 13 : 16), weight: isActive ? .bold : .medium))
+                        .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 18) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
                 }
             }
             .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : .gray)
-            .padding(.horizontal, isBottomNav ? 16 : (isLandscape ? 20 : (ScreenTier.isSE ? (isActive ? 16 : 12) : 16)))
+            .padding(.horizontal, isBottomNav ? 16 : (isLandscape ? 20 : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16)))
             .padding(.vertical, isBottomNav ? 8 : (isLandscape ? 10 : 8))
             .frame(maxWidth: isBottomNav ? .infinity : nil)
             .background(
