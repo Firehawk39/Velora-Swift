@@ -166,20 +166,15 @@ struct BottomNavigationPill: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 6)
+        .padding(.top, 10)
+        .padding(.bottom, 8) // Integrated bottom
         .background(
-            ZStack {
-                Capsule()
-                    .fill(isDarkMode || isPlayingTab ? Color.black.opacity(0.7) : Color.white.opacity(0.85))
-                Capsule()
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            }
+            Rectangle()
+                .fill(isPlayingTab ? Color.black.opacity(0.95) : (isDarkMode ? Color(hex: "#121212") : Color.white))
+                .ignoresSafeArea(edges: .bottom)
         )
-        .background(Capsule().fill(.ultraThinMaterial))
-        .padding(.horizontal, 16)
-        .padding(.bottom, 20)
-        .shadow(color: .black.opacity(0.2), radius: 15, x: 0, y: 8)
+        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: -2)
     }
 }
 
@@ -224,6 +219,8 @@ struct TabButton: View {
                             .font(.system(size: 22, weight: .bold))
                         Text(label)
                             .font(.system(size: 10, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                 } else if ScreenTier.isSmall && !isLandscape {
                     Image(systemName: iconName)
@@ -234,8 +231,8 @@ struct TabButton: View {
                 }
             }
             .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : .gray)
-            .padding(.horizontal, isBottomNav ? 16 : (isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16)))
-            .padding(.vertical, isBottomNav ? 8 : (isLandscape ? (ScreenTier.isPhone ? 10 : 8) : 8))
+            .padding(.horizontal, isBottomNav ? 8 : (isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16)))
+            .padding(.vertical, isBottomNav ? 10 : (isLandscape ? (ScreenTier.isPhone ? 10 : 8) : 8))
             .frame(maxWidth: isBottomNav ? .infinity : nil)
             .background(
                 isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
