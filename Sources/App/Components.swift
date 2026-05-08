@@ -38,7 +38,7 @@ struct AppHeader: View {
 
     var body: some View {
         Group {
-            if ScreenTier.isSmall && !isLandscape {
+            if ScreenTier.isPhone && !isLandscape {
                 mainHeaderContent
             } else {
                 ZStack {
@@ -47,7 +47,7 @@ struct AppHeader: View {
                 }
             }
         }
-        .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
+        .padding(.vertical, ScreenTier.isPhone ? 10.0 : 20.0)
     }
     
     private var mainHeaderContent: some View {

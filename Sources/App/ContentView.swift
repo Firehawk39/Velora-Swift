@@ -19,7 +19,7 @@ struct ContentView: View {
     var isLandscape: Bool { UIScreen.main.bounds.width > UIScreen.main.bounds.height }
 
     var headerHeight: CGFloat { 
-        if ScreenTier.isSmall && !isLandscape {
+        if ScreenTier.isPhone && !isLandscape {
             return 70
         }
         return UIScreen.main.bounds.width < 768 ? 72 : 80 
@@ -64,7 +64,7 @@ struct ContentView: View {
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) // Ensure header is ALWAYS on top, above ArtistDetailView (200)
 
-                if ScreenTier.isSmall && !isLandscape {
+                if ScreenTier.isPhone && !isLandscape {
                     VStack {
                         Spacer()
                         BottomNavigationPill(
