@@ -57,7 +57,7 @@ struct LibraryView: View {
     @ViewBuilder
     private func categoryDetailView(category: String, forceOffline: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: isCompact ? 80 : 100)
+            Spacer().frame(height: ScreenTier.isSmall ? 110 : (isCompact ? 80 : 100))
             // Header
             HStack {
                 Button(action: { activeCategory = nil }) {
@@ -236,7 +236,7 @@ private struct LibraryMenuView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Spacer().frame(height: isCompact ? 90 : 130)
+                Spacer().frame(height: ScreenTier.isSmall ? 120 : (isCompact ? 90 : 130))
                 ForEach(menuItems, id: \.id) { item in
                     Button(action: { activeCategory = item.id }) {
                         HStack(spacing: 20) {
@@ -687,7 +687,7 @@ private struct PlaylistDetailView: View {
         }
 
         VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: isCompact ? 80 : 100)
+            Spacer().frame(height: ScreenTier.isSmall ? 110 : (isCompact ? 80 : 100))
             
             // Header with Filters & Toggles
             HStack(alignment: .center, spacing: 12) {

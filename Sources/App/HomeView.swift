@@ -27,11 +27,11 @@ struct HomeView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                Spacer().frame(height: isCompact ? 80 : 100)
+                Spacer().frame(height: ScreenTier.isSmall ? 110 : (isCompact ? 80 : 100))
 
                 // ── Greeting ─────────────────────────────────────────
                 Text(greeting)
-                    .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSE ? 24 : 28) : 28, weight: .bold))
+                    .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSmall ? 22 : 28) : 28, weight: .bold))
                     .foregroundColor(isDark ? .white : Color(hex: "#111827"))
                     .padding(.horizontal, hPad)
                     .padding(.bottom, ScreenTier.isPhone ? 24 : 32)
