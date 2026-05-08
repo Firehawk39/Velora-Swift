@@ -132,10 +132,10 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(isLandscape ? (ScreenTier.isPhone ? 8 : 10) : (ScreenTier.isPhone ? 6 : 8))
+        .padding(isLandscape ? (ScreenTier.isPhone ? 8 : 10) : (ScreenTier.isSE ? 4 : 8))
         .background(
             isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
-            (isDarkMode ? AnyShapeStyle(Material.ultraThinMaterial.opacity(0.5)) : AnyShapeStyle(Color(hex: "#e5e7eb")))
+            (isDarkMode ? AnyShapeStyle(Color(hex: "#1a1a1a")) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
         .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.05 : 1.15) : (ScreenTier.isPhone ? 0.85 : 0.9)) // Refined boost in landscape
@@ -156,6 +156,16 @@ private struct TabButton: View {
     var isLandscape: Bool {
         UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
+    
+    private var iconName: String {
+        switch id {
+        case "home": return "house.fill"
+        case "library": return "square.stack.fill"
+        case "search": return "magnifyingglass"
+        case "now-playing": return "play.circle.fill"
+        default: return "circle"
+        }
+    }
 
     var body: some View {
         Button(action: { 
@@ -164,16 +174,23 @@ private struct TabButton: View {
                 activeTab = id 
             } 
         }) {
-            Text(label)
-                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 18) : (ScreenTier.isPhone ? 15 : 16), weight: isActive ? .bold : .medium))
-                .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
-                .padding(.horizontal, isLandscape ? 20 : 16)
-                .padding(.vertical, isLandscape ? 10 : 8)
-                .background(
-                    isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
-                )
-                .clipShape(Capsule())
-                .shadow(color: isActive && !isDarkMode && !isPlayingTab ? Color.black.opacity(0.05) : Color.clear, radius: 2, y: 1)
+            Group {
+                if ScreenTier.isSE && !isLandscape {
+                    Image(systemName: iconName)
+                        .font(.system(size: 18, weight: .bold))
+                } else {
+                    Text(label)
+                        .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 18) : (ScreenTier.isSE ? 13 : 16), weight: isActive ? .bold : .medium))
+                }
+            }
+            .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : (activeTab == "now-playing" ? .white.opacity(0.6) : .gray))
+            .padding(.horizontal, isLandscape ? 20 : (ScreenTier.isSE ? (isActive ? 16 : 12) : 16))
+            .padding(.vertical, isLandscape ? 10 : 8)
+            .background(
+                isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
+            )
+            .clipShape(Capsule())
+            .shadow(color: isActive && !isDarkMode && !isPlayingTab ? Color.black.opacity(0.05) : Color.clear, radius: 2, y: 1)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -376,7 +393,7 @@ struct QueuePanel: View {
                         }
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, ScreenTier.isSE ? 10 : 16)
                 .padding(.bottom, 100)
             }
         }
@@ -565,7 +582,7 @@ public struct ToggleButton: View {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .bold))
                 Text(label)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: ScreenTier.isSE ? 12 : 14, weight: .bold))
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)

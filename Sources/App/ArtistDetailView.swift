@@ -449,7 +449,6 @@ struct ArtistBackdropView: View {
                         endRadius: proxy.size.width * 0.4
                     )
                     .frame(width: proxy.size.width * 0.8, height: proxy.size.width * 0.8)
-                    .blur(radius: 60)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, proxy.size.height * 0.35) // Centered behind the portrait location
