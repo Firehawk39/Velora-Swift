@@ -64,8 +64,8 @@ struct NowPlayingView: View {
             ZStack {
                 // Dynamic Ambient Background
                 Group {
-                    if ScreenTier.isPhone {
-                        // Dynamic Gradient based on Album Art (No Blur)
+                    if isCompact && !isLandscape {
+                        // PORTRAIT IPHONE: Use Dynamic Gradient (No Blur)
                         LinearGradient(
                             gradient: Gradient(colors: [
                                 Color(playback.currentPrimaryColor).opacity(0.8),
@@ -75,27 +75,30 @@ struct NowPlayingView: View {
                             startPoint: .top,
                             endPoint: .bottom
                         )
-                    } else if let backdrop = fanart.currentBackdrop {
-                        Image(uiImage: backdrop)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top) // Align to top to avoid chopping heads
-                            .clipped()
-                            .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                            .opacity(isIdle ? 0.45 : 0.35)
-                    } else if let track = playback.currentTrack, let url = track.coverArtUrl {
-                        AsyncImage(url: url) { image in
-                            image
+                    } else {
+                        // LANDSCAPE OR IPAD: Use High-Fidelity Backdrop
+                        if let backdrop = fanart.currentBackdrop {
+                            Image(uiImage: backdrop)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                                 .clipped()
-                                .opacity(isIdle ? 0.4 : 0.3)
-                        } placeholder: {
+                                .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                                .opacity(isIdle ? 0.45 : 0.35)
+                        } else if let track = playback.currentTrack, let url = track.coverArtUrl {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                    .clipped()
+                                    .opacity(isIdle ? 0.4 : 0.3)
+                            } placeholder: {
+                                Color.black
+                            }
+                        } else {
                             Color.black
                         }
-                    } else {
-                        Color.black
                     }
                 }
                 .overlay(
