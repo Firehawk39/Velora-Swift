@@ -64,7 +64,18 @@ struct NowPlayingView: View {
             ZStack {
                 // Dynamic Ambient Background
                 Group {
-                    if let backdrop = fanart.currentBackdrop {
+                    if isCompact && !isLandscape {
+                        // Dynamic Gradient based on Album Art (No Blur)
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(playback.currentPrimaryColor).opacity(0.8),
+                                Color(playback.currentPrimaryColor).opacity(0.4),
+                                .black
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    } else if let backdrop = fanart.currentBackdrop {
                         Image(uiImage: backdrop)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
