@@ -147,7 +147,7 @@ struct AppHeader: View {
             (isDarkMode ? AnyShapeStyle(Color(hex: "#1a1a1a")) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.05 : 1.15) : (ScreenTier.isPhone ? 0.85 : 0.9)) // Refined boost in landscape
+        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.05 : 1.05) : (ScreenTier.isPhone ? 0.85 : 0.9)) // Refined boost in landscape
     }
 }
 
@@ -230,12 +230,12 @@ struct TabButton: View {
                         .font(.system(size: 18, weight: .bold))
                 } else {
                     Text(label)
-                        .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 18) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
+                        .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
                 }
             }
             .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : .gray)
-            .padding(.horizontal, isBottomNav ? 16 : (isLandscape ? 20 : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16)))
-            .padding(.vertical, isBottomNav ? 8 : (isLandscape ? 10 : 8))
+            .padding(.horizontal, isBottomNav ? 16 : (isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16)))
+            .padding(.vertical, isBottomNav ? 8 : (isLandscape ? (ScreenTier.isPhone ? 10 : 8) : 8))
             .frame(maxWidth: isBottomNav ? .infinity : nil)
             .background(
                 isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
