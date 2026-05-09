@@ -49,7 +49,7 @@ struct ContentView: View {
             ZStack(alignment: .top) {
                 pageContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, (ScreenTier.isSmall && !isLandscape) ? 110 : 0) // Increased padding for Mini Player + Tabs
+                    .padding(.bottom, (ScreenTier.isSmall && !isLandscape) ? 65 : 0) // Adjusted back to single-row height
 
                 AppHeader(
                     activeTab: $activeTab,
@@ -75,7 +75,6 @@ struct ContentView: View {
                         Spacer()
                         BottomNavigationPill(
                             activeTab: $activeTab,
-                            playback: playback,
                             isDarkMode: isDarkMode,
                             onAction: {
                                 withAnimation {
