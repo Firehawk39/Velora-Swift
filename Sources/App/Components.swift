@@ -339,7 +339,7 @@ struct TabButton: View {
                     .clipShape(Capsule())
                 }
             }
-            .foregroundColor(isActive ? (id == "library" && !isDarkMode && !isPlayingTab ? Color.red : (activeTab == "now-playing" || isDarkMode ? .white : .red)) : .gray)
+            .foregroundColor(isActive ? (isDarkMode ? .white : .black) : .gray)
             .frame(maxWidth: isBottomNav ? .infinity : nil)
             .padding(.vertical, isBottomNav ? 6 : 0)
         }
