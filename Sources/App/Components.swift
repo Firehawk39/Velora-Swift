@@ -151,36 +151,139 @@ struct AppHeader: View {
     }
 }
 
+// MARK: - Mini Player View (iTunes/Music Style)
+struct MiniPlayerView: View {
+    @ObservedObject var playback: PlaybackManager
+    let isDarkMode: Bool
+    var onExpand: () -> Void
+    
+    var body: some View {
+        Button(action: onExpand) {
+            HStack(spacing: 12) {
+                // Artwork
+                Group {
+                    if let track = playback.currentTrack {
+                        AsyncImage(url: track.coverArtUrl) { img in
+                            img.resizable().scaledToFill()
+                        } placeholder: {
+                            Color.gray.opacity(0.2)
+                        }
+                    } else {
+                        ZStack {
+                            Color.gray.opacity(0.1)
+                            Image(systemName: "music.note")
+                                .font(.system(size: 18))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .cornerRadius(6)
+                .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+                
+                // Title & Artist
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(playback.currentTrack?.title ?? "Not Playing")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .lineLimit(1)
+                    
+                    Text(playback.currentTrack?.artist ?? "Select a song to start")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Controls
+                HStack(spacing: 24) {
+                    Button(action: {
+                        if playback.isPlaying {
+                            playback.pause()
+                        } else {
+                            playback.play()
+                        }
+                    }) {
+                        Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 22))
+                    }
+                    
+                    Button(action: {
+                        playback.next()
+                    }) {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 22))
+                    }
+                }
+                .foregroundColor(isDarkMode ? .white : .black)
+                .padding(.trailing, 4)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.clear)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
 // MARK: - Bottom Navigation Pill (Spotify Style)
 struct BottomNavigationPill: View {
     @Binding var activeTab: String
+    @ObservedObject var playback: PlaybackManager
     let isDarkMode: Bool
     var onAction: () -> Void
     
     var isPlayingTab: Bool { activeTab == "now-playing" }
     
     var body: some View {
-        HStack(spacing: 0) {
-            TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+        VStack(spacing: 0) {
+            // Mini Player Island
+            MiniPlayerView(playback: playback, isDarkMode: isDarkMode, onExpand: {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    activeTab = "now-playing"
+                }
+            })
+            
+            Divider()
+                .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+            
+            // Tab Bar Island
+            HStack(spacing: 0) {
+                TabButton(id: "home", label: "Listen Now", icon: "play.circle.fill", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+                TabButton(id: "radio", label: "Radio", icon: "antenna.radiowaves.left.and.right", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+                TabButton(id: "library", label: "Library", icon: "square.stack.fill", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+                TabButton(id: "search", label: "Search", icon: "magnifyingglass", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
         }
-        .padding(.horizontal, 6)
-        .padding(.top, 10)
-        .padding(.bottom, 8) // Integrated bottom
         .background(
-            Rectangle()
-                .fill(isPlayingTab ? Color.black.opacity(0.95) : (isDarkMode ? Color(hex: "#121212") : Color.white))
-                .ignoresSafeArea(edges: .bottom)
+            ZStack {
+                if isDarkMode {
+                    Color(hex: "#121212").opacity(0.98)
+                } else {
+                    Color.white.opacity(0.98)
+                }
+            }
+            .ignoresSafeArea(edges: .bottom)
         )
-        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: -2)
+        .overlay(
+            VStack {
+                Rectangle()
+                    .fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+                    .frame(height: 0.5)
+                Spacer()
+            }
+        )
     }
 }
 
 struct TabButton: View {
     let id: String
     let label: String
+    var icon: String? = nil
     @Binding var activeTab: String
     let isDarkMode: Bool
     let isPlayingTab: Bool
@@ -196,6 +299,7 @@ struct TabButton: View {
     }
     
     private var iconName: String {
+        if let icon = icon { return icon }
         switch id {
         case "home": return "house.fill"
         case "library": return "square.stack.fill"
@@ -212,33 +316,32 @@ struct TabButton: View {
                 activeTab = id 
             } 
         }) {
-            Group {
+            VStack(spacing: 4) {
                 if isBottomNav {
-                    VStack(spacing: 4) {
-                        Image(systemName: iconName)
-                            .font(.system(size: 22, weight: .bold))
-                        Text(label)
-                            .font(.system(size: 10, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                } else if ScreenTier.isSmall && !isLandscape {
                     Image(systemName: iconName)
-                        .font(.system(size: 18, weight: .bold))
-                } else {
+                        .font(.system(size: 22))
                     Text(label)
-                        .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1)
+                } else {
+                    Group {
+                        if ScreenTier.isSmall && !isLandscape {
+                            Image(systemName: iconName)
+                                .font(.system(size: 18, weight: .bold))
+                        } else {
+                            Text(label)
+                                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
+                        }
+                    }
+                    .padding(.horizontal, isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
+                    .padding(.vertical, isLandscape ? (ScreenTier.isPhone ? 10 : 8) : 8)
+                    .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
+                    .clipShape(Capsule())
                 }
             }
-            .foregroundColor(isActive ? (activeTab == "now-playing" || isDarkMode ? .white : .black) : .gray)
-            .padding(.horizontal, isBottomNav ? 8 : (isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16)))
-            .padding(.vertical, isBottomNav ? 10 : (isLandscape ? (ScreenTier.isPhone ? 10 : 8) : 8))
+            .foregroundColor(isActive ? (id == "library" && !isDarkMode && !isPlayingTab ? Color.red : (activeTab == "now-playing" || isDarkMode ? .white : .red)) : .gray)
             .frame(maxWidth: isBottomNav ? .infinity : nil)
-            .background(
-                isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear
-            )
-            .clipShape(Capsule())
-            .shadow(color: isActive && !isDarkMode && !isPlayingTab ? Color.black.opacity(0.05) : Color.clear, radius: 2, y: 1)
+            .padding(.vertical, isBottomNav ? 6 : 0)
         }
         .buttonStyle(PlainButtonStyle())
     }

@@ -16,7 +16,12 @@ struct ContentView: View {
 
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
-    var isLandscape: Bool { UIScreen.main.bounds.width > UIScreen.main.bounds.height }
+    var isLandscape: Bool { 
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        }
+        return vSizeClass == .compact 
+    }
 
     var headerHeight: CGFloat { 
         if ScreenTier.isSmall && !isLandscape {
@@ -44,7 +49,7 @@ struct ContentView: View {
             ZStack(alignment: .top) {
                 pageContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, (ScreenTier.isSmall && !isLandscape) ? 60 : 0)
+                    .padding(.bottom, (ScreenTier.isSmall && !isLandscape) ? 110 : 0) // Increased padding for Mini Player + Tabs
 
                 AppHeader(
                     activeTab: $activeTab,
@@ -63,13 +68,14 @@ struct ContentView: View {
                 .offset(y: ((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
                 .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
-                .zIndex(300) // Ensure header is ALWAYS on top, above ArtistDetailView (200)
+                .zIndex(300) 
 
                 if ScreenTier.isSmall && !isLandscape {
-                    VStack {
+                    VStack(spacing: 0) {
                         Spacer()
                         BottomNavigationPill(
                             activeTab: $activeTab,
+                            playback: playback,
                             isDarkMode: isDarkMode,
                             onAction: {
                                 withAnimation {
@@ -80,6 +86,7 @@ struct ContentView: View {
                         )
                     }
                     .ignoresSafeArea(.keyboard)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(400)
                 }
             }
