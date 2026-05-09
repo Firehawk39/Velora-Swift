@@ -445,6 +445,7 @@ struct NowPlayingView: View {
                     Color.white.opacity(0.1)
                 }
             }
+            .id(playback.currentTrack?.id) // Force refresh on track change
             
             // Hidden Secret Feedback Overlay
             if showPlayPauseHint {

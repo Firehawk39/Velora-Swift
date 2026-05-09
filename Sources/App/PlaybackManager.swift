@@ -30,6 +30,10 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @Published var failedDownloadIds = Set<String>()
     @Published var activeDownloadCount = 0
     
+    // Playback History for correct 'Previous' behavior
+    private var playbackHistory: [Int] = []
+    private var isNavigatingHistory = false
+    
     private var integrityManager = IntegrityManager.shared
     private var integrityCancellable: Any?
     
@@ -187,6 +191,10 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     /// Play a single track, optionally with a full queue context
     func playTrack(_ track: Track, context: [Track] = []) {
+        // Clear history when starting a new context (e.g., clicking a new album/playlist)
+        playbackHistory.removeAll()
+        isNavigatingHistory = false
+        
         if !context.isEmpty {
             self.queue = context
             self.queueIndex = context.firstIndex(where: { $0.id == track.id }) ?? 0
@@ -235,6 +243,10 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         self.duration = 0
         self.currentLyrics = nil
         self.currentSyncedLyrics = nil
+        
+        // Immediately clear backdrop to prevent ghosting on slow networks
+        self.currentArtworkTrackId = nil
+        FanartManager.shared.currentBackdrop = nil
         
         // Fetch lyrics
         client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
@@ -357,14 +369,25 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     func skipForward() {
         guard !queue.isEmpty else { return }
+        
+        // Save current index to history before moving forward
+        if !isNavigatingHistory {
+            playbackHistory.append(queueIndex)
+            // Limit history size to 100 entries
+            if playbackHistory.count > 100 { playbackHistory.removeFirst() }
+        }
+        
         let nextIndex: Int
         if isShuffle {
             var rand = Int.random(in: 0..<queue.count)
+            // Avoid playing the same song twice if possible
             if rand == queueIndex && queue.count > 1 { rand = (rand + 1) % queue.count }
             nextIndex = rand
         } else {
             nextIndex = (queueIndex + 1) % queue.count
         }
+        
+        isNavigatingHistory = false
         queueIndex = nextIndex
         loadAndPlay(track: queue[queueIndex])
     }
@@ -378,14 +401,22 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
     
     func skipBackward() {
-        // If more than 3 seconds in, restart. Otherwise go to previous.
+        // If more than 3 seconds in, restart the current song
         if progress > 3 {
             player?.seek(to: .zero)
         } else {
-            let prevIndex = queueIndex - 1
-            guard prevIndex >= 0 else { return }
-            queueIndex = prevIndex
-            loadAndPlay(track: queue[queueIndex])
+            // Check history first for correct backward navigation
+            if let lastIndex = playbackHistory.popLast() {
+                isNavigatingHistory = true
+                queueIndex = lastIndex
+                loadAndPlay(track: queue[queueIndex])
+            } else {
+                // Fallback to sequential previous if history is empty
+                let prevIndex = queueIndex - 1
+                guard prevIndex >= 0 else { return }
+                queueIndex = prevIndex
+                loadAndPlay(track: queue[queueIndex])
+            }
         }
     }
     
