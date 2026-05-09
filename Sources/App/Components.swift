@@ -6,14 +6,18 @@ public enum ScreenTier {
     case tiny, compact, regular, large, huge
     public static var current: ScreenTier {
         let w = UIScreen.main.bounds.width
-        if w <= 330 { return .tiny } // iPhone SE 1st Gen
-        if w <= 395 { return .compact } // Standard iPhone / mini (375-393pt)
-        if w <= 440 { return .regular } // Plus/Max iPhones (414-430pt)
-        if w < 1024 { return .large } // 10.25" Displays / standard iPads
+        let h = UIScreen.main.bounds.height
+        let minDim = min(w, h)
+        let maxDim = max(w, h)
+        
+        if minDim <= 330 { return .tiny } // iPhone SE 1st Gen
+        if minDim <= 395 { return .compact } // Standard iPhone / mini
+        if minDim <= 440 { return .regular } // Plus/Max iPhones
+        if maxDim < 1024 { return .large } // Standard iPads
         return .huge // iPad Pro 12.9"
     }
     public static var isSE: Bool { current == .tiny }
-    public static var isSmall: Bool { UIScreen.main.bounds.width <= 375 }
+    public static var isSmall: Bool { min(UIScreen.main.bounds.width, UIScreen.main.bounds.height) <= 375 }
     public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
     public static var isHuge: Bool { current == .huge }
 }
@@ -143,7 +147,7 @@ struct AppHeader: View {
             (isDarkMode ? AnyShapeStyle(Color(hex: "#1a1a1a")) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.15 : 1.05) : (ScreenTier.isPhone ? 0.85 : 0.9)) // 'Car Mode' boost for iPhone Landscape
+        .scaleEffect(isLandscape ? (ScreenTier.isSE ? 1.35 : (ScreenTier.isPhone ? 1.15 : 1.05)) : (ScreenTier.isPhone ? 0.85 : 0.9))
     }
 }
 
@@ -231,9 +235,9 @@ struct TabButton: View {
                         .lineLimit(1)
                 } else {
                 Text(label)
-                    .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
-                    .padding(.horizontal, isLandscape ? (ScreenTier.isPhone ? 28 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
-                    .padding(.vertical, isLandscape ? (ScreenTier.isPhone ? 14 : 8) : 8)
+                    .font(.system(size: isLandscape ? (ScreenTier.isSE ? 22 : (ScreenTier.isPhone ? 20 : 16)) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
+                    .padding(.horizontal, isLandscape ? (ScreenTier.isSE ? 32 : (ScreenTier.isPhone ? 28 : 16)) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
+                    .padding(.vertical, isLandscape ? (ScreenTier.isSE ? 18 : (ScreenTier.isPhone ? 14 : 8)) : 8)
                     .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
                     .clipShape(Capsule())
                 }
