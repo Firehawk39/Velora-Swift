@@ -38,14 +38,10 @@ struct AppHeader: View {
 
     var body: some View {
         Group {
-            if ScreenTier.isSmall && !isLandscape {
-                mainHeaderContent
-            } else {
-                ZStack {
-                    mainHeaderContent
-                    navigationPill
-                }
-            }
+        ZStack {
+            mainHeaderContent
+            navigationPill
+        }
         }
         .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
     }
@@ -234,15 +230,8 @@ struct TabButton: View {
                         .font(.system(size: 10, weight: .medium))
                         .lineLimit(1)
                 } else {
-                    Group {
-                        if ScreenTier.isSmall && !isLandscape {
-                            Image(systemName: iconName)
-                                .font(.system(size: 18, weight: .bold))
-                        } else {
-                            Text(label)
-                                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
-                        }
-                    }
+                Text(label)
+                    .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
                     .padding(.horizontal, isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
                     .padding(.vertical, isLandscape ? (ScreenTier.isPhone ? 10 : 8) : 8)
                     .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)

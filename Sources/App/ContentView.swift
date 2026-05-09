@@ -50,7 +50,7 @@ struct ContentView: View {
             ZStack(alignment: .top) {
                 pageContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, (ScreenTier.isSmall && !isLandscape) ? 65 : 0) // Adjusted back to single-row height
+                    .padding(.bottom, 0)
 
                 AppHeader(
                     activeTab: $activeTab,
@@ -71,24 +71,6 @@ struct ContentView: View {
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) 
 
-                if ScreenTier.isSmall && !isLandscape {
-                    VStack(spacing: 0) {
-                        Spacer()
-                        BottomNavigationPill(
-                            activeTab: $activeTab,
-                            isDarkMode: isDarkMode,
-                            onAction: {
-                                withAnimation {
-                                    selectedArtistId = nil
-                                    selectedArtistName = nil
-                                }
-                            }
-                        )
-                    }
-                    .ignoresSafeArea(.keyboard)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(400)
-                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea(.container, edges: .top)
@@ -107,11 +89,11 @@ struct ContentView: View {
                             isDarkMode: isDarkMode,
                             toggleDark: { isDarkMode.toggle() },
                             onSettings: { showProfileMenu = false; activeTab = "settings" },
-                                onLogout: {
-                                    showProfileMenu = false
-                                    client.logout()
-                                    showSettings = true
-                                },
+                            onLogout: {
+                                showProfileMenu = false
+                                client.logout()
+                                showSettings = true
+                            },
                             isLandscape: isLandscape
                         )
                         .padding(.trailing, isCompact ? 24.0 : 48.0)

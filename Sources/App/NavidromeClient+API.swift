@@ -363,10 +363,16 @@ extension NavidromeClient {
 
     // MARK: - All Songs
 
-    func fetchAllSongs(size: Int = 2000) {
-        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": String(size)]) else { return }
+    func fetchAllSongs(size: Int = 2000, completion: (([Track]) -> Void)? = nil) {
+        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": String(size)]) else { 
+            completion?([])
+            return 
+        }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
+            guard error == nil, let data = data else { 
+                completion?([])
+                return 
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let songs = (decoded.subsonicResponse?.randomSongs?.song ?? decoded.subsonicResponse?.randomSongs2?.song ?? []).map { s in
@@ -383,21 +389,28 @@ extension NavidromeClient {
                     DispatchQueue.main.async { 
                         self.allSongs = songs 
                         self.syncLosslessPlaylist()
+                        completion?(songs)
                     }
                 } else {
-                    self.fetchAlphabeticalSongs()
+                    self.fetchAlphabeticalSongs { completion?($0) }
                 }
             } catch { 
                 print("Error decoding random songs: \(error)")
-                self.fetchAlphabeticalSongs()
+                self.fetchAlphabeticalSongs { completion?($0) }
             }
         }.resume()
     }
 
-    private func fetchAlphabeticalSongs() {
-        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "500"]) else { return }
+    private func fetchAlphabeticalSongs(completion: (([Track]) -> Void)? = nil) {
+        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "500"]) else { 
+            completion?([])
+            return 
+        }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
+            guard error == nil, let data = data else { 
+                completion?([])
+                return 
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { s in
@@ -409,8 +422,12 @@ extension NavidromeClient {
                 DispatchQueue.main.async { 
                     self.allSongs = songs 
                     self.syncLosslessPlaylist()
+                    completion?(songs)
                 }
-            } catch { print("Search fallback failed: \(error)") }
+            } catch { 
+                print("Search fallback failed: \(error)")
+                completion?([])
+            }
         }.resume()
     }
 
@@ -484,6 +501,17 @@ extension NavidromeClient {
             }
         }
         
+        // Also clear root docs (tracks)
+        if let contents = try? fileManager.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil) {
+            for item in contents {
+                let name = item.lastPathComponent
+                // Don't delete our subdirs themselves, just their contents (handled above)
+                if name != "Backdrops" && name != "ArtistPortraits" && name != "Metadata" {
+                    try? fileManager.removeItem(at: item)
+                }
+            }
+        }
+        
         fetchRecentlyPlayed()
         fetchAlbums()
         fetchArtists()
@@ -511,11 +539,15 @@ extension NavidromeClient {
         let portraitDir = docs.appendingPathComponent("ArtistPortraits")
         let metadataDir = docs.appendingPathComponent("Metadata")
         
-        for dir in [backdropDir, portraitDir, metadataDir] {
+        for dir in [docs, backdropDir, portraitDir, metadataDir] {
             if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
                 for case let fileURL as URL in enumerator {
-                    if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                        totalSize += Int64(fileSize)
+                    // If it's a directory, don't count its 'size' (usually 64-160 bytes)
+                    var isDir: ObjCBool = false
+                    if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue {
+                        if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                            totalSize += Int64(fileSize)
+                        }
                     }
                 }
             }

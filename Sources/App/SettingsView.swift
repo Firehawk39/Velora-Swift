@@ -391,8 +391,6 @@ struct AppSettingsView: View {
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }
                         
-                        // Storage Section
-                        StorageInfoView(isDark: isDark)
                         
                         // App Data Section
                         VStack(alignment: .leading, spacing: 12) {
@@ -418,7 +416,7 @@ struct AppSettingsView: View {
                                         Text(sync.isSyncing && sync.syncType == .metadata ? "Syncing Info..." : "Download Library Metadata")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isSyncing && sync.syncType == .metadata ? sync.currentStatus : "Artist bios, portraits, and album details")
+                                        Text(((sync.isSyncing && sync.syncType == .metadata) || sync.currentStatus.lowercased().contains("metadata sync complete")) ? sync.currentStatus : "Artist bios, portraits, and album details")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -435,6 +433,10 @@ struct AppSettingsView: View {
                                             }
                                             CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .blue)
                                         }
+                                    } else if sync.currentStatus.lowercased().contains("metadata sync complete") {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(.green)
                                     } else {
                                         Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
                                     }
@@ -462,7 +464,7 @@ struct AppSettingsView: View {
                                         Text(sync.isSyncing && sync.syncType == .media ? "Downloading..." : "Download All Music")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(sync.isSyncing && sync.syncType == .media ? sync.currentStatus : "Save all tracks for offline listening")
+                                        Text(((sync.isSyncing && sync.syncType == .media) || sync.currentStatus.lowercased().contains("offline") || sync.currentStatus.lowercased().contains("complete")) ? sync.currentStatus : "Save all tracks for offline listening")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -479,6 +481,10 @@ struct AppSettingsView: View {
                                             }
                                             CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .red)
                                         }
+                                    } else if sync.currentStatus.lowercased().contains("offline") || sync.currentStatus.lowercased().contains("complete") || sync.currentStatus.lowercased().contains("all") {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(.green)
                                     } else {
                                         Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
                                     }
@@ -500,9 +506,14 @@ struct AppSettingsView: View {
                                 HStack {
                                     Image(systemName: "trash.fill")
                                         .foregroundColor(.red)
-                                    Text("Clear Media Cache")
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(isDark ? .white : .black)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Clear All App Data")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text("Removes all downloaded tracks, images, and metadata")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                    }
                                     Spacer()
                                     if cacheCleared {
                                         Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)

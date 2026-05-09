@@ -696,6 +696,17 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
     
+    func resetDownloadState() {
+        AppLogger.shared.log("Resetting download state.", level: .info)
+        downloadQueue.removeAll()
+        downloadTasks.removeAll()
+        downloadProgress.removeAll()
+        downloadETAs.removeAll()
+        downloadStartTimes.removeAll()
+        activeDownloadCount = 0
+        failedDownloadIds.removeAll()
+    }
+    
     func shufflePlay(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
         let shuffled = tracks.shuffled()

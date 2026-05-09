@@ -141,28 +141,20 @@ final class SyncManager: ObservableObject {
         currentStatus = "Analyzing library..."
         
         Task {
+            playback?.resetDownloadState()
+            
             // 1. Ensure we actually have the songs list
-            AppLogger.shared.log("Checking client.allSongs.isEmpty: \(client.allSongs.isEmpty)", level: .debug)
+            let tracks: [Track]
             if client.allSongs.isEmpty {
                 currentStatus = "Fetching song list..."
-                client.fetchAllSongs()
-                playback?.failedDownloadIds.removeAll()
-                
-                AppLogger.shared.log("Polling for songs...", level: .debug)
-                // Wait for songs to populate (poll for up to 15s)
-                for _ in 0..<30 {
-                    if !client.allSongs.isEmpty { 
-                        AppLogger.shared.log("Songs populated: \(client.allSongs.count) tracks.", level: .debug)
-                        break 
+                tracks = await withCheckedContinuation { continuation in
+                    client.fetchAllSongs { songs in
+                        continuation.resume(returning: songs)
                     }
-                    try? await Task.sleep(nanoseconds: 500_000_000)
                 }
             } else {
-                AppLogger.shared.log("Songs already populated: \(client.allSongs.count) tracks.", level: .debug)
-                playback?.failedDownloadIds.removeAll()
+                tracks = client.allSongs
             }
-            
-            let tracks = client.allSongs
             if tracks.isEmpty {
                 AppLogger.shared.log("Songs list still empty after polling. Aborting.", level: .error)
                 finalizeSync("No tracks found in library.")
