@@ -453,7 +453,6 @@ struct NowPlayingView: View {
                     Circle()
                         .fill(.black.opacity(0.4))
                         .frame(width: 70, height: 70)
-                        .blur(radius: 10)
                     
                     Image(systemName: hintIcon)
                         .font(.system(size: 32, weight: .bold))
