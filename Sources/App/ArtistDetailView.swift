@@ -62,7 +62,7 @@ struct ArtistDetailView: View {
                         }
                     }
                     .padding(.top, 48)
-                    .padding(.bottom, 120)
+                    .padding(.bottom, 48)
                 }
                 .background(GeometryReader { geo in
                     Color.clear.preference(key: ScrollOffsetKey.self, value: geo.frame(in: .global).minY)

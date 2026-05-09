@@ -462,7 +462,7 @@ struct QueuePanel: View {
                     }
                 }
                 .padding(.horizontal, ScreenTier.isSE ? 10 : 16)
-                .padding(.bottom, 100)
+                .padding(.bottom, 20)
             }
         }
         .frame(width: 380)

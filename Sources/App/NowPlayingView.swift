@@ -147,14 +147,14 @@ struct NowPlayingView: View {
                         metadataCards
                             .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
                             .padding(.top, 40)
-                            .padding(.bottom, 100)
+                            .padding(.bottom, 20)
                             .opacity(isIdle ? 0.0 : 1.0)
                             .offset(y: isIdle ? 20 : 0)
                             .allowsHitTesting(!isIdle)
                             .animation(.easeInOut(duration: 0.7), value: isIdle)
                     }
                     .padding(.top, isIdle ? 0 : headerHeight + 20)
-                    .padding(.bottom, 50) // Extra bottom clearance
+                    .padding(.bottom, 20)
                     .contentShape(Rectangle()) // Ensures the entire area is scroll-reactive
                     .onTapGesture {
                         if isIdle { resetIdleTimer() }

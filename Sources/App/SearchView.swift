@@ -38,7 +38,7 @@ struct SearchView: View {
                         SearchResultsView(tracks: tracks, albums: albums, artists: artists, isDarkMode: isDarkMode, hPad: hPad, playback: playback, onArtistClick: onArtistClick)
                     }
                 }
-                .padding(.bottom, 100)
+                .padding(.bottom, 32)
             }
         }
         .background(Color.clear)

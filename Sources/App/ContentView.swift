@@ -73,7 +73,7 @@ struct ContentView: View {
 
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea(.container, edges: .top)
+            .ignoresSafeArea()
 
             // ── Layer 5: Profile menu dropdown ──────────────────────
             if showProfileMenu {
