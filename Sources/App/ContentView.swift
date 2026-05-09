@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var isIdle: Bool = false
 
     @Environment(\.horizontalSizeClass) var hSizeClass
+    @Environment(\.verticalSizeClass) var vSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
