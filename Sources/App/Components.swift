@@ -143,7 +143,7 @@ struct AppHeader: View {
             (isDarkMode ? AnyShapeStyle(Color(hex: "#1a1a1a")) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.05 : 1.05) : (ScreenTier.isPhone ? 0.85 : 0.9)) // Refined boost in landscape
+        .scaleEffect(isLandscape ? (ScreenTier.isPhone ? 1.15 : 1.05) : (ScreenTier.isPhone ? 0.85 : 0.9)) // 'Car Mode' boost for iPhone Landscape
     }
 }
 
@@ -231,9 +231,9 @@ struct TabButton: View {
                         .lineLimit(1)
                 } else {
                 Text(label)
-                    .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 17 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
-                    .padding(.horizontal, isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
-                    .padding(.vertical, isLandscape ? (ScreenTier.isPhone ? 10 : 8) : 8)
+                    .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 20 : 16) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
+                    .padding(.horizontal, isLandscape ? (ScreenTier.isPhone ? 28 : 16) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
+                    .padding(.vertical, isLandscape ? (ScreenTier.isPhone ? 14 : 8) : 8)
                     .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
                     .clipShape(Capsule())
                 }
