@@ -56,8 +56,10 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     @Published var downloadProgress: [String: Double] = [:]
     @Published var downloadETAs: [String: String] = [:]
+    @Published var pausedDownloadIds = Set<String>()
     
     private var downloadQueue: [Track] = []
+    private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
     private var maxConcurrentDownloads: Int {
         UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0 
@@ -111,6 +113,21 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @objc private func handleTerminate() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         player?.pause()
+        cancelAllDownloads()
+    }
+    
+    func cancelAllDownloads() {
+        for task in activeDownloadTasksByTrackId.values {
+            task.cancel()
+        }
+        activeDownloadTasksByTrackId.removeAll()
+        downloadQueue.removeAll()
+        downloadTasks.removeAll()
+        DispatchQueue.main.async {
+            self.downloadProgress.removeAll()
+            self.pausedDownloadIds.removeAll()
+            self.activeDownloadCount = 0
+        }
     }
     
     // MARK: - Audio Session
@@ -550,30 +567,36 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     func downloadTrack(_ track: Track) {
         AppLogger.shared.log("downloadTrack requested for \(track.id) - \(track.title)", level: .debug)
+        
+        // 1. Check if already downloaded
         if checkFileSystemForTrack(track.id) {
-            AppLogger.shared.log("Track \(track.id) already exists on disk.", level: .debug)
-            // Already there, but maybe the set is stale
-            if !downloadedTrackIds.contains(track.id) {
-                DispatchQueue.main.async {
-                    self.downloadedTrackIds.insert(track.id)
-                    self.objectWillChange.send()
-                }
+            return 
+        }
+        
+        // 2. TOGGLE LOGIC: Check if it's already active (Downloading or Paused)
+        if let existingTask = activeDownloadTasksByTrackId[track.id] {
+            if pausedDownloadIds.contains(track.id) {
+                AppLogger.shared.log("Resuming download for \(track.id)", level: .info)
+                existingTask.resume()
+                DispatchQueue.main.async { self.pausedDownloadIds.remove(track.id) }
+            } else {
+                AppLogger.shared.log("Pausing download for \(track.id)", level: .info)
+                existingTask.suspend()
+                DispatchQueue.main.async { self.pausedDownloadIds.insert(track.id) }
             }
-            return 
+            return
         }
         
-        // Add to queue if not already there or active
+        // 3. Add to queue if not already there
         if downloadProgress[track.id] != nil { 
-            AppLogger.shared.log("Track \(track.id) is already in download progress map.", level: .debug)
             return 
         }
         
-        // Mark as queued immediately to prevent duplicate entries
+        // Mark as queued immediately
         DispatchQueue.main.async {
             self.downloadProgress[track.id] = 0.0
         }
         
-        AppLogger.shared.log("Appending \(track.id) to downloadQueue. Current queue size: \(downloadQueue.count)", level: .debug)
         downloadQueue.append(track)
         processQueue()
     }
@@ -601,6 +624,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
         let task = downloadSession.downloadTask(with: url)
         downloadTasks[task.taskIdentifier] = track.id
+        activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
         downloadStartTimes[track.id] = Date()
         task.resume()
     }
@@ -646,6 +670,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
         
         // Use track's suffix if available, fallback to mp3
+        activeDownloadTasksByTrackId.removeValue(forKey: trackId)
+        
         var suffix = "mp3"
         if let track = client.allSongs.first(where: { $0.id == trackId }), let s = track.suffix {
             suffix = s.lowercased()

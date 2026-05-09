@@ -867,10 +867,18 @@ private struct PlaylistDetailView: View {
                     .id("playlist-grid-\(track.id)")
                 
                 if let progress = playback.downloadProgress[track.id] {
-                    CircularProgressView(progress: progress, size: 16, strokeWidth: 2, accentColor: .red)
-                        .padding(6)
-                        .background(Circle().fill(Color.black.opacity(0.5)))
-                        .padding(4)
+                    let isPaused = playback.pausedDownloadIds.contains(track.id)
+                    ZStack {
+                        CircularProgressView(progress: progress, size: 16, strokeWidth: 2, accentColor: .red)
+                        if isPaused {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 6))
+                                .foregroundColor(.red)
+                        }
+                    }
+                    .padding(6)
+                    .background(Circle().fill(Color.black.opacity(0.5)))
+                    .padding(4)
                 } else if playback.isDownloaded(track.id) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
@@ -913,7 +921,19 @@ private struct PlaylistDetailView: View {
         Button(action: {
             playback.downloadTrack(track)
         }) {
-            Label(playback.isDownloaded(track.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(track.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+            let isDownloaded = playback.isDownloaded(track.id)
+            let isDownloading = playback.downloadProgress[track.id] != nil
+            let isPaused = playback.pausedDownloadIds.contains(track.id)
+            
+            if isDownloaded {
+                Label("Downloaded", systemImage: "checkmark.circle.fill")
+            } else if isPaused {
+                Label("Resume Download", systemImage: "play.circle")
+            } else if isDownloading {
+                Label("Pause Download", systemImage: "pause.circle")
+            } else {
+                Label("Download", systemImage: "arrow.down.circle")
+            }
         }
         .disabled(playback.isDownloaded(track.id))
     }

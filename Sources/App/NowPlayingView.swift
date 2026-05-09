@@ -672,10 +672,18 @@ struct NowPlayingView: View {
                 playback.downloadTrack(track)
             }
         } label: {
-            let isDownloaded = playback.downloadedTrackIds.contains(playback.currentTrack?.id ?? "")
+            let trackId = playback.currentTrack?.id ?? ""
+            let isDownloaded = playback.downloadedTrackIds.contains(trackId)
+            let isPaused = playback.pausedDownloadIds.contains(trackId)
+            
             ZStack {
-                if let progress = playback.downloadProgress[playback.currentTrack?.id ?? ""] {
-                    CircularProgressView(progress: progress, size: 24, strokeWidth: 3, accentColor: .red)
+                if let progress = playback.downloadProgress[trackId] {
+                    ZStack {
+                        CircularProgressView(progress: progress, size: 28, strokeWidth: 3, accentColor: .red)
+                        Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundColor(.red)
+                    }
                 } else {
                     Image(systemName: isDownloaded ? "checkmark.circle.fill" : "arrow.down.to.line.compact")
                         .font(.system(size: 16, weight: .bold))
