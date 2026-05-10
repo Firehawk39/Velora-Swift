@@ -29,6 +29,7 @@ class MusicBrainzManager: ObservableObject {
     @Published var metadataProgress: Double = 0.0
     
     private var nameToMBIDCache: [String: String] = [:]
+    private let cacheLock = NSLock()
     private let cacheFile: URL
     private let metadataDir: URL
     private let fileManager = FileManager.default
@@ -51,21 +52,31 @@ class MusicBrainzManager: ObservableObject {
     }
     
     private func saveCache() {
-        if let data = try? JSONEncoder().encode(nameToMBIDCache) {
+        cacheLock.lock()
+        let copy = nameToMBIDCache
+        cacheLock.unlock()
+        
+        if let data = try? JSONEncoder().encode(copy) {
             try? data.write(to: cacheFile)
         }
     }
     
     func hasArtistMetadata(for artistName: String) -> Bool {
-        guard let mbid = nameToMBIDCache[artistName] else { return false }
-        let fileName = "artist_" + (mbid) + ".json"
+        cacheLock.lock()
+        let mbid = nameToMBIDCache[artistName]
+        cacheLock.unlock()
+        guard let validMbid = mbid else { return false }
+        let fileName = "artist_" + (validMbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
     
     func hasAlbumMetadata(albumName: String, artistName: String) -> Bool {
-        guard let mbid = nameToMBIDCache["\(artistName)_\(albumName)"] else { return false }
-        let fileName = "album_" + (mbid) + ".json"
+        cacheLock.lock()
+        let mbid = nameToMBIDCache["\(artistName)_\(albumName)"]
+        cacheLock.unlock()
+        guard let validMbid = mbid else { return false }
+        let fileName = "album_" + (validMbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
@@ -325,8 +336,10 @@ class MusicBrainzManager: ObservableObject {
         }
         
         AppLogger.shared.log("[Metadata] Silent prefetch: Resolved \(artistName) to \(mbid)")
+        cacheLock.lock()
         self.nameToMBIDCache[artistName] = mbid
-        saveCache()
+        cacheLock.unlock()
+        self.saveCache()
         
         let fileName = "artist_" + (mbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
@@ -354,8 +367,10 @@ class MusicBrainzManager: ObservableObject {
         let resolved = await resolveAlbumMBIDAsync(album: albumName, artist: artistName)
         guard let mbid = resolved else { return }
         
+        cacheLock.lock()
         self.nameToMBIDCache["\(artistName)_\(albumName)"] = mbid
-        saveCache()
+        cacheLock.unlock()
+        self.saveCache()
         
         let fileName = "album_" + (mbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
@@ -380,7 +395,10 @@ class MusicBrainzManager: ObservableObject {
     }
     
     private func resolveMBIDAsync(for artist: String) async -> String? {
-        if let cached = nameToMBIDCache[artist] { return cached }
+        cacheLock.lock()
+        let cached = nameToMBIDCache[artist]
+        cacheLock.unlock()
+        if let cached = cached { return cached }
         
         let encoded = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\(encoded)&fmt=json"
@@ -396,7 +414,10 @@ class MusicBrainzManager: ObservableObject {
     }
     
     private func resolveAlbumMBIDAsync(album: String, artist: String) async -> String? {
-        if let cached = nameToMBIDCache["\(artist)_\(album)"] { return cached }
+        cacheLock.lock()
+        let cached = nameToMBIDCache["\(artist)_\(album)"]
+        cacheLock.unlock()
+        if let cached = cached { return cached }
         
         let query = "release:\(album) AND artist:\(artist)"
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

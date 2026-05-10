@@ -400,23 +400,21 @@ struct ProfileDropdown: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !isLandscape {
-                Button(action: {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                        toggleDark()
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
-                            .foregroundColor(isDarkMode ? .yellow : .blue)
-                        Text(isDarkMode ? "Light Mode" : "Dark Mode")
-                        Spacer()
-                    }
-                    .padding()
-                    .foregroundColor(isDarkMode ? .white : .black)
+            Button(action: {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    toggleDark()
                 }
-                Divider().background(Color.white.opacity(0.1))
+            }) {
+                HStack {
+                    Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
+                        .foregroundColor(isDarkMode ? .yellow : .blue)
+                    Text(isDarkMode ? "Light Mode" : "Dark Mode")
+                    Spacer()
+                }
+                .padding()
+                .foregroundColor(isDarkMode ? .white : .black)
             }
+            Divider().background(Color.white.opacity(0.1))
             Button(action: onSettings) {
                 HStack {
                     Image(systemName: "gearshape.fill")

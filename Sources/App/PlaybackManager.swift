@@ -683,20 +683,21 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
         
         do {
-            // Integrity Check: Verify that the downloaded file is valid
-            let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
-            let fileSize = attributes[.size] as? Int64 ?? 0
-            
-            if fileSize < 1024 {
-                 AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is empty or corrupted (\(fileSize) bytes)", level: .error)
-                 throw NSError(domain: "com.velora.integrity", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty or corrupted file download"])
-            }
-
             if FileManager.default.fileExists(atPath: destinationUrl.path) {
                 try FileManager.default.removeItem(at: destinationUrl)
             }
             try FileManager.default.moveItem(at: location, to: destinationUrl)
             
+            // Integrity Check: Verify that the downloaded file is valid (AFTER moving from temp background session location)
+            let attributes = try FileManager.default.attributesOfItem(atPath: destinationUrl.path)
+            let fileSize = attributes[.size] as? Int64 ?? 0
+            
+            if fileSize < 1024 {
+                 AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is empty or corrupted (\(fileSize) bytes)", level: .error)
+                 try FileManager.default.removeItem(at: destinationUrl)
+                 throw NSError(domain: "com.velora.integrity", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty or corrupted file download"])
+            }
+
             // Register in the Lightning Index
             integrityManager.registerDownload(trackId: trackId, fileName: destinationUrl.lastPathComponent, size: fileSize)
             
@@ -721,6 +722,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         AppLogger.shared.log("didCompleteWithError called for task \(task.taskIdentifier)", level: .debug)
+        
+        if let trackId = downloadTasks[task.taskIdentifier] {
+            activeDownloadTasksByTrackId.removeValue(forKey: trackId)
+        }
+        
         if let error = error {
             AppLogger.shared.log("Download task \(task.taskIdentifier) failed: \(error.localizedDescription)", level: .error)
             if let trackId = downloadTasks[task.taskIdentifier] {
@@ -728,6 +734,7 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                     self.failedDownloadIds.insert(trackId)
                     self.downloadProgress.removeValue(forKey: trackId)
                     self.downloadETAs.removeValue(forKey: trackId)
+                    self.downloadStartTimes.removeValue(forKey: trackId)
                 }
             }
         } else {
@@ -757,11 +764,13 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         AppLogger.shared.log("Resetting download state.", level: .info)
         downloadQueue.removeAll()
         downloadTasks.removeAll()
+        activeDownloadTasksByTrackId.removeAll()
         downloadProgress.removeAll()
         downloadETAs.removeAll()
         downloadStartTimes.removeAll()
         activeDownloadCount = 0
         failedDownloadIds.removeAll()
+        pausedDownloadIds.removeAll()
     }
     
     func shufflePlay(tracks: [Track]) {
