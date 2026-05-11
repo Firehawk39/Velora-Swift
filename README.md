@@ -17,13 +17,11 @@
 ## 🖼️ Visual Experience
 
 <div align="center">
-  <img src="Screenshots/NowPlaying_Landscape.png" width="800" alt="Now Playing Landscape View">
+  <img src=".sync/SS/IMG_6312-landscape.png" width="800" alt="Now Playing Landscape View">
   <br/>
   <em>Cinematic "Now Playing" interface with dynamic glassmorphism and artist backdrops.</em>
   <br/><br/>
-  <img src="Screenshots/Library_Landscape.png" width="800" alt="Library Landscape View">
-  <br/>
-  <em>Highly organized, high-fidelity library navigation designed for iPad Kiosk and landscape use.</em>
+  <img src=".sync/SS/IMG_6314-landscape.png" width="800" alt="Library Landscape View">
 </div>
 
 ## ✨ Craftsmanship & UI Features
