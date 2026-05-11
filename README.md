@@ -1,7 +1,7 @@
 <div align="center">
   <img src="Sources/App/Resources/Assets.xcassets/Logo.imageset/Logo.png" width="320" height="320">
 
-  <h3>The smartest private music player ever made.</h3>
+  <h3>A beautifully crafted, high-fidelity iOS music experience.</h3>
   
   <br/>
   
@@ -12,47 +12,43 @@
 
 ---
 
-**Velora** is a high-fidelity, native iOS music ecosystem designed for those who value **ownership, privacy, and premium aesthetics**. Built specifically for iPad Kiosk and iPhone deployment, it transforms your Navidrome server into a cinematic listening experience.
+**Velora** is an elegantly designed, native iOS music ecosystem built to transform personal music libraries into a visually stunning, cinematic listening experience. Designed with a deep focus on **UI/UX craftsmanship, fluid animations, and premium aesthetics**, Velora proves that independent music players can rival and exceed commercial platforms in beauty and usability.
 
-## ✨ Key Features
+## ✨ Craftsmanship & UI Features
 
-- 💎 **Cinematic UI:** A "Glassmorphic" interface that adapts perfectly to landscape and portrait modes.
-- 🚀 **Hardware Integration:** Native support for **Steering Wheel Controls** and Lock Screen media controls.
-- 📡 **Offline Superpower:** Robust download manager with file integrity checks for high-quality offline listening.
-- 🎨 **Dynamic Backdrops:** Real-time artist resolution via Fanart.tv and MusicBrainz for stunning visual context.
-- 🔀 **Smart Navigation:** Forward-only shuffle logic with a strict history stack for predictable "Back" behavior.
-- 🛠️ **Developer Suite:** Built-in diagnostic logs for real-time monitoring of network and cache performance.
+- 💎 **Cinematic Glassmorphism:** A custom-built, highly polished interface featuring dynamic blur effects and translucent materials that adapt seamlessly across landscape and portrait orientations.
+- 🎨 **Dynamic Contextual Backdrops:** Real-time artist imagery resolution via Fanart.tv and MusicBrainz creates immersive, edge-to-edge visual environments based on what you're listening to.
+- 🌊 **Fluid Navigation:** Intuitive gesture-based controls, a strict history stack for predictable routing, and buttery-smooth transitions engineered natively in Swift.
+- 🚀 **Native Hardware Integration:** Deep integration with iOS system behaviors, including lock screen media controls, steering wheel inputs, and background audio processing.
+- 📡 **Robust Offline Capabilities:** A bespoke download manager built from the ground up, featuring file integrity checks and reliable offline playback for uninterrupted listening.
 
 ---
 
-## 🚀 The AI Roadmap
+## 🚀 Future Vision: The AI Roadmap
+
+While the foundation of Velora has been meticulously perfecting the user interface, design system, and core playback engine, the architecture is primed for upcoming intelligent features:
 
 - [ ] **AI DJ:** A personal DJ that understands your mood and context.
 - [ ] **Semantic Search:** Find music by describing it (e.g., *"Play something for a rainy drive"*).
 - [ ] **Taste Graph:** Deep analytics of your listening habits and evolving preferences.
 - [ ] **Smart Shuffling:** AI-driven queue management that learns what you skip and what you love.
 
-## 📚 Documentation
+## 📚 Technical Documentation
 
-For deep dives into how Velora works, check out our technical documentation:
+Explore the engineering and design decisions behind Velora:
 
-- 🏛️ **[Project Architecture](ARCHITECTURE.md):** A detailed look at our layered design, managers, and data flow.
-- 🎨 **[Design System](DESIGN.md):** Our "Cinematic Glassmorphism" philosophy and visual guidelines.
-- 🧪 **[Development Log](DEVLOG.md):** A chronological record of the engineering decisions that shaped the app.
+- 🎨 **[Design System](DESIGN.md):** Our "Cinematic Glassmorphism" philosophy, UI components, and visual guidelines.
+- 🏛️ **[Project Architecture](ARCHITECTURE.md):** A detailed look at our layered design, state management, and data flow.
+- 🧪 **[Development Log](DEVLOG.md):** A chronological record of the engineering challenges and solutions that shaped the app.
 
 ---
 
 ## 🛠️ Development & Deployment
 
-### Build Pipeline
-Velora uses a custom **Codemagic** pipeline designed for native iPad resolution and automatic IPA assembly.
+Velora is built with modern iOS development practices in mind, utilizing a custom **Codemagic** CI/CD pipeline for automated builds.
 
 1. **Clone:** `git clone https://github.com/Firehawk39/Velora-Swift`
 2. **Open:** Open the project in Xcode or Swift Playgrounds.
 3. **Configure:** Set your Navidrome URL in `ContentView.swift` or through the in-app Settings.
 
----
 
-<div align="center">
-  Built with ❤️ by the Velora Team
-</div>
