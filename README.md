@@ -14,6 +14,18 @@
 
 **Velora** is an elegantly designed, native iOS music ecosystem built to transform personal music libraries into a visually stunning, cinematic listening experience. Designed with a deep focus on **UI/UX craftsmanship, fluid animations, and premium aesthetics**, Velora proves that independent music players can rival and exceed commercial platforms in beauty and usability.
 
+## 🖼️ Visual Experience
+
+<div align="center">
+  <img src="Screenshots/NowPlaying_Landscape.png" width="800" alt="Now Playing Landscape View">
+  <br/>
+  <em>Cinematic "Now Playing" interface with dynamic glassmorphism and artist backdrops.</em>
+  <br/><br/>
+  <img src="Screenshots/Library_Landscape.png" width="800" alt="Library Landscape View">
+  <br/>
+  <em>Highly organized, high-fidelity library navigation designed for iPad Kiosk and landscape use.</em>
+</div>
+
 ## ✨ Craftsmanship & UI Features
 
 - 💎 **Cinematic Glassmorphism:** A custom-built, highly polished interface featuring dynamic blur effects and translucent materials that adapt seamlessly across landscape and portrait orientations.
