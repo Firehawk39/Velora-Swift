@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Sources/App/Resources/Assets.xcassets/Logo.imageset/Logo.png" width="320" height="320">
+  <img src="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon~ios-marketing.png" width="320" height="320">
 
   <h3>A beautifully crafted, high-fidelity iOS music experience.</h3>
   
