@@ -128,27 +128,52 @@ final class SyncManager: ObservableObject {
                 updateProgress(tasksCompleted / totalTasks)
             }
             
-            // Phase 3: Track Lyrics (LRCLIB Rate-Limit Protected)
+            // Phase 3: Track Lyrics (Rate-Limit Protected Concurrent Batching)
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            for song in songs {
-                if !isSyncing { break }
-                
+            let maxConcurrentLyricsRequests = 6
+            
+            // Filter out songs that already have local cached lyrics first so we skip them instantly
+            let missingSongs = songs.filter { song in
                 let cacheFile = docs.appendingPathComponent("Lyrics/\(song.id).txt")
                 if FileManager.default.fileExists(atPath: cacheFile.path) {
                     skippedCount += 1
-                } else {
-                    currentStatus = "Fetching Lyrics: \(song.title)"
-                    await withCheckedContinuation { continuation in
-                        client.fetchLyrics(trackId: song.id, artist: song.artist ?? "", title: song.title) { _ in
-                            continuation.resume()
+                    tasksCompleted += 1
+                    updateProgress(tasksCompleted / totalTasks)
+                    return false
+                }
+                return true
+            }
+            
+            if !missingSongs.isEmpty {
+                var startIndex = 0
+                while startIndex < missingSongs.count && isSyncing {
+                    let endIndex = min(startIndex + maxConcurrentLyricsRequests, missingSongs.count)
+                    let batch = Array(missingSongs[startIndex..<endIndex])
+                    
+                    currentStatus = "Syncing Lyrics: \(startIndex)/\(missingSongs.count) songs"
+                    
+                    // Download this batch of 6 tracks in parallel
+                    await withTaskGroup(of: Void.self) { group in
+                        for song in batch {
+                            group.addTask {
+                                await withCheckedContinuation { continuation in
+                                    client.fetchLyrics(trackId: song.id, artist: song.artist ?? "", title: song.title) { _ in
+                                        continuation.resume()
+                                    }
+                                }
+                            }
                         }
                     }
-                    // Crucial: Sleep 1s to prevent LRCLIB rate-limit HTTP 429 errors
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    
+                    // Update progress on the MainActor for the entire batch
+                    tasksCompleted += Double(batch.count)
+                    updateProgress(tasksCompleted / totalTasks)
+                    
+                    // Cooldown between batches to prevent spamming the LRCLIB server
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    
+                    startIndex += maxConcurrentLyricsRequests
                 }
-                
-                tasksCompleted += 1
-                updateProgress(tasksCompleted / totalTasks)
             }
             
             finalizeSync("Sync Complete (\(skippedCount) items skipped)")
