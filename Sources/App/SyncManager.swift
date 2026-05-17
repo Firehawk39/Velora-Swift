@@ -70,62 +70,75 @@ final class SyncManager: ObservableObject {
             var skippedCount = 0
             
             // Phase 1: Artist Metadata & Images
-            for artist in artists {
-                if !isSyncing { break }
+            let maxConcurrentMetadata = 8
+            var artistStartIndex = 0
+            
+            while artistStartIndex < artists.count && isSyncing {
+                let endIndex = min(artistStartIndex + maxConcurrentMetadata, artists.count)
+                let batch = Array(artists[artistStartIndex..<endIndex])
                 
-                let mb = MusicBrainzManager.shared
-                let fa = FanartManager.shared
+                currentStatus = "Syncing Artists: \(artistStartIndex)/\(artists.count)"
                 
-                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-                let localPortraitUrl = docs.appendingPathComponent("CoverArt/\(artist.id).jpg")
-                let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
-                
-                let hasAll = mb.hasArtistMetadata(for: artist.name) && 
-                             fa.hasBackdrop(for: artist.name) && 
-                             hasLocalPortrait
-                
-                if hasAll {
-                    skippedCount += 1
-                } else {
-                    currentStatus = "Syncing: \(artist.name)"
-                    FanartManager.shared.downloadBackdropSilently(for: artist.name)
-                    client.downloadCoverArt(id: artist.id)
-                    await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
-                    
-                    // Only sleep if we actually hit the API
-                    try? await Task.sleep(nanoseconds: 1_050_000_000)
+                await withTaskGroup(of: Void.self) { group in
+                    for artist in batch {
+                        group.addTask {
+                            let mb = MusicBrainzManager.shared
+                            let fa = FanartManager.shared
+                            
+                            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                            let localPortraitUrl = docs.appendingPathComponent("CoverArt/\(artist.id).jpg")
+                            let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
+                            
+                            // Because MusicBrainzManager methods are @MainActor isolated, we wrap them in a Task
+                            let hasAll = await Task { @MainActor in
+                                mb.hasArtistMetadata(for: artist.name) && 
+                                fa.hasBackdrop(for: artist.name) && 
+                                hasLocalPortrait
+                            }.value
+                            
+                            if !hasAll {
+                                await Task { @MainActor in
+                                    fa.downloadBackdropSilently(for: artist.name)
+                                    client.downloadCoverArt(id: artist.id)
+                                }
+                                await mb.downloadMetadataSilently(for: artist.name)
+                            }
+                        }
+                    }
                 }
                 
-                tasksCompleted += 1
-                let remaining = totalTasks - tasksCompleted
-                let remainingSeconds = Int(remaining * (hasAll ? 0.01 : 1.1)) // Near instant for skipped items
-                
-                if remainingSeconds > 60 {
-                    self.etaString = "\(remainingSeconds / 60)m remaining"
-                } else {
-                    self.etaString = "\(remainingSeconds)s remaining"
-                }
-                
+                tasksCompleted += Double(batch.count)
+                artistStartIndex += maxConcurrentMetadata
                 updateProgress(tasksCompleted / totalTasks)
             }
             
             // Phase 2: Album Metadata
-            for album in albums {
-                if !isSyncing { break }
+            var albumStartIndex = 0
+            while albumStartIndex < albums.count && isSyncing {
+                let endIndex = min(albumStartIndex + maxConcurrentMetadata, albums.count)
+                let batch = Array(albums[albumStartIndex..<endIndex])
                 
-                let artistName = album.artist ?? "Unknown Artist"
-                if MusicBrainzManager.shared.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
-                    skippedCount += 1
-                } else {
-                    currentStatus = "Syncing: \(album.name)"
-                    await MusicBrainzManager.shared.downloadAlbumMetadataSilently(
-                        albumName: album.name, 
-                        artistName: artistName
-                    )
-                    try? await Task.sleep(nanoseconds: 1_050_000_000)
+                currentStatus = "Syncing Albums: \(albumStartIndex)/\(albums.count)"
+                
+                await withTaskGroup(of: Void.self) { group in
+                    for album in batch {
+                        group.addTask {
+                            let artistName = album.artist ?? "Unknown Artist"
+                            let mb = MusicBrainzManager.shared
+                            
+                            let hasMeta = await Task { @MainActor in
+                                mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)
+                            }.value
+                            
+                            if !hasMeta {
+                                await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
+                            }
+                        }
+                    }
                 }
                 
-                tasksCompleted += 1
+                tasksCompleted += Double(batch.count)
+                albumStartIndex += maxConcurrentMetadata
                 updateProgress(tasksCompleted / totalTasks)
             }
             
@@ -160,7 +173,7 @@ final class SyncManager: ObservableObject {
             }
 
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let maxConcurrentLyricsRequests = 6
+            let maxConcurrentLyricsRequests = 15
             var skippedCount = 0
             var tasksCompleted = 0.0
             let totalTasks = Double(tracks.count)
@@ -224,9 +237,6 @@ final class SyncManager: ObservableObject {
                             self.etaString = "\(remainingSeconds)s remaining"
                         }
                     }
-                    
-                    // Cooldown between batches to prevent spamming the LRCLIB server
-                    try? await Task.sleep(nanoseconds: 600_000_000)
                     
                     startIndex += maxConcurrentLyricsRequests
                 }
