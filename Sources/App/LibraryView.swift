@@ -202,8 +202,10 @@ struct LibraryView: View {
                         selectedPlaylist = p
                         isLoadingPlaylist = true
                         client.fetchPlaylistTracks(playlistId: p.id) { t in
-                            self.playlistTracks = t
-                            self.isLoadingPlaylist = false
+                            DispatchQueue.main.async {
+                                self.playlistTracks = t
+                                self.isLoadingPlaylist = false
+                            }
                         }
                     }
                     case "artists":   ArtistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, onArtistClick: { id, name in
@@ -403,7 +405,9 @@ private struct PlaylistGridView: View {
             Button("Create") {
                 if !newPlaylistName.isEmpty {
                     client.createPlaylist(name: newPlaylistName, songIds: []) { _ in
-                        newPlaylistName = ""
+                        DispatchQueue.main.async {
+                            newPlaylistName = ""
+                        }
                     }
                 }
             }
@@ -510,7 +514,7 @@ private struct AlbumGridView: View {
                                 .minimumScaleFactor(0.75)
                         }
                     }
-                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { playback.playTrack(t[0], context: t) } } }
+                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
                 }
             }
         } else {
@@ -528,7 +532,7 @@ private struct AlbumGridView: View {
                         Image(systemName: "chevron.right").foregroundColor(.gray.opacity(0.5))
                     }
                     .padding(.vertical, 10)
-                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { playback.playTrack(t[0], context: t) } } }
+                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
                     Divider().opacity(0.1)
                 }
             }

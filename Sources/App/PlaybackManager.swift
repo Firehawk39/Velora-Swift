@@ -307,7 +307,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         // Fetch Backdrop (Fanart/Discogs)
         if let artistId = track.artistId {
             client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+                DispatchQueue.main.async {
+                    FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+                }
             }
         } else {
             FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
@@ -941,7 +943,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         
         if let artistId = track.artistId {
             client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+                DispatchQueue.main.async {
+                    FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+                }
             }
         } else {
             FanartManager.shared.fetchBackdrop(for: track.artist ?? "")

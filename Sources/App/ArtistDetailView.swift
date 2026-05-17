@@ -362,16 +362,20 @@ struct ArtistDetailView: View {
     private func fetchArtistData() {
         isLoading = true
         client.fetchArtistData(artistId: artistId) { tracks, albums, bio, mbid in
-            self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
-            self.favoriteSongs = tracks.filter { $0.isStarred }
-            self.albums = albums
-            
-            // Check network bio first, fallback to MusicBrainz offline cache
-            self.biography = bio ?? MusicBrainzManager.shared.getArtistBiography(for: self.artistName)
-            self.isLoading = false
-            
-            client.fetchArtists { artists in
-                self.relatedArtists = Array(artists.shuffled().prefix(6)).filter { $0.id != artistId }
+            DispatchQueue.main.async {
+                self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
+                self.favoriteSongs = tracks.filter { $0.isStarred }
+                self.albums = albums
+                
+                // Check network bio first, fallback to MusicBrainz offline cache
+                self.biography = bio ?? MusicBrainzManager.shared.getArtistBiography(for: self.artistName)
+                self.isLoading = false
+                
+                client.fetchArtists { artists in
+                    DispatchQueue.main.async {
+                        self.relatedArtists = Array(artists.shuffled().prefix(6)).filter { $0.id != artistId }
+                    }
+                }
             }
         }
     }

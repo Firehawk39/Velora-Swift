@@ -178,7 +178,7 @@ class FanartManager: ObservableObject {
     
     // MARK: - Artist Portraits
     
-    func fetchArtistPortrait(for artist: String, mbid: String? = nil, completion: @escaping (UIImage?) -> Void) {
+    func fetchArtistPortrait(for artist: String, mbid: String? = nil, completion: @escaping @Sendable (UIImage?) -> Void) {
         let sanitized = sanitizeFileName(artist)
         let fileName = sanitized + ".jpg"
         let fileUrl = portraitDir.appendingPathComponent(fileName)
@@ -190,8 +190,10 @@ class FanartManager: ObservableObject {
             return
         }
         
-        let queryFanartPortrait = { (resolvedMBID: String) in
-            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
+        let apiKey = self.fanartApiKey
+        let queryFanartPortrait: @Sendable (String) -> Void = { [weak self] resolvedMBID in
+            guard let self = self else { completion(nil); return }
+            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
             self.fetchFromFanart(urlString: urlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { url in
                 if let url = url {
                     self.downloadAndCache(from: url, to: fileUrl, artistName: artist, completion: completion)
@@ -202,7 +204,8 @@ class FanartManager: ObservableObject {
         }
         
         guard let validMBID = mbid, !validMBID.isEmpty else {
-            self.getMBID(for: artist) { resolved in
+            self.getMBID(for: artist) { [weak self] resolved in
+                guard let self = self else { completion(nil); return }
                 if let resolved = resolved {
                     queryFanartPortrait(resolved)
                 } else {
@@ -213,7 +216,8 @@ class FanartManager: ObservableObject {
         }
         
         let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
-        self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { url in
+        self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url in
+            guard let self = self else { completion(nil); return }
             if let url = url {
                 self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.highPriority, completion: completion)
             } else {
@@ -232,12 +236,15 @@ class FanartManager: ObservableObject {
     
     private enum FanartType { case background, portrait }
     
-    private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (String?) -> Void) {
+    nonisolated private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable (String?) -> Void) {
         guard let url = URL(string: urlString) else { completion(nil); return }
         
         let task = URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
-                AppLogger.shared.log("[Fanart] Network error for \(artistName): \(error.localizedDescription)")
+                let desc = error.localizedDescription
+                DispatchQueue.main.async {
+                    AppLogger.shared.log("[Fanart] Network error for \(artistName): \(desc)")
+                }
             }
             guard let data = data else { completion(nil); return }
             do {
@@ -266,7 +273,7 @@ class FanartManager: ObservableObject {
     
     // MARK: - Helpers
     
-    private func stableHash(_ s: String) -> Int {
+    nonisolated private func stableHash(_ s: String) -> Int {
         var h: UInt64 = 14695981039346656037
         for byte in s.utf8 {
             h ^= UInt64(byte)
@@ -275,7 +282,7 @@ class FanartManager: ObservableObject {
         return Int(truncatingIfNeeded: h)
     }
     
-    private func downloadAndCache(from urlString: String, to localUrl: URL, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (UIImage?) -> Void) {
+    nonisolated private func downloadAndCache(from urlString: String, to localUrl: URL, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else { return }
         
         var request = URLRequest(url: url)
@@ -303,13 +310,13 @@ class FanartManager: ObservableObject {
         task.resume()
     }
     
-    private func sanitizeFileName(_ name: String) -> String {
+    nonisolated private func sanitizeFileName(_ name: String) -> String {
         return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
             .components(separatedBy: .whitespaces).joined(separator: "_")
             .lowercased()
     }
     
-    private func extractPrimaryArtist(_ name: String) -> String {
+    nonisolated private func extractPrimaryArtist(_ name: String) -> String {
         let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and "]
         var primary = name
         for delimiter in delimiters {
@@ -320,7 +327,7 @@ class FanartManager: ObservableObject {
         return primary.isEmpty ? name : primary
     }
 
-    private func getMBID(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (String?) -> Void) {
+    nonisolated private func getMBID(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable (String?) -> Void) {
         let primary = extractPrimaryArtist(artistName)
         let encodedName = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         // Use exact name query to improve accuracy
