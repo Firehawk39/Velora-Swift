@@ -82,8 +82,8 @@ final class SyncManager: ObservableObject {
                 await withTaskGroup(of: Void.self) { group in
                     for artist in batch {
                         group.addTask {
-                            let mb = MusicBrainzManager.shared
-                            let fa = FanartManager.shared
+                            let mb = await MusicBrainzManager.shared
+                            let fa = await FanartManager.shared
                             
                             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
                             let localPortraitUrl = docs.appendingPathComponent("CoverArt/\(artist.id).jpg")
@@ -119,7 +119,7 @@ final class SyncManager: ObservableObject {
                     for album in batch {
                         group.addTask {
                             let artistName = album.artist ?? "Unknown Artist"
-                            let mb = MusicBrainzManager.shared
+                            let mb = await MusicBrainzManager.shared
                             
                             let hasMeta = await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)
                             
