@@ -160,7 +160,14 @@ struct NowPlayingView: View {
                     .padding(.bottom, 20)
                     .contentShape(Rectangle()) // Ensures the entire area is scroll-reactive
                     .onTapGesture {
-                        if isIdle { resetIdleTimer() }
+                        if playback.isLyricsMode {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                playback.isLyricsMode = false
+                            }
+                            resetIdleTimer()
+                        } else if isIdle {
+                            resetIdleTimer()
+                        }
                     }
                 }
             }
@@ -743,6 +750,14 @@ struct NowPlayingView: View {
                     }
                 }
                 .padding(.vertical, 40)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        playback.isLyricsMode = false
+                    }
+                    resetIdleTimer()
+                }
             }
         }
     }
@@ -760,24 +775,37 @@ struct NowPlayingView: View {
                 .font(baseFont)
                 .foregroundColor(.white.opacity(0.4))
         } else {
-            let duration = (index + 1 < syncedLyrics.count) ? (syncedLyrics[index + 1].time - line.time) : 5.0
-            let elapsed = max(0, playback.progress - line.time)
-            
-            let words = line.text.split(separator: " ").map(String.init)
-            let wordDuration = duration / Double(max(1, words.count))
-            
-            var concatenatedText = Text("")
-            for (i, word) in words.enumerated() {
-                let wordStart = Double(i) * wordDuration
-                // Add a small 0.1s buffer for smooth feeling
-                let isSpoken = elapsed >= (wordStart - 0.1)
-                let opacity = isSpoken ? 1.0 : 0.4
+            if !line.words.isEmpty {
+                // True Spotify-like exact word sync
+                var concatenatedText = Text("")
+                for (i, word) in line.words.enumerated() {
+                    let isSpoken = playback.progress >= (word.time - 0.1)
+                    let opacity = isSpoken ? 1.0 : 0.4
+                    
+                    let textSegment = Text(word.text + (i == line.words.count - 1 ? "" : " ")).foregroundColor(.white.opacity(opacity))
+                    concatenatedText = concatenatedText + textSegment
+                }
+                return concatenatedText.font(baseFont)
+            } else {
+                // Fallback simulated word sync
+                let duration = (index + 1 < syncedLyrics.count) ? (syncedLyrics[index + 1].time - line.time) : 5.0
+                let elapsed = max(0, playback.progress - line.time)
                 
-                let textSegment = Text(word + (i == words.count - 1 ? "" : " ")).foregroundColor(.white.opacity(opacity))
-                concatenatedText = concatenatedText + textSegment
+                let words = line.text.split(separator: " ").map(String.init)
+                let wordDuration = duration / Double(max(1, words.count))
+                
+                var concatenatedText = Text("")
+                for (i, word) in words.enumerated() {
+                    let wordStart = Double(i) * wordDuration
+                    let isSpoken = elapsed >= (wordStart - 0.1)
+                    let opacity = isSpoken ? 1.0 : 0.4
+                    
+                    let textSegment = Text(word + (i == words.count - 1 ? "" : " ")).foregroundColor(.white.opacity(opacity))
+                    concatenatedText = concatenatedText + textSegment
+                }
+                
+                return concatenatedText.font(baseFont)
             }
-            
-            return concatenatedText.font(baseFont)
         }
     }
     private func refreshMetadata() {

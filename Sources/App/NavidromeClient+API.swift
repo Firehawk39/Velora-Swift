@@ -61,6 +61,7 @@ extension NavidromeClient {
                                duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
                                artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     }
+                    self.saveOfflineMetadata()
                 }
             } catch { 
                 print("Error decoding recent songs: \(error)")
@@ -90,6 +91,7 @@ extension NavidromeClient {
                                duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
                                artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                     }
+                    self.saveOfflineMetadata()
                 }
             } catch { print("Error decoding random songs as fallback: \(error)") }
         }.resume()
@@ -113,6 +115,7 @@ extension NavidromeClient {
                                songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
                                coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
                     }
+                    self.saveOfflineMetadata()
                 }
             } catch { print("Error decoding albums: \(error)") }
         }.resume()
@@ -150,6 +153,7 @@ extension NavidromeClient {
                         Artist(id: raw.id, name: raw.name, coverArt: self.getCoverArtUrl(id: raw.id))
                     }
                     self.artists = parsed 
+                    self.saveOfflineMetadata()
                     completion?(parsed)
                 }
             } catch { 
@@ -331,6 +335,7 @@ extension NavidromeClient {
                     self.playlists = rawPlaylists.map { p in
                         Playlist(id: p.id, name: p.name, owner: p.owner, songCount: p.songCount, duration: p.duration, created: nil)
                     }
+                    self.saveOfflineMetadata()
                 }
             } catch { print("Error decoding playlists: \(error)") }
         }.resume()
@@ -433,6 +438,7 @@ extension NavidromeClient {
         fetchSongsPage(offset: 0, batchSize: 500) { allFetchedSongs in
             self.allSongs = allFetchedSongs
             self.syncLosslessPlaylist()
+            self.saveOfflineMetadata()
             completion?(allFetchedSongs)
         }
     }
@@ -519,19 +525,55 @@ extension NavidromeClient {
 
     // MARK: - Lyrics
 
-    func fetchLyrics(artist: String, title: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
-        guard let url = buildUrl(method: "getLyrics.view", params: ["artist": artist, "title": title]) else {
+    func fetchLyrics(trackId: String, artist: String, title: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let lyricsDir = docs.appendingPathComponent("Lyrics")
+        let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
+        
+        // If cached on disk, return immediately
+        if FileManager.default.fileExists(atPath: cacheFile.path),
+           let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8) {
+            print("\n==== NAVIDROME LYRICS DUMP (CACHED) ====\n\(cachedLyrics)\n==== END DUMP ====\n")
+            completion(cachedLyrics)
+            return
+        }
+        
+        guard let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
             completion(nil); return
         }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        
+        var request = URLRequest(url: url)
+        request.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
+        
+        URLSession.shared.dataTask(with: request) { data, _, error in
             guard error == nil, let data = data else {
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
             do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let lyrics = decoded.subsonicResponse?.lyrics?.value
-                DispatchQueue.main.async { completion(lyrics) }
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    // Prefer perfectly synced lyrics over plain text
+                    let finalLyrics: String?
+                    if let synced = json["syncedLyrics"] as? String, !synced.isEmpty {
+                        finalLyrics = synced
+                    } else if let plain = json["plainLyrics"] as? String, !plain.isEmpty {
+                        finalLyrics = plain
+                    } else {
+                        finalLyrics = nil
+                    }
+                    
+                    if let fetchedLyrics = finalLyrics {
+                        try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
+                        try? fetchedLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
+                        DispatchQueue.main.async { completion(fetchedLyrics) }
+                    } else {
+                        DispatchQueue.main.async { completion(nil) }
+                    }
+                } else {
+                    DispatchQueue.main.async { completion(nil) }
+                }
             } catch {
                 DispatchQueue.main.async { completion(nil) }
             }

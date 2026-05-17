@@ -3,9 +3,15 @@ import AVFoundation
 import MediaPlayer
 import UIKit
 
+struct LyricWord: Hashable {
+    let time: Double
+    let text: String
+}
+
 struct LyricLine: Hashable {
     let time: Double
     let text: String
+    let words: [LyricWord]
 }
 
 @MainActor
@@ -286,7 +292,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         FanartManager.shared.currentBackdrop = nil
         
         // Fetch lyrics
-        client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
@@ -541,15 +547,42 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     private func parseLRC(_ lyrics: String) -> [LyricLine] {
         var result: [LyricLine] = []
         let lines = lyrics.components(separatedBy: .newlines)
+        
+        let wordTagRegex = try? NSRegularExpression(pattern: "<(\\d+):(\\d+\\.\\d+)>\\s*([^<]+)")
+        
         for line in lines {
             guard line.hasPrefix("["), let bracketEnd = line.firstIndex(of: "]") else { continue }
             let timeString = String(line[line.index(after: line.startIndex)..<bracketEnd])
-            let text = String(line[line.index(after: bracketEnd)...]).trimmingCharacters(in: .whitespaces)
+            let rawText = String(line[line.index(after: bracketEnd)...]).trimmingCharacters(in: .whitespaces)
             let parts = timeString.components(separatedBy: ":")
             guard parts.count >= 2, let min = Double(parts[0]), let sec = Double(parts[1]) else { continue }
             let time = min * 60 + sec
-            if !text.isEmpty {
-                result.append(LyricLine(time: time, text: text))
+            
+            var lyricWords: [LyricWord] = []
+            
+            if let regex = wordTagRegex, rawText.contains("<") {
+                let nsRange = NSRange(rawText.startIndex..<rawText.endIndex, in: rawText)
+                let matches = regex.matches(in: rawText, range: nsRange)
+                
+                for match in matches {
+                    if match.numberOfRanges == 4,
+                       let minRange = Range(match.range(at: 1), in: rawText),
+                       let secRange = Range(match.range(at: 2), in: rawText),
+                       let textRange = Range(match.range(at: 3), in: rawText),
+                       let wMin = Double(rawText[minRange]),
+                       let wSec = Double(rawText[secRange]) {
+                        
+                        let wTime = wMin * 60 + wSec
+                        let wText = String(rawText[textRange]).trimmingCharacters(in: .whitespaces)
+                        lyricWords.append(LyricWord(time: wTime, text: wText))
+                    }
+                }
+            }
+            
+            let plainText = rawText.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+            
+            if !plainText.isEmpty {
+                result.append(LyricLine(time: time, text: plainText, words: lyricWords))
             }
         }
         return result.sorted { $0.time < $1.time }
@@ -923,7 +956,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     }
     
     private func fetchMetadata(for track: Track) {
-        client.fetchLyrics(artist: track.artist ?? "", title: track.title) { lyrics in
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {

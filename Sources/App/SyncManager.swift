@@ -57,13 +57,14 @@ final class SyncManager: ObservableObject {
             
             let artists = client.artists
             let albums = client.albums
+            let songs = client.allSongs
             
-            if artists.isEmpty && albums.isEmpty {
-                finalizeSync("No artists or albums found.")
+            if artists.isEmpty && albums.isEmpty && songs.isEmpty {
+                finalizeSync("No items found.")
                 return
             }
             
-            let totalTasks = Double(artists.count + albums.count)
+            let totalTasks = Double(artists.count + albums.count + songs.count)
             var tasksCompleted = 0.0
             var skippedCount = 0
             
@@ -121,6 +122,29 @@ final class SyncManager: ObservableObject {
                         artistName: artistName
                     )
                     try? await Task.sleep(nanoseconds: 1_050_000_000)
+                }
+                
+                tasksCompleted += 1
+                updateProgress(tasksCompleted / totalTasks)
+            }
+            
+            // Phase 3: Track Lyrics (LRCLIB Rate-Limit Protected)
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            for song in songs {
+                if !isSyncing { break }
+                
+                let cacheFile = docs.appendingPathComponent("Lyrics/\(song.id).txt")
+                if FileManager.default.fileExists(atPath: cacheFile.path) {
+                    skippedCount += 1
+                } else {
+                    currentStatus = "Fetching Lyrics: \(song.title)"
+                    await withCheckedContinuation { continuation in
+                        client.fetchLyrics(trackId: song.id, artist: song.artist ?? "", title: song.title) { _ in
+                            continuation.resume()
+                        }
+                    }
+                    // Crucial: Sleep 1s to prevent LRCLIB rate-limit HTTP 429 errors
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                 }
                 
                 tasksCompleted += 1
