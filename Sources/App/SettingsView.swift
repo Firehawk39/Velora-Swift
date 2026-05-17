@@ -449,6 +449,54 @@ struct AppSettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
 
+                            // Lyrics Sync Button
+                            Button(action: {
+                                if sync.isSyncing && sync.syncType == .lyrics {
+                                    sync.stopSync()
+                                } else {
+                                    sync.startLyricsSync()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "text.quote")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncing && sync.syncType == .lyrics ? .purple : labelCol)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(sync.isSyncing && sync.syncType == .lyrics ? "Downloading Lyrics..." : "Download All Lyrics")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text(((sync.isSyncing && sync.syncType == .lyrics) || sync.currentStatus.lowercased().contains("lyrics sync complete")) ? sync.currentStatus : "Cache time-synced lyrics for offline use")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if sync.isSyncing && sync.syncType == .lyrics {
+                                        HStack(spacing: 8) {
+                                            if !sync.etaString.isEmpty {
+                                                Text(sync.etaString)
+                                                    .font(.system(size: 12, weight: .medium))
+                                                    .foregroundColor(.gray)
+                                            }
+                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .purple)
+                                        }
+                                    } else if sync.currentStatus.lowercased().contains("lyrics sync complete") {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(.green)
+                                    } else {
+                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            }
+
                             // Media Sync Button
                             Button(action: {
                                 if sync.isSyncing && sync.syncType == .media {

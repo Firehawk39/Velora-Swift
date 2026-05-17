@@ -15,6 +15,7 @@ final class SyncManager: ObservableObject {
         case none
         case metadata
         case media
+        case lyrics
         case full
     }
     
@@ -128,31 +129,67 @@ final class SyncManager: ObservableObject {
                 updateProgress(tasksCompleted / totalTasks)
             }
             
-            // Phase 3: Track Lyrics (Rate-Limit Protected Concurrent Batching)
+            finalizeSync("Sync Complete (\(skippedCount) items skipped)")
+        }
+    }
+    
+    /// Downloads all missing lyrics from LRCLIB
+    func startLyricsSync() {
+        guard let client = client, !isSyncing else { return }
+        
+        isSyncing = true
+        syncType = .lyrics
+        syncProgress = 0.0
+        
+        Task {
+            // 1. Ensure we actually have the songs list
+            let tracks: [Track]
+            if client.allSongs.isEmpty {
+                currentStatus = "Fetching song list..."
+                tracks = await withCheckedContinuation { continuation in
+                    client.fetchAllSongs { songs in
+                        continuation.resume(returning: songs)
+                    }
+                }
+            } else {
+                tracks = client.allSongs
+            }
+            if tracks.isEmpty {
+                finalizeSync("No tracks found in library.")
+                return
+            }
+
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
             let maxConcurrentLyricsRequests = 6
+            var skippedCount = 0
+            var tasksCompleted = 0.0
+            let totalTasks = Double(tracks.count)
             
             // Filter out songs that already have local cached lyrics first so we skip them instantly
-            let missingSongs = songs.filter { song in
+            let missingSongs = tracks.filter { song in
                 let cacheFile = docs.appendingPathComponent("Lyrics/\(song.id).txt")
                 if FileManager.default.fileExists(atPath: cacheFile.path) {
                     skippedCount += 1
                     tasksCompleted += 1
-                    updateProgress(tasksCompleted / totalTasks)
                     return false
                 }
                 return true
             }
             
+            updateProgress(tasksCompleted / totalTasks)
+            
             if !missingSongs.isEmpty {
                 var startIndex = 0
+                let startTime = Date()
+
                 while startIndex < missingSongs.count && isSyncing {
                     let endIndex = min(startIndex + maxConcurrentLyricsRequests, missingSongs.count)
                     let batch = Array(missingSongs[startIndex..<endIndex])
                     
-                    currentStatus = "Syncing Lyrics: \(startIndex)/\(missingSongs.count) songs"
+                    let processed = tasksCompleted - Double(skippedCount)
+                    currentStatus = "Syncing Lyrics: \(Int(processed))/\(missingSongs.count) songs"
                     
-                    // Download this batch of 6 tracks in parallel
+                    // Download this batch in parallel
                     await withTaskGroup(of: Void.self) { group in
                         for song in batch {
                             group.addTask {
@@ -170,6 +207,23 @@ final class SyncManager: ObservableObject {
                     // Update progress on the MainActor for the entire batch
                     tasksCompleted += Double(batch.count)
                     updateProgress(tasksCompleted / totalTasks)
+
+                    // ETA Calculation
+                    let nowProcessed = tasksCompleted - Double(skippedCount)
+                    if nowProcessed > 0 {
+                        let elapsed = Date().timeIntervalSince(startTime)
+                        let tracksPerSecond = nowProcessed / elapsed
+                        let remainingTracks = Double(missingSongs.count) - nowProcessed
+                        let remainingSeconds = Int(remainingTracks / tracksPerSecond)
+                        
+                        if remainingSeconds > 3600 {
+                            self.etaString = "\(remainingSeconds / 3600)h remaining"
+                        } else if remainingSeconds > 60 {
+                            self.etaString = "\(remainingSeconds / 60)m remaining"
+                        } else {
+                            self.etaString = "\(remainingSeconds)s remaining"
+                        }
+                    }
                     
                     // Cooldown between batches to prevent spamming the LRCLIB server
                     try? await Task.sleep(nanoseconds: 600_000_000)
@@ -178,7 +232,7 @@ final class SyncManager: ObservableObject {
                 }
             }
             
-            finalizeSync("Sync Complete (\(skippedCount) items skipped)")
+            finalizeSync("Lyrics Sync Complete (\(skippedCount) items skipped)")
         }
     }
     
