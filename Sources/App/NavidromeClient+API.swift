@@ -539,24 +539,14 @@ extension NavidromeClient {
         }
         
         Task {
-            // Stage 1: Try LRCLIB (nonisolated background query)
+            // Try LRCLIB (nonisolated background query)
             if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title) {
                 try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
                 try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
                 completion(lrclibLyrics)
-                return
+            } else {
+                completion(nil)
             }
-            
-            // Stage 2: Try NetEase Cloud Music (World-Class Blazing-Fast Fallback)
-            if let neteaseLyrics = await fetchFromNetEase(artist: artist, title: title) {
-                try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
-                try? neteaseLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
-                completion(neteaseLyrics)
-                return
-            }
-            
-            // If all failed, callback nil
-            completion(nil)
         }
     }
     
@@ -586,79 +576,6 @@ extension NavidromeClient {
             }
         } catch {
             print("[LRCLIB] Fetch error: \(error.localizedDescription)")
-        }
-        return nil
-    }
-    
-    nonisolated private func fetchFromNetEase(artist: String, title: String) async -> String? {
-        let query = "\(title) \(artist)"
-        guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let searchUrl = URL(string: "https://music.163.com/api/search/get/web?s=\(encodedQuery)&type=1&limit=5") else {
-            return nil
-        }
-        
-        var searchRequest = URLRequest(url: searchUrl)
-        searchRequest.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
-        searchRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-        searchRequest.timeoutInterval = 6.0
-        
-        do {
-            let (searchData, searchResponse) = try await URLSession.shared.data(for: searchRequest)
-            guard let searchHttp = searchResponse as? HTTPURLResponse, searchHttp.statusCode == 200 else {
-                return nil
-            }
-            
-            guard let searchJson = try JSONSerialization.jsonObject(with: searchData) as? [String: Any],
-                  let result = searchJson["result"] as? [String: Any],
-                  let songs = result["songs"] as? [[String: Any]],
-                  let firstSong = songs.first else {
-                print("[NetEase] No search results for: \(query)")
-                return nil
-            }
-            
-            let songId: Int
-            if let idNum = firstSong["id"] as? Int {
-                songId = idNum
-            } else if let idStr = firstSong["id"] as? String, let idNum = Int(idStr) {
-                songId = idNum
-            } else {
-                print("[NetEase] Invalid ID type for search: \(query)")
-                return nil
-            }
-            
-            // Step B: Get lyrics using songId
-            guard let lyricUrl = URL(string: "https://music.163.com/api/song/lyric?os=pc&id=\(songId)&lv=-1&kv=-1&tv=-1") else {
-                return nil
-            }
-            
-            var lyricRequest = URLRequest(url: lyricUrl)
-            lyricRequest.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
-            lyricRequest.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-            lyricRequest.timeoutInterval = 6.0
-            
-            let (lyricData, lyricResponse) = try await URLSession.shared.data(for: lyricRequest)
-            guard let lyricHttp = lyricResponse as? HTTPURLResponse, lyricHttp.statusCode == 200 else {
-                return nil
-            }
-            
-            guard let lyricJson = try JSONSerialization.jsonObject(with: lyricData) as? [String: Any] else {
-                return nil
-            }
-            
-            // NetEase returns plain/synced lyrics under `lrc` key
-            if let lrcDict = lyricJson["lrc"] as? [String: Any],
-               let lyricText = lrcDict["lyric"] as? String,
-               !lyricText.isEmpty {
-                
-                if lyricText.contains("纯音乐，请欣赏") || lyricText.contains("Instrumental") {
-                    return "[00:00.00] Instrumental (No Lyrics)"
-                }
-                
-                print("[NetEase] Synced lyrics successfully fetched for: \(query)")
-                return lyricText
-            }
-        } catch {
-            print("[NetEase] Fetch error: \(error.localizedDescription)")
         }
         return nil
     }
