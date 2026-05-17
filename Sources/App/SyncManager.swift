@@ -157,8 +157,10 @@ final class SyncManager: ObservableObject {
                         for song in batch {
                             group.addTask {
                                 await withCheckedContinuation { continuation in
-                                    client.fetchLyrics(trackId: song.id, artist: song.artist ?? "", title: song.title) { _ in
-                                        continuation.resume()
+                                    Task { @MainActor in
+                                        client.fetchLyrics(trackId: song.id, artist: song.artist ?? "", title: song.title) { _ in
+                                            continuation.resume()
+                                        }
                                     }
                                 }
                             }
