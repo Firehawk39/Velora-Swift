@@ -94,7 +94,8 @@ struct ContentView: View {
                                 client.logout()
                                 showSettings = true
                             },
-                            isLandscape: isLandscape
+                            isLandscape: isLandscape,
+                            isPlayingTab: activeTab == "now-playing"
                         )
                         .padding(.trailing, isCompact ? 24.0 : 48.0)
                         .padding(.top, headerHeight + 8)

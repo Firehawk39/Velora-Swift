@@ -79,7 +79,14 @@ class IntegrityManager: ObservableObject {
         index.tracks.removeAll()
         downloadedIds.removeAll()
         
+        let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
+        
         for url in fileURLs {
+            // Only process actual audio files
+            if !audioExtensions.contains(url.pathExtension.lowercased()) {
+                continue
+            }
+            
             let trackId = url.deletingPathExtension().lastPathComponent
             let attr = try? FileManager.default.attributesOfItem(atPath: url.path)
             let size = attr?[.size] as? Int64 ?? 0

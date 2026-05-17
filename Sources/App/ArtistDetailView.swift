@@ -365,7 +365,9 @@ struct ArtistDetailView: View {
             self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
             self.favoriteSongs = tracks.filter { $0.isStarred }
             self.albums = albums
-            self.biography = bio
+            
+            // Check network bio first, fallback to MusicBrainz offline cache
+            self.biography = bio ?? MusicBrainzManager.shared.getArtistBiography(for: self.artistName)
             self.isLoading = false
             
             client.fetchArtists { artists in
@@ -386,7 +388,10 @@ struct ArtistPortraitView: View {
     let isDarkMode: Bool
     
     var body: some View {
-        AsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId))) { phase in
+        let fallbackUrl = client.getCoverArtUrl(id: artistId)
+        let resolvedUrl = resolveCoverArtUrl(id: artistId, serverUrl: fallbackUrl)
+        
+        AsyncImage(url: resolvedUrl) { phase in
             if let img = phase.image {
                 img.resizable()
                     .scaledToFill()

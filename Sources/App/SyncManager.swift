@@ -74,16 +74,20 @@ final class SyncManager: ObservableObject {
                 let mb = MusicBrainzManager.shared
                 let fa = FanartManager.shared
                 
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                let localPortraitUrl = docs.appendingPathComponent("CoverArt/\(artist.id).jpg")
+                let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
+                
                 let hasAll = mb.hasArtistMetadata(for: artist.name) && 
                              fa.hasBackdrop(for: artist.name) && 
-                             fa.hasPortrait(for: artist.name)
+                             hasLocalPortrait
                 
                 if hasAll {
                     skippedCount += 1
                 } else {
                     currentStatus = "Syncing: \(artist.name)"
                     FanartManager.shared.downloadBackdropSilently(for: artist.name)
-                    FanartManager.shared.fetchArtistPortrait(for: artist.name) { _ in }
+                    client.downloadCoverArt(id: artist.id)
                     await MusicBrainzManager.shared.downloadMetadataSilently(for: artist.name)
                     
                     // Only sleep if we actually hit the API

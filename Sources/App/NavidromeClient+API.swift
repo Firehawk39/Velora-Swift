@@ -363,19 +363,31 @@ extension NavidromeClient {
 
     // MARK: - All Songs
 
-    func fetchAllSongs(size: Int = 2000, completion: (([Track]) -> Void)? = nil) {
-        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": String(size)]) else { 
-            completion?([])
+    func fetchAllSongs(completion: (([Track]) -> Void)? = nil) {
+        fetchSongsPage(offset: 0, batchSize: 500) { allFetchedSongs in
+            DispatchQueue.main.async {
+                self.allSongs = allFetchedSongs
+                self.syncLosslessPlaylist()
+                completion?(allFetchedSongs)
+            }
+        }
+    }
+    
+    private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping ([Track]) -> Void) {
+        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "\(batchSize)", "songOffset": "\(offset)"]) else { 
+            completion(allSongsSoFar)
             return 
         }
+        
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { 
-                completion?([])
+                completion(allSongsSoFar)
                 return 
             }
+            
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let songs = (decoded.subsonicResponse?.randomSongs?.song ?? decoded.subsonicResponse?.randomSongs2?.song ?? []).map { s in
+                let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { s in
                     var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                           artist: s.artist ?? "", duration: s.duration ?? 0,
                           coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
@@ -386,47 +398,53 @@ extension NavidromeClient {
                 }
                 
                 if !songs.isEmpty {
-                    DispatchQueue.main.async { 
-                        self.allSongs = songs 
-                        self.syncLosslessPlaylist()
-                        completion?(songs)
-                    }
+                    let combined = allSongsSoFar + songs
+                    self.fetchSongsPage(offset: offset + batchSize, batchSize: batchSize, allSongsSoFar: combined, completion: completion)
                 } else {
-                    self.fetchAlphabeticalSongs { completion?($0) }
+                    completion(allSongsSoFar)
                 }
             } catch { 
-                print("Error decoding random songs: \(error)")
-                self.fetchAlphabeticalSongs { completion?($0) }
+                print("Error decoding search3.view at offset \(offset): \(error)")
+                completion(allSongsSoFar)
             }
         }.resume()
     }
+    
+    // MARK: - Cover Art Caching
 
-    private func fetchAlphabeticalSongs(completion: (([Track]) -> Void)? = nil) {
-        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "500"]) else { 
-            completion?([])
-            return 
+    func downloadCoverArt(id: String) {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let coverArtDir = docs.appendingPathComponent("CoverArt")
+        
+        do {
+            if !FileManager.default.fileExists(atPath: coverArtDir.path) {
+                try FileManager.default.createDirectory(at: coverArtDir, withIntermediateDirectories: true, attributes: nil)
+            }
+        } catch {
+            print("Failed to create CoverArt directory: \(error)")
+            return
         }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { 
-                completion?([])
-                return 
+        
+        let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
+        if FileManager.default.fileExists(atPath: destinationUrl.path) {
+            return // Already cached
+        }
+        
+        // Use size 600 for high-quality but reasonable file size
+        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
+        
+        URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
+            guard let tempLocation = tempLocation, error == nil else {
+                print("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
+                return
             }
             do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { s in
-                    Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                if FileManager.default.fileExists(atPath: destinationUrl.path) {
+                    try FileManager.default.removeItem(at: destinationUrl)
                 }
-                DispatchQueue.main.async { 
-                    self.allSongs = songs 
-                    self.syncLosslessPlaylist()
-                    completion?(songs)
-                }
-            } catch { 
-                print("Search fallback failed: \(error)")
-                completion?([])
+                try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
+            } catch {
+                print("Failed to save cover art for \(id): \(error)")
             }
         }.resume()
     }
@@ -494,8 +512,9 @@ extension NavidromeClient {
         let backdropDir = docs.appendingPathComponent("Backdrops")
         let portraitDir = docs.appendingPathComponent("ArtistPortraits")
         let metadataDir = docs.appendingPathComponent("Metadata")
+        let coverArtDir = docs.appendingPathComponent("CoverArt")
         
-        for dir in [backdropDir, portraitDir, metadataDir] {
+        for dir in [backdropDir, portraitDir, metadataDir, coverArtDir] {
             if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
                 contents.forEach { try? fileManager.removeItem(at: $0) }
             }
@@ -506,7 +525,7 @@ extension NavidromeClient {
             for item in contents {
                 let name = item.lastPathComponent
                 // Don't delete our subdirs themselves, just their contents (handled above)
-                if name != "Backdrops" && name != "ArtistPortraits" && name != "Metadata" {
+                if name != "Backdrops" && name != "ArtistPortraits" && name != "Metadata" && name != "CoverArt" {
                     try? fileManager.removeItem(at: item)
                 }
             }

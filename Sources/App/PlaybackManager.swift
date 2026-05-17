@@ -41,9 +41,19 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         return downloadedTrackIds.contains(trackId)
     }
     
-    /// Checks if a track is downloaded
     func checkFileSystemForTrack(_ trackId: String) -> Bool {
-        return isDownloaded(trackId)
+        if isDownloaded(trackId) { return true }
+        
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
+        
+        for ext in audioExtensions {
+            let path = docs.appendingPathComponent("\(trackId).\(ext)").path
+            if FileManager.default.fileExists(atPath: path) {
+                return true
+            }
+        }
+        return false
     }
     
     func filterOffline(_ tracks: [Track]) -> [Track] {
@@ -223,6 +233,18 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         loadAndPlay(track: track)
     }
     
+    private func getLocalAudioUrl(for trackId: String) -> URL? {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
+        for ext in audioExtensions {
+            let path = docs.appendingPathComponent("\(trackId).\(ext)")
+            if FileManager.default.fileExists(atPath: path.path) {
+                return path
+            }
+        }
+        return nil
+    }
+
     private func loadAndPlay(track: Track) {
         // Cancel crossfade if active
         if isCrossfading {
@@ -232,11 +254,8 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
             player?.volume = 1.0
         }
 
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let localUrl = documentsDirectory.appendingPathComponent("\(track.id).mp3")
-        
         let urlToPlay: URL
-        if FileManager.default.fileExists(atPath: localUrl.path) {
+        if let localUrl = getLocalAudioUrl(for: track.id) {
             urlToPlay = localUrl
         } else {
             guard let streamUrl = client.getStreamUrl(id: track.id) else { return }
@@ -627,6 +646,11 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
         downloadStartTimes[track.id] = Date()
         task.resume()
+        
+        // Trigger cover art download alongside the track
+        if let artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first {
+            client.downloadCoverArt(id: artId)
+        }
     }
 
     
@@ -791,10 +815,12 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         isCrossfading = true
         
         // Prepare secondary player
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let localUrl = documentsDirectory.appendingPathComponent("\(nextTrack.id).mp3")
-        let urlToPlay: URL = FileManager.default.fileExists(atPath: localUrl.path) ? localUrl : (client.getStreamUrl(id: nextTrack.id) ?? URL(string: "about:blank")!)
-        
+        let urlToPlay: URL
+        if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
+            urlToPlay = localUrl
+        } else {
+            urlToPlay = client.getStreamUrl(id: nextTrack.id) ?? URL(string: "about:blank")!
+        }
         let playerItem = AVPlayerItem(url: urlToPlay)
         secondaryPlayer = AVPlayer(playerItem: playerItem)
         secondaryPlayer?.volume = 0

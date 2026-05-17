@@ -1,4 +1,4 @@
-// swift-tools-version: 5.8
+// swift-tools-version: 6.0
 import PackageDescription
 import AppleProductTypes
 
@@ -36,5 +36,6 @@ let package = Package(
                 .process("Resources")
             ]
         )
-    ]
+    ],
+    swiftLanguageModes: [.v6]
 )

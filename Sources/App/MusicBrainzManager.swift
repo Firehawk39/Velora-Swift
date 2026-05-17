@@ -81,6 +81,23 @@ class MusicBrainzManager: ObservableObject {
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
     
+    func getArtistBiography(for artistName: String) -> String? {
+        cacheLock.lock()
+        let mbid = nameToMBIDCache[artistName]
+        cacheLock.unlock()
+        guard let validMbid = mbid else { return nil }
+        
+        let fileName = "artist_" + (validMbid) + ".json"
+        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
+        
+        if fileManager.fileExists(atPath: fileUrl.path),
+           let data = try? Data(contentsOf: fileUrl),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return json["annotation"] as? String ?? (json["annotation"] as? [String: Any])?["text"] as? String
+        }
+        return nil
+    }
+    
     func fetchAboutArtist(artistName: String, mbid: String? = nil) {
         DispatchQueue.main.async { 
             self.isLoading = true

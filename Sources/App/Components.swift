@@ -67,7 +67,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isPhone ? 48 : 54) : (ScreenTier.isPhone ? (ScreenTier.isSmall ? 26 : 32) : 34.0)).weight(.bold))
+                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isSmall ? 64 : (ScreenTier.isPhone ? 48 : 54)) : (ScreenTier.isPhone ? (ScreenTier.isSmall ? 26 : 32) : 34.0)).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -77,10 +77,8 @@ struct AppHeader: View {
     
     private var headerActions: some View {
         HStack(spacing: ScreenTier.isSmall ? 12.0 : 20.0) {
-            if !isPlayingTab {
-                if isLandscape {
-                    themeToggle
-                }
+            if (isLandscape || ScreenTier.isHuge) && !isPlayingTab {
+                themeToggle
             }
             profileButton
         }
@@ -116,8 +114,6 @@ struct AppHeader: View {
         }
         .accessibilityLabel("Toggle Dark Mode")
         .hoverEffect()
-        .opacity(isPlayingTab ? 0 : 1)
-        .disabled(isPlayingTab)
     }
     
     private var profileButton: some View {
@@ -127,7 +123,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: isLandscape ? (ScreenTier.isPhone ? 32 : 38) : (ScreenTier.isPhone ? 24 : 26)))
+                .font(.system(size: isLandscape ? (ScreenTier.isSmall ? 44 : (ScreenTier.isPhone ? 32 : 38)) : (ScreenTier.isPhone ? 24 : 26)))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -141,13 +137,13 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(isLandscape ? (ScreenTier.isPhone ? 8 : 10) : (ScreenTier.isSE ? 4 : 8))
+        .padding(isLandscape ? (ScreenTier.isSmall ? 12 : 10) : (ScreenTier.isSE ? 4 : 8))
         .background(
             isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
             (isDarkMode ? AnyShapeStyle(Color(hex: "#1a1a1a")) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(isLandscape ? (ScreenTier.isSE ? 1.35 : (ScreenTier.isPhone ? 1.15 : 1.05)) : (ScreenTier.isPhone ? 0.85 : 0.9))
+        .scaleEffect(isLandscape ? (ScreenTier.isSmall ? 1.45 : (ScreenTier.isPhone ? 1.15 : 1.05)) : (ScreenTier.isPhone ? 0.85 : 0.9))
     }
 }
 
@@ -235,9 +231,9 @@ struct TabButton: View {
                         .lineLimit(1)
                 } else {
                 Text(label)
-                    .font(.system(size: isLandscape ? (ScreenTier.isSE ? 22 : (ScreenTier.isPhone ? 20 : 16)) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
-                    .padding(.horizontal, isLandscape ? (ScreenTier.isSE ? 32 : (ScreenTier.isPhone ? 28 : 16)) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
-                    .padding(.vertical, isLandscape ? (ScreenTier.isSE ? 18 : (ScreenTier.isPhone ? 14 : 8)) : 8)
+                    .font(.system(size: isLandscape ? (ScreenTier.isSmall ? 22 : (ScreenTier.isPhone ? 20 : 16)) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
+                    .padding(.horizontal, isLandscape ? (ScreenTier.isSmall ? 32 : (ScreenTier.isPhone ? 28 : 16)) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
+                    .padding(.vertical, isLandscape ? (ScreenTier.isSmall ? 18 : (ScreenTier.isPhone ? 14 : 8)) : 8)
                     .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
                     .clipShape(Capsule())
                 }
@@ -397,24 +393,27 @@ struct ProfileDropdown: View {
     let onSettings: () -> Void
     let onLogout: () -> Void
     var isLandscape: Bool = false
+    var isPlayingTab: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button(action: {
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                    toggleDark()
+            if !(isLandscape || ScreenTier.isHuge) || isPlayingTab {
+                Button(action: {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        toggleDark()
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
+                            .foregroundColor(isDarkMode ? .yellow : .blue)
+                        Text(isDarkMode ? "Light Mode" : "Dark Mode")
+                        Spacer()
+                    }
+                    .padding()
+                    .foregroundColor(isDarkMode ? .white : .black)
                 }
-            }) {
-                HStack {
-                    Image(systemName: isDarkMode ? "sun.max.fill" : "moon.fill")
-                        .foregroundColor(isDarkMode ? .yellow : .blue)
-                    Text(isDarkMode ? "Light Mode" : "Dark Mode")
-                    Spacer()
-                }
-                .padding()
-                .foregroundColor(isDarkMode ? .white : .black)
+                Divider().background(Color.white.opacity(0.1))
             }
-            Divider().background(Color.white.opacity(0.1))
             Button(action: onSettings) {
                 HStack {
                     Image(systemName: "gearshape.fill")

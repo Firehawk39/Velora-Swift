@@ -11,6 +11,8 @@ struct NowPlayingView: View {
     @Binding var isIdle:      Bool
 
     @State private var isDragging   = false
+    @State private var artistBiography: String? = nil
+    @State private var isFetchingArtistInfo: Bool = false
     @State private var dragProgress: Double = 0
     @State private var idleTimer: Timer? = nil
     @State private var showPlayPauseHint: Bool = false
@@ -495,10 +497,28 @@ struct NowPlayingView: View {
                     .foregroundColor(.white)
                 
                 VStack(alignment: .leading, spacing: 20) {
-                    if mb.isLoading {
+                    if let bio = artistBiography {
+                        HStack(spacing: 24) {
+                            artistImage
+                                .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                    .font(.system(size: isSE ? 20 : 28, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        
+                        Text(bio)
+                            .font(.system(size: isSE ? 14 : 16))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(10)
+                    } else if isFetchingArtistInfo {
                         HStack {
                             Spacer()
-                            CircularProgressView(progress: mb.metadataProgress, size: 40, strokeWidth: 4, accentColor: .red)
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .red))
+                                .scaleEffect(1.5)
                             Spacer()
                         }
                         .padding(.vertical, 40)
@@ -511,31 +531,13 @@ struct NowPlayingView: View {
                                 Text(playback.currentTrack?.artist ?? "Unknown Artist")
                                     .font(.system(size: isSE ? 20 : 28, weight: .bold))
                                     .foregroundColor(.white)
-                                
-                                if let info = mb.currentArtistInfo {
-                                    Text([info.type, info.area, info.lifeSpan].compactMap { $0 }.joined(separator: " • "))
-                                        .font(.system(size: isSE ? 12 : 14))
-                                        .foregroundColor(.white.opacity(0.5))
-                                }
                             }
                         }
                         
-                        if let bio = mb.currentArtistInfo?.biography {
-                            Text(bio)
-                                .font(.system(size: isSE ? 14 : 16))
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(10)
-                        } else if let annotation = mb.currentArtistInfo?.annotation {
-                            Text(annotation)
-                                .font(.system(size: isSE ? 14 : 16))
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(10)
-                        } else {
-                            Text("No further information found.")
-                                .font(.system(size: isSE ? 14 : 16))
-                                .foregroundColor(.white.opacity(0.4))
-                                .italic()
-                        }
+                        Text("No further information found.")
+                            .font(.system(size: isSE ? 14 : 16))
+                            .foregroundColor(.white.opacity(0.4))
+                            .italic()
                     }
                 }
                 .padding(isSE ? 20 : 32)
@@ -580,10 +582,17 @@ struct NowPlayingView: View {
     }
 
     private var artistImage: some View {
-        AsyncImage(url: playback.currentTrack?.coverArtUrl) { img in
-            img.resizable().scaledToFill()
-        } placeholder: {
-            Circle().fill(Color.white.opacity(0.1))
+        Group {
+            if let artistId = playback.currentTrack?.artistId,
+               let url = URL(string: playback.client.getCoverArtUrl(id: artistId)) {
+                AsyncImage(url: url) { img in
+                    img.resizable().scaledToFill()
+                } placeholder: {
+                    Circle().fill(Color.white.opacity(0.1))
+                }
+            } else {
+                Circle().fill(Color.white.opacity(0.1))
+            }
         }
         .clipShape(Circle())
     }
@@ -774,22 +783,19 @@ struct NowPlayingView: View {
         let artistName = track.artist ?? "Unknown Artist"
         let albumName = track.album ?? "Unknown Album"
         
+        self.artistBiography = nil
+        
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker
         fanart.fetchBackdrop(for: artistName, mbid: nil)
         
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
+            isFetchingArtistInfo = true
             playback.client.fetchArtistInfo(artistId: artistId) { bio, mbid in
                 DispatchQueue.main.async {
-                    // Update MB manager
-                    mb.fetchAboutArtist(artistName: artistName, mbid: mbid)
-                    
-                    if let bio = bio {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                            mb.currentArtistInfo?.biography = bio
-                        }
-                    }
+                    self.artistBiography = bio
+                    self.isFetchingArtistInfo = false
                     
                     // If we got a fresh MBID, update fanart too (though usually it's already there)
                     if let mbid = mbid {
@@ -797,8 +803,6 @@ struct NowPlayingView: View {
                     }
                 }
             }
-        } else {
-            mb.fetchAboutArtist(artistName: artistName, mbid: nil)
         }
         
         // 3. Album info

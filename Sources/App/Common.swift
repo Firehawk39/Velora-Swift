@@ -1,6 +1,18 @@
 import Foundation
 import CryptoKit
 
+// MARK: - Offline Artwork Helper
+
+func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
+    if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+        let localUrl = docs.appendingPathComponent("CoverArt/\(id).jpg")
+        if FileManager.default.fileExists(atPath: localUrl.path) {
+            return localUrl
+        }
+    }
+    return serverUrl.flatMap { URL(string: $0) }
+}
+
 // MARK: - Models
 
 struct Artist: Identifiable, Codable {
@@ -11,7 +23,7 @@ struct Artist: Identifiable, Codable {
     var created: String?
     
     // Convenience computed URL
-    var coverArtUrl: URL? { coverArt.flatMap { URL(string: $0) } }
+    var coverArtUrl: URL? { resolveCoverArtUrl(id: id, serverUrl: coverArt) }
 }
 
 struct Album: Identifiable, Codable {
@@ -24,7 +36,7 @@ struct Album: Identifiable, Codable {
     let coverArt: String?
     var created: String?
     
-    var coverArtUrl: URL? { coverArt.flatMap { URL(string: $0) } }
+    var coverArtUrl: URL? { resolveCoverArtUrl(id: coverArt ?? id, serverUrl: coverArt) }
 }
 
 struct Track: Identifiable, Codable, Equatable {
@@ -41,7 +53,10 @@ struct Track: Identifiable, Codable, Equatable {
     var playCount: Int? = 0
     let suffix: String?
     
-    var coverArtUrl: URL? { coverArt.flatMap { URL(string: $0) } }
+    var coverArtUrl: URL? { 
+        let artId = coverArt ?? albumId ?? id.components(separatedBy: ".").first ?? id
+        return resolveCoverArtUrl(id: artId, serverUrl: coverArt)
+    }
     
     var durationFormatted: String {
         guard let duration = duration else { return "0:00" }
