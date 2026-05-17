@@ -5,11 +5,23 @@ import Foundation
 final class SyncManager: ObservableObject {
     static let shared = SyncManager()
     
-    @Published var isSyncing: Bool = false
-    @Published var syncProgress: Double = 0.0
-    @Published var currentStatus: String = ""
-    @Published var syncType: SyncType = .none
-    @Published var etaString: String = ""
+    // Metadata Sync State
+    @Published var isSyncingMetadata: Bool = false
+    @Published var metadataProgress: Double = 0.0
+    @Published var metadataStatus: String = ""
+    @Published var metadataEta: String = ""
+    
+    // Lyrics Sync State
+    @Published var isSyncingLyrics: Bool = false
+    @Published var lyricsProgress: Double = 0.0
+    @Published var lyricsStatus: String = ""
+    @Published var lyricsEta: String = ""
+    
+    // Media Sync State
+    @Published var isSyncingMedia: Bool = false
+    @Published var mediaProgress: Double = 0.0
+    @Published var mediaStatus: String = ""
+    @Published var mediaEta: String = ""
     
     enum SyncType {
         case none
@@ -17,6 +29,39 @@ final class SyncManager: ObservableObject {
         case media
         case lyrics
         case full
+    }
+    
+    // Legacy support for backward compatibility:
+    var isSyncing: Bool {
+        isSyncingMetadata || isSyncingLyrics || isSyncingMedia
+    }
+    
+    var syncProgress: Double {
+        if isSyncingMedia { return mediaProgress }
+        if isSyncingLyrics { return lyricsProgress }
+        if isSyncingMetadata { return metadataProgress }
+        return 0.0
+    }
+    
+    var currentStatus: String {
+        if isSyncingMedia { return mediaStatus }
+        if isSyncingLyrics { return lyricsStatus }
+        if isSyncingMetadata { return metadataStatus }
+        return ""
+    }
+    
+    var syncType: SyncType {
+        if isSyncingMedia { return .media }
+        if isSyncingLyrics { return .lyrics }
+        if isSyncingMetadata { return .metadata }
+        return .none
+    }
+    
+    var etaString: String {
+        if isSyncingMedia { return mediaEta }
+        if isSyncingLyrics { return lyricsEta }
+        if isSyncingMetadata { return metadataEta }
+        return ""
     }
     
     private var client: NavidromeClient?
@@ -29,16 +74,16 @@ final class SyncManager: ObservableObject {
     
     /// Syncs Artist/Album info and images, but NO media files
     func startMetadataSync() {
-        guard let client = client, !isSyncing else { return }
+        guard let client = client, !isSyncingMetadata else { return }
         
-        isSyncing = true
-        syncType = .metadata
-        syncProgress = 0.0
+        isSyncingMetadata = true
+        metadataProgress = 0.0
+        metadataEta = ""
         
         Task {
             // 1. Ensure artists are loaded
             if client.artists.isEmpty {
-                currentStatus = "Fetching artist list..."
+                metadataStatus = "Fetching artist list..."
                 client.fetchArtists()
                 for _ in 0..<30 {
                     if !client.artists.isEmpty { break }
@@ -48,7 +93,7 @@ final class SyncManager: ObservableObject {
             
             // 2. Ensure albums are loaded
             if client.albums.isEmpty {
-                currentStatus = "Fetching album list..."
+                metadataStatus = "Fetching album list..."
                 client.fetchAlbums()
                 for _ in 0..<30 {
                     if !client.albums.isEmpty { break }
@@ -61,23 +106,22 @@ final class SyncManager: ObservableObject {
             let songs = client.allSongs
             
             if artists.isEmpty && albums.isEmpty && songs.isEmpty {
-                finalizeSync("No items found.")
+                finalizeMetadataSync("No items found.")
                 return
             }
             
             let totalTasks = Double(artists.count + albums.count + songs.count)
             var tasksCompleted = 0.0
-            var skippedCount = 0
             
             // Phase 1: Artist Metadata & Images
             let maxConcurrentMetadata = 8
             var artistStartIndex = 0
             
-            while artistStartIndex < artists.count && isSyncing {
+            while artistStartIndex < artists.count && isSyncingMetadata {
                 let endIndex = min(artistStartIndex + maxConcurrentMetadata, artists.count)
                 let batch = Array(artists[artistStartIndex..<endIndex])
                 
-                currentStatus = "Syncing Artists: \(artistStartIndex)/\(artists.count)"
+                metadataStatus = "Syncing Artists: \(artistStartIndex)/\(artists.count)"
                 
                 await withTaskGroup(of: Void.self) { group in
                     for artist in batch {
@@ -104,16 +148,16 @@ final class SyncManager: ObservableObject {
                 
                 tasksCompleted += Double(batch.count)
                 artistStartIndex += maxConcurrentMetadata
-                updateProgress(tasksCompleted / totalTasks)
+                metadataProgress = tasksCompleted / totalTasks
             }
             
             // Phase 2: Album Metadata
             var albumStartIndex = 0
-            while albumStartIndex < albums.count && isSyncing {
+            while albumStartIndex < albums.count && isSyncingMetadata {
                 let endIndex = min(albumStartIndex + maxConcurrentMetadata, albums.count)
                 let batch = Array(albums[albumStartIndex..<endIndex])
                 
-                currentStatus = "Syncing Albums: \(albumStartIndex)/\(albums.count)"
+                metadataStatus = "Syncing Albums: \(albumStartIndex)/\(albums.count)"
                 
                 await withTaskGroup(of: Void.self) { group in
                     for album in batch {
@@ -132,26 +176,26 @@ final class SyncManager: ObservableObject {
                 
                 tasksCompleted += Double(batch.count)
                 albumStartIndex += maxConcurrentMetadata
-                updateProgress(tasksCompleted / totalTasks)
+                metadataProgress = tasksCompleted / totalTasks
             }
             
-            finalizeSync("Sync Complete (\(skippedCount) items skipped)")
+            finalizeMetadataSync("Metadata Sync Complete")
         }
     }
     
     /// Downloads all missing lyrics from LRCLIB
     func startLyricsSync() {
-        guard let client = client, !isSyncing else { return }
+        guard let client = client, !isSyncingLyrics else { return }
         
-        isSyncing = true
-        syncType = .lyrics
-        syncProgress = 0.0
+        isSyncingLyrics = true
+        lyricsProgress = 0.0
+        lyricsEta = ""
         
         Task {
             // 1. Ensure we actually have the songs list
             let tracks: [Track]
             if client.allSongs.isEmpty {
-                currentStatus = "Fetching song list..."
+                lyricsStatus = "Fetching song list..."
                 tracks = await withCheckedContinuation { continuation in
                     client.fetchAllSongs { songs in
                         continuation.resume(returning: songs)
@@ -161,7 +205,7 @@ final class SyncManager: ObservableObject {
                 tracks = client.allSongs
             }
             if tracks.isEmpty {
-                finalizeSync("No tracks found in library.")
+                finalizeLyricsSync("No tracks found in library.")
                 return
             }
 
@@ -182,18 +226,18 @@ final class SyncManager: ObservableObject {
                 return true
             }
             
-            updateProgress(tasksCompleted / totalTasks)
+            lyricsProgress = tasksCompleted / totalTasks
             
             if !missingSongs.isEmpty {
                 var startIndex = 0
                 let startTime = Date()
 
-                while startIndex < missingSongs.count && isSyncing {
+                while startIndex < missingSongs.count && isSyncingLyrics {
                     let endIndex = min(startIndex + maxConcurrentLyricsRequests, missingSongs.count)
                     let batch = Array(missingSongs[startIndex..<endIndex])
                     
                     let processed = tasksCompleted - Double(skippedCount)
-                    currentStatus = "Syncing Lyrics: \(Int(processed))/\(missingSongs.count) songs"
+                    lyricsStatus = "Syncing Lyrics: \(Int(processed))/\(missingSongs.count) songs"
                     
                     // Download this batch in parallel
                     await withTaskGroup(of: Void.self) { group in
@@ -212,7 +256,7 @@ final class SyncManager: ObservableObject {
                     
                     // Update progress on the MainActor for the entire batch
                     tasksCompleted += Double(batch.count)
-                    updateProgress(tasksCompleted / totalTasks)
+                    lyricsProgress = tasksCompleted / totalTasks
 
                     // ETA Calculation
                     let nowProcessed = tasksCompleted - Double(skippedCount)
@@ -223,11 +267,11 @@ final class SyncManager: ObservableObject {
                         let remainingSeconds = Int(remainingTracks / tracksPerSecond)
                         
                         if remainingSeconds > 3600 {
-                            self.etaString = "\(remainingSeconds / 3600)h remaining"
+                            self.lyricsEta = "\(remainingSeconds / 3600)h remaining"
                         } else if remainingSeconds > 60 {
-                            self.etaString = "\(remainingSeconds / 60)m remaining"
+                            self.lyricsEta = "\(remainingSeconds / 60)m remaining"
                         } else {
-                            self.etaString = "\(remainingSeconds)s remaining"
+                            self.lyricsEta = "\(remainingSeconds)s remaining"
                         }
                     }
                     
@@ -235,22 +279,22 @@ final class SyncManager: ObservableObject {
                 }
             }
             
-            finalizeSync("Lyrics Sync Complete (\(skippedCount) items skipped)")
+            finalizeLyricsSync("Lyrics Sync Complete (\(skippedCount) items skipped)")
         }
     }
     
     /// Downloads all tracks in the library
     func startMediaSync() {
-        AppLogger.shared.log("startMediaSync() triggered. isSyncing: \(isSyncing), client: \(client != nil ? "present" : "nil")", level: .info)
-        guard let client = client, !isSyncing else { 
+        AppLogger.shared.log("startMediaSync() triggered. isSyncingMedia: \(isSyncingMedia), client: \(client != nil ? "present" : "nil")", level: .info)
+        guard let client = client, !isSyncingMedia else { 
             AppLogger.shared.log("startMediaSync() aborted: guard failed.", level: .error)
             return 
         }
         
-        isSyncing = true
-        syncType = .media
-        syncProgress = 0.0
-        currentStatus = "Analyzing library..."
+        isSyncingMedia = true
+        mediaProgress = 0.0
+        mediaStatus = "Analyzing library..."
+        mediaEta = ""
         
         Task {
             playback?.resetDownloadState()
@@ -258,7 +302,7 @@ final class SyncManager: ObservableObject {
             // 1. Ensure we actually have the songs list
             let tracks: [Track]
             if client.allSongs.isEmpty {
-                currentStatus = "Fetching song list..."
+                mediaStatus = "Fetching song list..."
                 tracks = await withCheckedContinuation { continuation in
                     client.fetchAllSongs { songs in
                         continuation.resume(returning: songs)
@@ -269,7 +313,7 @@ final class SyncManager: ObservableObject {
             }
             if tracks.isEmpty {
                 AppLogger.shared.log("Songs list still empty after polling. Aborting.", level: .error)
-                finalizeSync("No tracks found in library.")
+                finalizeMediaSync("No tracks found in library.")
                 return
             }
             
@@ -281,14 +325,14 @@ final class SyncManager: ObservableObject {
             let alreadyDownloadedCount = Int(totalTracks) - totalToDownload
             
             if totalToDownload == 0 {
-                finalizeSync("All \(Int(totalTracks)) tracks already offline.")
+                finalizeMediaSync("All \(Int(totalTracks)) tracks already offline.")
                 return
             }
             
-            currentStatus = "Queueing \(totalToDownload) tracks..."
+            mediaStatus = "Queueing \(totalToDownload) tracks..."
             AppLogger.shared.log("Queueing \(totalToDownload) tracks.", level: .info)
             for track in tracksToDownload {
-                if !isSyncing { break }
+                if !isSyncingMedia { break }
                 playback?.downloadTrack(track)
                 // Small yield to keep UI responsive during mass queueing
                 await Task.yield()
@@ -300,17 +344,17 @@ final class SyncManager: ObservableObject {
             var stallCounter = 0
             
             let startTime = Date()
-            while isSyncing {
+            while isSyncingMedia {
                 let currentlyDownloaded = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
                 let currentlyFailed = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
                 let totalCompleted = Double(alreadyDownloadedCount + currentlyDownloaded + currentlyFailed)
                 
                 if currentlyDownloaded + currentlyFailed == 0 {
-                    AppLogger.shared.log("Sync loop heartbeat: 0/\(totalToDownload) processed. isSyncing: \(isSyncing)", level: .debug)
+                    AppLogger.shared.log("Sync loop heartbeat: 0/\(totalToDownload) processed. isSyncingMedia: \(isSyncingMedia)", level: .debug)
                 }
                 
-                updateProgress(totalCompleted / totalTracks)
-                currentStatus = "Downloading: \(currentlyDownloaded)/\(totalToDownload) (\(alreadyDownloadedCount) skipped, \(currentlyFailed) failed)"
+                mediaProgress = totalCompleted / totalTracks
+                mediaStatus = "Downloading: \(currentlyDownloaded)/\(totalToDownload) (\(alreadyDownloadedCount) skipped, \(currentlyFailed) failed)"
                 
                 // ETA Calculation
                 let processedInThisBatch = currentlyDownloaded + currentlyFailed
@@ -321,14 +365,14 @@ final class SyncManager: ObservableObject {
                     let remainingSeconds = Int(remainingTracks / tracksPerSecond)
                     
                     if remainingSeconds > 3600 {
-                        self.etaString = "\(remainingSeconds / 3600)h remaining"
+                        self.mediaEta = "\(remainingSeconds / 3600)h remaining"
                     } else if remainingSeconds > 60 {
-                        self.etaString = "\(remainingSeconds / 60)m remaining"
+                        self.mediaEta = "\(remainingSeconds / 60)m remaining"
                     } else {
-                        self.etaString = "\(remainingSeconds)s remaining"
+                        self.mediaEta = "\(remainingSeconds)s remaining"
                     }
                 } else {
-                    self.etaString = "Calculating..."
+                    self.mediaEta = "Calculating..."
                 }
 
                 if (currentlyDownloaded + currentlyFailed) >= totalToDownload {
@@ -338,7 +382,7 @@ final class SyncManager: ObservableObject {
                 if (currentlyDownloaded + currentlyFailed) == lastDownloadedCount {
                     stallCounter += 1
                     if stallCounter > 300 { // 5 minutes stall
-                        finalizeSync("Sync Stalled. Check your connection.")
+                        finalizeMediaSync("Sync Stalled. Check your connection.")
                         return
                     }
                 } else {
@@ -349,36 +393,59 @@ final class SyncManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             
-            if isSyncing {
+            if isSyncingMedia {
                 let successCount = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
                 let failCount = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
                 
                 if failCount > 0 {
-                    finalizeSync("Sync Finished with \(failCount) errors. (\(successCount) saved)")
+                    finalizeMediaSync("Sync Finished with \(failCount) errors. (\(successCount) saved)")
                 } else {
-                    finalizeSync("Media Sync Complete (\(alreadyDownloadedCount) skipped, \(successCount) downloaded)")
+                    finalizeMediaSync("Media Sync Complete (\(alreadyDownloadedCount) skipped, \(successCount) downloaded)")
                 }
             }
         }
     }
     
+    func stopMetadataSync() {
+        isSyncingMetadata = false
+        metadataStatus = "Sync Stopped"
+    }
+    
+    func stopLyricsSync() {
+        isSyncingLyrics = false
+        lyricsStatus = "Sync Stopped"
+    }
+    
+    func stopMediaSync() {
+        isSyncingMedia = false
+        mediaStatus = "Sync Stopped"
+    }
+    
     func stopSync() {
-        isSyncing = false
-        syncType = .none
+        stopMetadataSync()
+        stopLyricsSync()
+        stopMediaSync()
     }
     
-    private func updateProgress(_ value: Double) {
-        self.syncProgress = value
+    private func finalizeMetadataSync(_ status: String) {
+        self.isSyncingMetadata = false
+        self.metadataStatus = status
+        self.metadataProgress = 1.0
+        self.metadataEta = ""
     }
     
-    private func finalizeSync(_ status: String) {
-        self.isSyncing = false
-        self.syncType = .none
-        self.currentStatus = status
-        self.syncProgress = 1.0
-        self.etaString = ""
-        
-        // Ensure UI is updated with new offline tracks
+    private func finalizeLyricsSync(_ status: String) {
+        self.isSyncingLyrics = false
+        self.lyricsStatus = status
+        self.lyricsProgress = 1.0
+        self.lyricsEta = ""
+    }
+    
+    private func finalizeMediaSync(_ status: String) {
+        self.isSyncingMedia = false
+        self.mediaStatus = status
+        self.mediaProgress = 1.0
+        self.mediaEta = ""
         self.playback?.refreshDownloadedTracks()
     }
 }

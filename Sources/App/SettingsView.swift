@@ -403,8 +403,8 @@ struct AppSettingsView: View {
                                 .padding(.leading, 4)
                             
                             Button(action: {
-                                if sync.isSyncing && sync.syncType == .metadata {
-                                    sync.stopSync()
+                                if sync.isSyncingMetadata {
+                                    sync.stopMetadataSync()
                                 } else {
                                     sync.startMetadataSync()
                                 }
@@ -412,13 +412,13 @@ struct AppSettingsView: View {
                                 HStack {
                                     Image(systemName: "info.circle.fill")
                                         .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncing && sync.syncType == .metadata ? .blue : labelCol)
+                                        .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncing && sync.syncType == .metadata ? "Syncing Info..." : "Download Library Metadata")
+                                        Text(sync.isSyncingMetadata ? "Syncing Info..." : "Download Library Metadata")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(((sync.isSyncing && sync.syncType == .metadata) || sync.currentStatus.lowercased().contains("metadata sync complete")) ? sync.currentStatus : "Artist bios, portraits, and album details")
+                                        Text((sync.isSyncingMetadata || sync.metadataStatus.lowercased().contains("complete")) ? sync.metadataStatus : "Artist bios, portraits, and album details")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -426,16 +426,16 @@ struct AppSettingsView: View {
                                     
                                     Spacer()
                                     
-                                    if sync.isSyncing && sync.syncType == .metadata {
+                                    if sync.isSyncingMetadata {
                                         HStack(spacing: 8) {
-                                            if !sync.etaString.isEmpty {
-                                                Text(sync.etaString)
+                                            if !sync.metadataEta.isEmpty {
+                                                Text(sync.metadataEta)
                                                     .font(.system(size: 12, weight: .medium))
                                                     .foregroundColor(.gray)
                                             }
-                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .blue)
+                                            CircularProgressView(progress: sync.metadataProgress, size: 24, strokeWidth: 3, accentColor: .blue)
                                         }
-                                    } else if sync.currentStatus.lowercased().contains("metadata sync complete") {
+                                    } else if sync.metadataStatus.lowercased().contains("complete") {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 20))
                                             .foregroundColor(.green)
@@ -451,8 +451,8 @@ struct AppSettingsView: View {
 
                             // Lyrics Sync Button
                             Button(action: {
-                                if sync.isSyncing && sync.syncType == .lyrics {
-                                    sync.stopSync()
+                                if sync.isSyncingLyrics {
+                                    sync.stopLyricsSync()
                                 } else {
                                     sync.startLyricsSync()
                                 }
@@ -460,13 +460,13 @@ struct AppSettingsView: View {
                                 HStack {
                                     Image(systemName: "text.quote")
                                         .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncing && sync.syncType == .lyrics ? .purple : labelCol)
+                                        .foregroundColor(sync.isSyncingLyrics ? .purple : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncing && sync.syncType == .lyrics ? "Downloading Lyrics..." : "Download All Lyrics")
+                                        Text(sync.isSyncingLyrics ? "Downloading Lyrics..." : "Download All Lyrics")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(((sync.isSyncing && sync.syncType == .lyrics) || sync.currentStatus.lowercased().contains("lyrics sync complete")) ? sync.currentStatus : "Cache time-synced lyrics for offline use")
+                                        Text((sync.isSyncingLyrics || sync.lyricsStatus.lowercased().contains("complete")) ? sync.lyricsStatus : "Cache time-synced lyrics for offline use")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -474,16 +474,16 @@ struct AppSettingsView: View {
                                     
                                     Spacer()
                                     
-                                    if sync.isSyncing && sync.syncType == .lyrics {
+                                    if sync.isSyncingLyrics {
                                         HStack(spacing: 8) {
-                                            if !sync.etaString.isEmpty {
-                                                Text(sync.etaString)
+                                            if !sync.lyricsEta.isEmpty {
+                                                Text(sync.lyricsEta)
                                                     .font(.system(size: 12, weight: .medium))
                                                     .foregroundColor(.gray)
                                             }
-                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .purple)
+                                            CircularProgressView(progress: sync.lyricsProgress, size: 24, strokeWidth: 3, accentColor: .purple)
                                         }
-                                    } else if sync.currentStatus.lowercased().contains("lyrics sync complete") {
+                                    } else if sync.lyricsStatus.lowercased().contains("complete") {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 20))
                                             .foregroundColor(.green)
@@ -499,8 +499,8 @@ struct AppSettingsView: View {
 
                             // Media Sync Button
                             Button(action: {
-                                if sync.isSyncing && sync.syncType == .media {
-                                    sync.stopSync()
+                                if sync.isSyncingMedia {
+                                    sync.stopMediaSync()
                                 } else {
                                     sync.startMediaSync()
                                 }
@@ -508,13 +508,13 @@ struct AppSettingsView: View {
                                 HStack {
                                     Image(systemName: "icloud.and.arrow.down.fill")
                                         .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncing && sync.syncType == .media ? .red : labelCol)
+                                        .foregroundColor(sync.isSyncingMedia ? .red : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncing && sync.syncType == .media ? "Downloading..." : "Download All Music")
+                                        Text(sync.isSyncingMedia ? "Downloading..." : "Download All Music")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text(((sync.isSyncing && sync.syncType == .media) || sync.currentStatus.lowercased().contains("offline") || sync.currentStatus.lowercased().contains("complete")) ? sync.currentStatus : "Save all tracks for offline listening")
+                                        Text((sync.isSyncingMedia || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("all")) ? sync.mediaStatus : "Save all tracks for offline listening")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -522,16 +522,16 @@ struct AppSettingsView: View {
                                     
                                     Spacer()
                                     
-                                    if sync.isSyncing && sync.syncType == .media {
+                                    if sync.isSyncingMedia {
                                         HStack(spacing: 8) {
-                                            if !sync.etaString.isEmpty {
-                                                Text(sync.etaString)
+                                            if !sync.mediaEta.isEmpty {
+                                                Text(sync.mediaEta)
                                                     .font(.system(size: 12, weight: .medium))
                                                     .foregroundColor(.gray)
                                             }
-                                            CircularProgressView(progress: sync.syncProgress, size: 24, strokeWidth: 3, accentColor: .red)
+                                            CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 3, accentColor: .red)
                                         }
-                                    } else if sync.currentStatus.lowercased().contains("offline") || sync.currentStatus.lowercased().contains("complete") || sync.currentStatus.lowercased().contains("all") {
+                                    } else if sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("all") {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 20))
                                             .foregroundColor(.green)
