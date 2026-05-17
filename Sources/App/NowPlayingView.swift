@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 
+@MainActor
 struct NowPlayingView: View {
     @EnvironmentObject var playback: PlaybackManager
     @StateObject var fanart = FanartManager.shared
@@ -217,8 +218,10 @@ struct NowPlayingView: View {
         guard !isQueueOpen && !playback.isLyricsMode else { return }
         
         idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
-            withAnimation(.easeInOut(duration: 2.5)) {
-                isIdle = true
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 2.5)) {
+                    self.isIdle = true
+                }
             }
         }
     }

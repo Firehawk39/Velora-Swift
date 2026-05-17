@@ -4,6 +4,7 @@ import SwiftUI
 // Step 1: Server URL  →  Step 2: Username + Password  →  (Optional) Step 3: Display name
 enum SettingsStep { case server, login, client }
 
+@MainActor
 struct SettingsView: View {
     @Binding var showSettings: Bool
     @EnvironmentObject var client: NavidromeClient
@@ -57,8 +58,9 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .onAppear {
+            let clientRef = client
             DispatchQueue.global(qos: .background).async {
-                let size = client.getMediaCacheSize()
+                let size = clientRef.getMediaCacheSize()
                 DispatchQueue.main.async {
                     self.cacheSize = size
                 }
@@ -644,8 +646,9 @@ struct AppSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .onAppear {
+                let clientRef = client
                 DispatchQueue.global(qos: .background).async {
-                    let size = client.getMediaCacheSize()
+                    let size = clientRef.getMediaCacheSize()
                     DispatchQueue.main.async {
                         self.cacheSize = size
                     }

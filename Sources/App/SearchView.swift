@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct SearchView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager

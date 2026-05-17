@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct HomeView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager

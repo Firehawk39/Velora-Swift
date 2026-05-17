@@ -2,6 +2,7 @@ import SwiftUI
 import CoreText
 import Foundation
 
+@MainActor
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         if identifier == "com.velora.downloads" {

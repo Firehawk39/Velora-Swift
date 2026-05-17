@@ -4,7 +4,7 @@ extension NavidromeClient {
 
     // MARK: - Ping
 
-    func ping(completion: @escaping @Sendable (Bool, String?) -> Void) {
+    func ping(completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
         guard let url = buildUrl(method: "ping.view") else {
             completion(false, "Invalid URL configuration."); return
         }
@@ -12,23 +12,32 @@ extension NavidromeClient {
         request.timeoutInterval = 10.0
         
         URLSession.shared.dataTask(with: request) { data, _, error in
-            if let error = error { completion(false, error.localizedDescription); return }
-            guard let data = data else { completion(false, "No data received."); return }
+            if let error = error {
+                let desc = error.localizedDescription
+                DispatchQueue.main.async { completion(false, desc) }
+                return
+            }
+            guard let data = data else {
+                DispatchQueue.main.async { completion(false, "No data received.") }
+                return
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 if decoded.subsonicResponse?.status == "ok" {
-                    completion(true, nil)
+                    DispatchQueue.main.async { completion(true, nil) }
                 } else {
-                    completion(false, decoded.subsonicResponse?.error?.message ?? "Authentication failed.")
+                    let msg = decoded.subsonicResponse?.error?.message ?? "Authentication failed."
+                    DispatchQueue.main.async { completion(false, msg) }
                 }
-            } catch { completion(false, "Failed to parse server response.") }
+            } catch {
+                DispatchQueue.main.async { completion(false, "Failed to parse server response.") }
+            }
         }.resume()
     }
 
     // MARK: - Fetch Recently Played
 
     func fetchRecentlyPlayed() {
-        // Navidrome supports getRecentlyPlayed.view which returns actual recent tracks
         guard let url = buildUrl(method: "getRecentlyPlayed.view", params: ["size": "15"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
@@ -37,17 +46,15 @@ extension NavidromeClient {
                 let recentlyPlayed = decoded.subsonicResponse?.recentlyPlayed
                 let items = recentlyPlayed?.song ?? recentlyPlayed?.entry ?? []
                 
-                // Fallback to random if server doesn't support getRecentlyPlayed or it's empty
-                if items.isEmpty {
-                    // Only fetch random if we don't have ANY recent tracks yet
-                    // This prevents "jumpy" tracks when switching pages
-                    if self.recentlyPlayed.isEmpty {
-                        self.fetchRandomAsRecent()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    if items.isEmpty {
+                        if self.recentlyPlayed.isEmpty {
+                            self.fetchRandomAsRecent()
+                        }
+                        return
                     }
-                    return
-                }
-                
-                DispatchQueue.main.async {
+                    
                     self.recentlyPlayed = items.map { s in
                         Track(id: s.id, title: s.title ?? "Unknown",
                                album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
@@ -57,16 +64,17 @@ extension NavidromeClient {
                 }
             } catch { 
                 print("Error decoding recent songs: \(error)")
-                self.fetchRandomAsRecent()
+                DispatchQueue.main.async { [weak self] in
+                    self?.fetchRandomAsRecent()
+                }
             }
         }.resume()
     }
 
     private func fetchRandomAsRecent() {
-        // Guard: Don't overwrite if we already have data (prevents jumpy UI)
         guard self.recentlyPlayed.isEmpty else { return }
-        
         guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": "15"]) else { return }
+        
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
             do {
@@ -74,7 +82,8 @@ extension NavidromeClient {
                 let wrapper = decoded.subsonicResponse?.randomSongs ?? decoded.subsonicResponse?.randomSongs2
                 let items = wrapper?.song ?? wrapper?.entry ?? []
                 
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
                     self.recentlyPlayed = items.map { s in
                         Track(id: s.id, title: s.title ?? "Unknown",
                                album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
@@ -95,12 +104,14 @@ extension NavidromeClient {
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let items = decoded.subsonicResponse?.albumList?.album ?? decoded.subsonicResponse?.albumList2?.album ?? []
-                DispatchQueue.main.async {
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
                     self.albums = items.map { sub in
                         Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
-                              artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
-                              songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
+                               artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
+                               songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
+                               coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
                     }
                 }
             } catch { print("Error decoding albums: \(error)") }
@@ -109,109 +120,128 @@ extension NavidromeClient {
 
     // MARK: - Fetch Artists
 
-    func fetchArtists(completion: (@Sendable ([Artist]) -> Void)? = nil) {
+    func fetchArtists(completion: (@MainActor @Sendable ([Artist]) -> Void)? = nil) {
         guard let url = buildUrl(method: "getArtists.view") else { 
             completion?([])
             return 
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { 
-                completion?([])
+                DispatchQueue.main.async { completion?([]) }
                 return 
             }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                var parsed: [Artist] = []
+                
+                struct RawArtist: Sendable {
+                    let id: String
+                    let name: String
+                }
+                var rawArtists: [RawArtist] = []
                 for index in decoded.subsonicResponse?.artists?.index ?? [] {
                     for sub in index.artist ?? [] {
-                        parsed.append(Artist(id: sub.id, name: sub.name, coverArt: self.getCoverArtUrl(id: sub.id)))
+                        rawArtists.append(RawArtist(id: sub.id, name: sub.name))
                     }
                 }
-                DispatchQueue.main.async { 
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { completion?([]); return }
+                    let parsed = rawArtists.map { raw in
+                        Artist(id: raw.id, name: raw.name, coverArt: self.getCoverArtUrl(id: raw.id))
+                    }
                     self.artists = parsed 
                     completion?(parsed)
                 }
             } catch { 
                 print("Error decoding artists: \(error)") 
-                completion?([])
+                DispatchQueue.main.async { completion?([]) }
             }
         }.resume()
     }
 
     // MARK: - Album Tracks
 
-    func fetchAlbumTracks(albumId: String, completion: @escaping @Sendable ([Track]) -> Void) {
+    func fetchAlbumTracks(albumId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
         guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion([]); return }
+            guard error == nil, let data = data else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let tracks = (decoded.subsonicResponse?.album?.song ?? []).map { s in
-                    var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
-                    t.isStarred = s.starred != nil
-                    t.playCount = s.playCount
-                    return t
+                let rawSongs = decoded.subsonicResponse?.album?.song ?? []
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { completion([]); return }
+                    let tracks = rawSongs.map { s in
+                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
+                              artist: s.artist ?? "", duration: s.duration ?? 0,
+                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                        t.isStarred = s.starred != nil
+                        t.playCount = s.playCount
+                        return t
+                    }
+                    completion(tracks)
                 }
-                DispatchQueue.main.async { completion(tracks) }
-            } catch { DispatchQueue.main.async { completion([]) } }
+            } catch {
+                DispatchQueue.main.async { completion([]) }
+            }
         }.resume()
     }
 
-    func fetchArtistData(artistId: String, completion: @escaping @Sendable ([Track], [Album], String?, String?) -> Void) {
+    func fetchArtistData(artistId: String, completion: @escaping @MainActor @Sendable ([Track], [Album], String?, String?) -> Void) {
         guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion([], [], nil, nil); return }
+            guard error == nil, let data = data else {
+                DispatchQueue.main.async { completion([], [], nil, nil) }
+                return
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let subsonicArtist = decoded.subsonicResponse?.artist
                 let albumsData = subsonicArtist?.album ?? []
                 
-                let albums = albumsData.map { a -> Album in
-                    Album(
-                        id: a.id,
-                        name: a.name ?? a.title ?? "Unknown Album",
-                        artist: a.artist,
-                        artistId: a.artistId,
-                        songCount: a.songCount,
-                        duration: a.duration,
-                        coverArt: a.coverArt != nil ? self.getCoverArtUrl(id: a.coverArt!) : nil
-                    )
-                }
-                
-                final class ArtistDataContainer: @unchecked Sendable {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { completion([], [], nil, nil); return }
+                    
+                    let albums = albumsData.map { a -> Album in
+                        Album(
+                            id: a.id,
+                            name: a.name ?? a.title ?? "Unknown Album",
+                            artist: a.artist,
+                            artistId: a.artistId,
+                            songCount: a.songCount,
+                            duration: a.duration,
+                            coverArt: a.coverArt != nil ? self.getCoverArtUrl(id: a.coverArt!) : nil
+                        )
+                    }
+                    
                     var allTracks: [Track] = []
                     var bio: String? = nil
                     var mbid: String? = nil
-                    let lock = NSLock()
-                }
-                let container = ArtistDataContainer()
-                let group = DispatchGroup()
-                
-                for album in albumsData {
+                    
+                    let group = DispatchGroup()
+                    
+                    for album in albumsData {
+                        group.enter()
+                        self.fetchAlbumTracks(albumId: album.id) { tracks in
+                            allTracks.append(contentsOf: tracks)
+                            group.leave()
+                        }
+                    }
+                    
                     group.enter()
-                    self.fetchAlbumTracks(albumId: album.id) { tracks in
-                        container.lock.lock()
-                        container.allTracks.append(contentsOf: tracks)
-                        container.lock.unlock()
+                    self.fetchArtistInfo(artistId: artistId) { b, m in
+                        bio = b
+                        mbid = m
                         group.leave()
                     }
-                }
-                
-                // Also fetch bio & MBID
-                group.enter()
-                self.fetchArtistInfo(artistId: artistId) { b, m in
-                    container.lock.lock()
-                    container.bio = b
-                    container.mbid = m
-                    container.lock.unlock()
-                    group.leave()
-                }
-                
-                group.notify(queue: .main) {
-                    completion(container.allTracks, albums, container.bio, container.mbid)
+                    
+                    group.notify(queue: .main) {
+                        completion(allTracks, albums, bio, mbid)
+                    }
                 }
             } catch {
                 print("Error decoding artist details: \(error)")
@@ -220,48 +250,69 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func fetchArtistInfo(artistId: String, completion: @escaping @Sendable (String?, String?) -> Void) {
+    func fetchArtistInfo(artistId: String, completion: @escaping @MainActor @Sendable (String?, String?) -> Void) {
         guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion(nil, nil); return }
+            guard error == nil, let data = data else {
+                DispatchQueue.main.async { completion(nil, nil) }
+                return
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let info = decoded.subsonicResponse?.artistInfo ?? decoded.subsonicResponse?.artistInfo2
-                completion(info?.biography, info?.musicBrainzId)
-            } catch { completion(nil, nil) }
+                let biography = info?.biography
+                let musicBrainzId = info?.musicBrainzId
+                DispatchQueue.main.async { completion(biography, musicBrainzId) }
+            } catch {
+                DispatchQueue.main.async { completion(nil, nil) }
+            }
         }.resume()
     }
 
     // MARK: - Search
 
-    func search(query: String, completion: @escaping @Sendable ([Track], [Album], [Artist]) -> Void) {
+    func search(query: String, completion: @escaping @MainActor @Sendable ([Track], [Album], [Artist]) -> Void) {
         guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
             completion([], [], []); return
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion([], [], []); return }
+            guard error == nil, let data = data else {
+                DispatchQueue.main.async { completion([], [], []) }
+                return
+            }
             do {
-                let r = try JSONDecoder().decode(SubsonicResponse.self, from: data).subsonicResponse?.searchResult3
-                let tracks = (r?.song ?? []).map { s in
-                    var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
-                    t.isStarred = s.starred != nil
-                    t.playCount = s.playCount
-                    return t
+                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+                let r = decoded.subsonicResponse?.searchResult3
+                let rawSongs = r?.song ?? []
+                let rawAlbums = r?.album ?? []
+                let rawArtists = r?.artist ?? []
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { completion([], [], []); return }
+                    
+                    let tracks = rawSongs.map { s in
+                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
+                              artist: s.artist ?? "", duration: s.duration ?? 0,
+                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                        t.isStarred = s.starred != nil
+                        t.playCount = s.playCount
+                        return t
+                    }
+                    let albums = rawAlbums.map { sub in
+                        Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
+                              artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
+                              songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
+                              coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
+                    }
+                    let artists = rawArtists.map { sub in
+                        Artist(id: sub.id, name: sub.name, coverArt: self.getCoverArtUrl(id: sub.id))
+                    }
+                    completion(tracks, albums, artists)
                 }
-                let albums = (r?.album ?? []).map { sub in
-                    Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
-                          artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
-                          songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
-                }
-                let artists = (r?.artist ?? []).map { sub in
-                    Artist(id: sub.id, name: sub.name, coverArt: self.getCoverArtUrl(id: sub.id))
-                }
-                DispatchQueue.main.async { completion(tracks, albums, artists) }
-            } catch { DispatchQueue.main.async { completion([], [], []) } }
+            } catch {
+                DispatchQueue.main.async { completion([], [], []) }
+            }
         }.resume()
     }
 
@@ -273,8 +324,11 @@ extension NavidromeClient {
             guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                DispatchQueue.main.async {
-                    self.playlists = (decoded.subsonicResponse?.playlists?.playlist ?? []).map { p in
+                let rawPlaylists = decoded.subsonicResponse?.playlists?.playlist ?? []
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.playlists = rawPlaylists.map { p in
                         Playlist(id: p.id, name: p.name, owner: p.owner, songCount: p.songCount, duration: p.duration, created: nil)
                     }
                 }
@@ -282,56 +336,68 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func fetchPlaylistTracks(playlistId: String, completion: @escaping @Sendable ([Track]) -> Void) {
+    func fetchPlaylistTracks(playlistId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
         guard let url = buildUrl(method: "getPlaylist.view", params: ["id": playlistId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion([]); return }
+            guard error == nil, let data = data else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let tracks = (decoded.subsonicResponse?.playlist?.entry ?? []).map { s in
-                    var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
-                    t.isStarred = s.starred != nil
-                    t.playCount = s.playCount
-                    return t
+                let rawTracks = decoded.subsonicResponse?.playlist?.entry ?? []
+                
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { completion([]); return }
+                    let tracks = rawTracks.map { s in
+                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
+                              artist: s.artist ?? "", duration: s.duration ?? 0,
+                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                        t.isStarred = s.starred != nil
+                        t.playCount = s.playCount
+                        return t
+                    }
+                    completion(tracks)
                 }
-                DispatchQueue.main.async { completion(tracks) }
-            } catch { DispatchQueue.main.async { completion([]) } }
+            } catch {
+                DispatchQueue.main.async { completion([]) }
+            }
         }.resume()
     }
 
     // MARK: - Playlist Management
 
-    func createPlaylist(name: String, songIds: [String], completion: @escaping @Sendable (Bool) -> Void) {
+    func createPlaylist(name: String, songIds: [String], completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         let extra = songIds.map { URLQueryItem(name: "songId", value: $0) }
         guard let url = buildUrl(method: "createPlaylist.view", params: ["name": name], extraItems: extra) else {
             completion(false); return
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
             let success = error == nil
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { completion(success); return }
                 if success { self.fetchPlaylists() }
                 completion(success)
             }
         }.resume()
     }
 
-    func deletePlaylist(id: String, completion: @escaping @Sendable (Bool) -> Void) {
+    func deletePlaylist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         guard let url = buildUrl(method: "deletePlaylist.view", params: ["id": id]) else {
             completion(false); return
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
             let success = error == nil
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { completion(success); return }
                 if success { self.fetchPlaylists() }
                 completion(success)
             }
         }.resume()
     }
 
-    func updatePlaylist(id: String, songIdsToAdd: [String] = [], songIndicesToRemove: [Int] = [], completion: @escaping @Sendable (Bool) -> Void) {
+    func updatePlaylist(id: String, songIdsToAdd: [String] = [], songIndicesToRemove: [Int] = [], completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         var extra: [URLQueryItem] = []
         songIdsToAdd.forEach { extra.append(URLQueryItem(name: "songIdToAdd", value: $0)) }
         songIndicesToRemove.forEach { extra.append(URLQueryItem(name: "songIndexToRemove", value: String($0))) }
@@ -350,16 +416,11 @@ extension NavidromeClient {
         let flacIds = allSongs.filter { $0.suffix?.lowercased() == "flac" }.map { $0.id }
         guard !flacIds.isEmpty else { return }
         
-        // 1. Check if "Lossless" playlist exists
         if let existing = playlists.first(where: { $0.name == "Lossless" }) {
-            // Update it with missing tracks
-            // For simplicity, we just "Add" all. Subsonic createPlaylist with existing name usually overwrites or we can just create a new one.
-            // Better: updatePlaylist with all flacIds
             updatePlaylist(id: existing.id, songIdsToAdd: flacIds) { _ in
                 print("Synced \(flacIds.count) tracks to existing Lossless playlist.")
             }
         } else {
-            // Create it
             createPlaylist(name: "Lossless", songIds: flacIds) { success in
                 if success { print("Created new Lossless playlist with \(flacIds.count) tracks.") }
             }
@@ -368,17 +429,15 @@ extension NavidromeClient {
 
     // MARK: - All Songs
 
-    func fetchAllSongs(completion: (@Sendable ([Track]) -> Void)? = nil) {
+    func fetchAllSongs(completion: (@MainActor @Sendable ([Track]) -> Void)? = nil) {
         fetchSongsPage(offset: 0, batchSize: 500) { allFetchedSongs in
-            DispatchQueue.main.async {
-                self.allSongs = allFetchedSongs
-                self.syncLosslessPlaylist()
-                completion?(allFetchedSongs)
-            }
+            self.allSongs = allFetchedSongs
+            self.syncLosslessPlaylist()
+            completion?(allFetchedSongs)
         }
     }
     
-    private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping @Sendable ([Track]) -> Void) {
+    private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
         guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "\(batchSize)", "songOffset": "\(offset)"]) else { 
             completion(allSongsSoFar)
             return 
@@ -386,31 +445,36 @@ extension NavidromeClient {
         
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { 
-                completion(allSongsSoFar)
+                DispatchQueue.main.async { completion(allSongsSoFar) }
                 return 
             }
             
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let songs = (decoded.subsonicResponse?.searchResult3?.song ?? []).map { s in
-                    var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                          artist: s.artist ?? "", duration: s.duration ?? 0,
-                          coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                          artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
-                    t.isStarred = s.starred != nil
-                    t.playCount = s.playCount
-                    return t
-                }
+                let rawSongs = decoded.subsonicResponse?.searchResult3?.song ?? []
                 
-                if !songs.isEmpty {
-                    let combined = allSongsSoFar + songs
-                    self.fetchSongsPage(offset: offset + batchSize, batchSize: batchSize, allSongsSoFar: combined, completion: completion)
-                } else {
-                    completion(allSongsSoFar)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { completion(allSongsSoFar); return }
+                    let songs = rawSongs.map { s in
+                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
+                              artist: s.artist ?? "", duration: s.duration ?? 0,
+                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                        t.isStarred = s.starred != nil
+                        t.playCount = s.playCount
+                        return t
+                    }
+                    
+                    if !songs.isEmpty {
+                        let combined = allSongsSoFar + songs
+                        self.fetchSongsPage(offset: offset + batchSize, batchSize: batchSize, allSongsSoFar: combined, completion: completion)
+                    } else {
+                        completion(allSongsSoFar)
+                    }
                 }
             } catch { 
                 print("Error decoding search3.view at offset \(offset): \(error)")
-                completion(allSongsSoFar)
+                DispatchQueue.main.async { completion(allSongsSoFar) }
             }
         }.resume()
     }
@@ -435,7 +499,6 @@ extension NavidromeClient {
             return // Already cached
         }
         
-        // Use size 600 for high-quality but reasonable file size
         guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
         
         URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
@@ -456,17 +519,22 @@ extension NavidromeClient {
 
     // MARK: - Lyrics
 
-    func fetchLyrics(artist: String, title: String, completion: @escaping @Sendable (String?) -> Void) {
+    func fetchLyrics(artist: String, title: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         guard let url = buildUrl(method: "getLyrics.view", params: ["artist": artist, "title": title]) else {
             completion(nil); return
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { completion(nil); return }
+            guard error == nil, let data = data else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let lyrics = decoded.subsonicResponse?.lyrics?.value
                 DispatchQueue.main.async { completion(lyrics) }
-            } catch { DispatchQueue.main.async { completion(nil) } }
+            } catch {
+                DispatchQueue.main.async { completion(nil) }
+            }
         }.resume()
     }
 
@@ -525,11 +593,9 @@ extension NavidromeClient {
             }
         }
         
-        // Also clear root docs (tracks)
         if let contents = try? fileManager.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil) {
             for item in contents {
                 let name = item.lastPathComponent
-                // Don't delete our subdirs themselves, just their contents (handled above)
                 if name != "Backdrops" && name != "ArtistPortraits" && name != "Metadata" && name != "CoverArt" {
                     try? fileManager.removeItem(at: item)
                 }
@@ -566,7 +632,6 @@ extension NavidromeClient {
         for dir in [docs, backdropDir, portraitDir, metadataDir] {
             if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
                 for case let fileURL as URL in enumerator {
-                    // If it's a directory, don't count its 'size' (usually 64-160 bytes)
                     var isDir: ObjCBool = false
                     if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue {
                         if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {

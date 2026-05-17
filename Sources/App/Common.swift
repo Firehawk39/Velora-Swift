@@ -15,7 +15,7 @@ func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
 
 // MARK: - Models
 
-struct Artist: Identifiable, Codable {
+struct Artist: Identifiable, Codable, Sendable {
     let id: String
     let name: String
     var albumCount: Int?
@@ -26,7 +26,7 @@ struct Artist: Identifiable, Codable {
     var coverArtUrl: URL? { resolveCoverArtUrl(id: id, serverUrl: coverArt) }
 }
 
-struct Album: Identifiable, Codable {
+struct Album: Identifiable, Codable, Sendable {
     let id: String
     let name: String
     let artist: String?
@@ -39,7 +39,7 @@ struct Album: Identifiable, Codable {
     var coverArtUrl: URL? { resolveCoverArtUrl(id: coverArt ?? id, serverUrl: coverArt) }
 }
 
-struct Track: Identifiable, Codable, Equatable {
+struct Track: Identifiable, Codable, Equatable, Sendable {
     let id: String
     let title: String
     let album: String?
@@ -66,7 +66,7 @@ struct Track: Identifiable, Codable, Equatable {
     }
 }
 
-struct Playlist: Identifiable, Codable {
+struct Playlist: Identifiable, Codable, Sendable {
     let id: String
     let name: String
     let owner: String?
