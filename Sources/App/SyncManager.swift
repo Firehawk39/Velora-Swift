@@ -89,18 +89,13 @@ final class SyncManager: ObservableObject {
                             let localPortraitUrl = docs.appendingPathComponent("CoverArt/\(artist.id).jpg")
                             let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
                             
-                            // Because MusicBrainzManager methods are @MainActor isolated, we wrap them in a Task
-                            let hasAll = await Task { @MainActor in
-                                mb.hasArtistMetadata(for: artist.name) && 
-                                fa.hasBackdrop(for: artist.name) && 
-                                hasLocalPortrait
-                            }.value
+                            let hasArtist = await mb.hasArtistMetadata(for: artist.name)
+                            let hasBackdrop = await fa.hasBackdrop(for: artist.name)
+                            let hasAll = hasArtist && hasBackdrop && hasLocalPortrait
                             
                             if !hasAll {
-                                await Task { @MainActor in
-                                    fa.downloadBackdropSilently(for: artist.name)
-                                    client.downloadCoverArt(id: artist.id)
-                                }
+                                await fa.downloadBackdropSilently(for: artist.name)
+                                await client.downloadCoverArt(id: artist.id)
                                 await mb.downloadMetadataSilently(for: artist.name)
                             }
                         }
@@ -126,9 +121,7 @@ final class SyncManager: ObservableObject {
                             let artistName = album.artist ?? "Unknown Artist"
                             let mb = MusicBrainzManager.shared
                             
-                            let hasMeta = await Task { @MainActor in
-                                mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)
-                            }.value
+                            let hasMeta = await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)
                             
                             if !hasMeta {
                                 await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
