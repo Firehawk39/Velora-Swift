@@ -538,7 +538,7 @@ extension NavidromeClient {
         fetchAllSongs()
     }
     
-    func getMediaCacheSize() -> String {
+    nonisolated func getMediaCacheSize() -> String {
         var totalSize: Int64 = 0
         let fileManager = FileManager.default
         

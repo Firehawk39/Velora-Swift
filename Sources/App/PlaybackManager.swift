@@ -8,9 +8,10 @@ struct LyricLine: Hashable {
     let text: String
 }
 
-class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
-    static var shared: PlaybackManager?
-    static var sharedBackgroundCompletion: (() -> Void)?
+@MainActor
+final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
+    @MainActor static var shared: PlaybackManager?
+    @MainActor static var sharedBackgroundCompletion: (() -> Void)?
     
     @Published var currentTrack: Track?
     @Published var isPlaying: Bool = false
@@ -831,23 +832,18 @@ class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         let steps = 50
         let interval = duration / Double(steps)
         
-        var step = 0
-        Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
-            guard self.isCrossfading else {
-                timer.invalidate()
-                return
-            }
-            step += 1
-            let factor = Float(step) / Float(steps)
-            
-            DispatchQueue.main.async {
+        Task { @MainActor in
+            for step in 1...steps {
+                guard self.isCrossfading else { break }
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard self.isCrossfading else { break }
+                
+                let factor = Float(step) / Float(steps)
                 self.player?.volume = 1.0 - factor
                 self.secondaryPlayer?.volume = factor
-                
-                if step >= steps {
-                    timer.invalidate()
-                    self.completeCrossfade(nextTrack: nextTrack, nextItem: playerItem)
-                }
+            }
+            if self.isCrossfading {
+                self.completeCrossfade(nextTrack: nextTrack, nextItem: playerItem)
             }
         }
     }
