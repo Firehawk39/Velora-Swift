@@ -4,7 +4,7 @@ extension NavidromeClient {
 
     // MARK: - Ping
 
-    func ping(completion: @escaping (Bool, String?) -> Void) {
+    func ping(completion: @escaping @Sendable (Bool, String?) -> Void) {
         guard let url = buildUrl(method: "ping.view") else {
             completion(false, "Invalid URL configuration."); return
         }
@@ -109,7 +109,7 @@ extension NavidromeClient {
 
     // MARK: - Fetch Artists
 
-    func fetchArtists(completion: (([Artist]) -> Void)? = nil) {
+    func fetchArtists(completion: (@Sendable ([Artist]) -> Void)? = nil) {
         guard let url = buildUrl(method: "getArtists.view") else { 
             completion?([])
             return 
@@ -140,7 +140,7 @@ extension NavidromeClient {
 
     // MARK: - Album Tracks
 
-    func fetchAlbumTracks(albumId: String, completion: @escaping ([Track]) -> Void) {
+    func fetchAlbumTracks(albumId: String, completion: @escaping @Sendable ([Track]) -> Void) {
         guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { completion([]); return }
@@ -160,7 +160,7 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func fetchArtistData(artistId: String, completion: @escaping ([Track], [Album], String?, String?) -> Void) {
+    func fetchArtistData(artistId: String, completion: @escaping @Sendable ([Track], [Album], String?, String?) -> Void) {
         guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { completion([], [], nil, nil); return }
@@ -181,32 +181,37 @@ extension NavidromeClient {
                     )
                 }
                 
-                var allTracks: [Track] = []
+                final class ArtistDataContainer: @unchecked Sendable {
+                    var allTracks: [Track] = []
+                    var bio: String? = nil
+                    var mbid: String? = nil
+                    let lock = NSLock()
+                }
+                let container = ArtistDataContainer()
                 let group = DispatchGroup()
-                let lock = NSLock()
                 
                 for album in albumsData {
                     group.enter()
                     self.fetchAlbumTracks(albumId: album.id) { tracks in
-                        lock.lock()
-                        allTracks.append(contentsOf: tracks)
-                        lock.unlock()
+                        container.lock.lock()
+                        container.allTracks.append(contentsOf: tracks)
+                        container.lock.unlock()
                         group.leave()
                     }
                 }
                 
                 // Also fetch bio & MBID
-                var bio: String? = nil
-                var mbid: String? = nil
                 group.enter()
                 self.fetchArtistInfo(artistId: artistId) { b, m in
-                    bio = b
-                    mbid = m
+                    container.lock.lock()
+                    container.bio = b
+                    container.mbid = m
+                    container.lock.unlock()
                     group.leave()
                 }
                 
                 group.notify(queue: .main) {
-                    completion(allTracks, albums, bio, mbid)
+                    completion(container.allTracks, albums, container.bio, container.mbid)
                 }
             } catch {
                 print("Error decoding artist details: \(error)")
@@ -215,7 +220,7 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func fetchArtistInfo(artistId: String, completion: @escaping (String?, String?) -> Void) {
+    func fetchArtistInfo(artistId: String, completion: @escaping @Sendable (String?, String?) -> Void) {
         guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { completion(nil, nil); return }
@@ -229,7 +234,7 @@ extension NavidromeClient {
 
     // MARK: - Search
 
-    func search(query: String, completion: @escaping ([Track], [Album], [Artist]) -> Void) {
+    func search(query: String, completion: @escaping @Sendable ([Track], [Album], [Artist]) -> Void) {
         guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
             completion([], [], []); return
         }
@@ -277,7 +282,7 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func fetchPlaylistTracks(playlistId: String, completion: @escaping ([Track]) -> Void) {
+    func fetchPlaylistTracks(playlistId: String, completion: @escaping @Sendable ([Track]) -> Void) {
         guard let url = buildUrl(method: "getPlaylist.view", params: ["id": playlistId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { completion([]); return }
@@ -299,7 +304,7 @@ extension NavidromeClient {
 
     // MARK: - Playlist Management
 
-    func createPlaylist(name: String, songIds: [String], completion: @escaping (Bool) -> Void) {
+    func createPlaylist(name: String, songIds: [String], completion: @escaping @Sendable (Bool) -> Void) {
         let extra = songIds.map { URLQueryItem(name: "songId", value: $0) }
         guard let url = buildUrl(method: "createPlaylist.view", params: ["name": name], extraItems: extra) else {
             completion(false); return
@@ -313,7 +318,7 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func deletePlaylist(id: String, completion: @escaping (Bool) -> Void) {
+    func deletePlaylist(id: String, completion: @escaping @Sendable (Bool) -> Void) {
         guard let url = buildUrl(method: "deletePlaylist.view", params: ["id": id]) else {
             completion(false); return
         }
@@ -326,7 +331,7 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func updatePlaylist(id: String, songIdsToAdd: [String] = [], songIndicesToRemove: [Int] = [], completion: @escaping (Bool) -> Void) {
+    func updatePlaylist(id: String, songIdsToAdd: [String] = [], songIndicesToRemove: [Int] = [], completion: @escaping @Sendable (Bool) -> Void) {
         var extra: [URLQueryItem] = []
         songIdsToAdd.forEach { extra.append(URLQueryItem(name: "songIdToAdd", value: $0)) }
         songIndicesToRemove.forEach { extra.append(URLQueryItem(name: "songIndexToRemove", value: String($0))) }
@@ -363,7 +368,7 @@ extension NavidromeClient {
 
     // MARK: - All Songs
 
-    func fetchAllSongs(completion: (([Track]) -> Void)? = nil) {
+    func fetchAllSongs(completion: (@Sendable ([Track]) -> Void)? = nil) {
         fetchSongsPage(offset: 0, batchSize: 500) { allFetchedSongs in
             DispatchQueue.main.async {
                 self.allSongs = allFetchedSongs
@@ -373,7 +378,7 @@ extension NavidromeClient {
         }
     }
     
-    private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping ([Track]) -> Void) {
+    private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping @Sendable ([Track]) -> Void) {
         guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "\(batchSize)", "songOffset": "\(offset)"]) else { 
             completion(allSongsSoFar)
             return 
@@ -451,7 +456,7 @@ extension NavidromeClient {
 
     // MARK: - Lyrics
 
-    func fetchLyrics(artist: String, title: String, completion: @escaping (String?) -> Void) {
+    func fetchLyrics(artist: String, title: String, completion: @escaping @Sendable (String?) -> Void) {
         guard let url = buildUrl(method: "getLyrics.view", params: ["artist": artist, "title": title]) else {
             completion(nil); return
         }
