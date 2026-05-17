@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 
+@MainActor
 class AppLogger: ObservableObject {
     static let shared = AppLogger()
     

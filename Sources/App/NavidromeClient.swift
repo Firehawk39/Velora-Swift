@@ -52,8 +52,8 @@ class NavidromeClient: ObservableObject {
         buildUrl(method: "stream.view", params: ["id": id])
     }
 
-    func getCoverArtUrl(id: String) -> String {
-        buildUrl(method: "getCoverArt.view", params: ["id": id, "size": "500"])?.absoluteString ?? ""
+    func getCoverArtUrl(id: String, size: Int = 500) -> String {
+        buildUrl(method: "getCoverArt.view", params: ["id": id, "size": "\(size)"])?.absoluteString ?? ""
     }
 
     func logout() {

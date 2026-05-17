@@ -4,7 +4,7 @@ import Foundation
 // MARK: - Screen Tier
 public enum ScreenTier {
     case tiny, compact, regular, large, huge
-    public static var current: ScreenTier {
+    @MainActor public static var current: ScreenTier {
         let w = UIScreen.main.bounds.width
         let h = UIScreen.main.bounds.height
         let minDim = min(w, h)
@@ -16,10 +16,10 @@ public enum ScreenTier {
         if maxDim < 1024 { return .large } // Standard iPads
         return .huge // iPad Pro 12.9"
     }
-    public static var isSE: Bool { current == .tiny }
-    public static var isSmall: Bool { min(UIScreen.main.bounds.width, UIScreen.main.bounds.height) <= 375 }
-    public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
-    public static var isHuge: Bool { current == .huge }
+    @MainActor public static var isSE: Bool { current == .tiny }
+    @MainActor public static var isSmall: Bool { min(UIScreen.main.bounds.width, UIScreen.main.bounds.height) <= 375 }
+    @MainActor public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+    @MainActor public static var isHuge: Bool { current == .huge }
 }
 
 // MARK: - App Header

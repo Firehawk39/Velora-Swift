@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 
+@MainActor
 class BackdropManager: ObservableObject {
     static let shared = BackdropManager()
     

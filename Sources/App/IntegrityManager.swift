@@ -4,6 +4,7 @@ import SwiftUI
 /// IntegrityManager handles the local download index and disk space monitoring.
 /// This replaces expensive disk scanning with a lightning-fast JSON manifest,
 /// optimized for older hardware like the iPhone SE (1st Gen).
+@MainActor
 class IntegrityManager: ObservableObject {
     static let shared = IntegrityManager()
     
