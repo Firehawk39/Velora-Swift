@@ -40,6 +40,109 @@ struct AppHeader: View {
     var isPlayingTab: Bool { activeTab == "now-playing" }
     var headerFG: Color { isPlayingTab ? .white : (isDarkMode ? .white : .black) }
 
+    // MARK: - Responsive Layout Configs
+    private var themeToggleWidth: CGFloat {
+        if isLandscape {
+            return ScreenTier.isSmall ? 64 : 84
+        } else {
+            return 72
+        }
+    }
+    
+    private var themeToggleHeight: CGFloat {
+        if isLandscape {
+            return ScreenTier.isSmall ? 32 : 40
+        } else {
+            return 36
+        }
+    }
+    
+    private var themeToggleCircleSize: CGFloat {
+        if isLandscape {
+            return ScreenTier.isSmall ? 24 : 32
+        } else {
+            return 28
+        }
+    }
+    
+    private var themeToggleOffset: CGFloat {
+        if isLandscape {
+            return ScreenTier.isSmall ? 16 : 22
+        } else {
+            return 18
+        }
+    }
+    
+    private var themeToggleIconSize: CGFloat {
+        if isLandscape {
+            return ScreenTier.isSmall ? 10 : 13
+        } else {
+            return 11
+        }
+    }
+    
+    private var themeToggleHStackWidth: CGFloat {
+        if isLandscape {
+            return ScreenTier.isSmall ? 42 : 56
+        } else {
+            return 48
+        }
+    }
+
+    private var profileButtonSize: CGFloat {
+        if isLandscape {
+            if ScreenTier.isSmall {
+                return 22
+            } else if ScreenTier.isPhone {
+                return 32
+            } else {
+                return 38
+            }
+        } else {
+            return ScreenTier.isPhone ? 24 : 26
+        }
+    }
+
+    private var logoFontSize: CGFloat {
+        if isLandscape {
+            if ScreenTier.isSmall {
+                return 22
+            } else if ScreenTier.isPhone {
+                return 26
+            } else {
+                return 32
+            }
+        } else {
+            if ScreenTier.isPhone {
+                return ScreenTier.isSmall ? 26 : 32
+            } else {
+                return 34
+            }
+        }
+    }
+
+    private var navigationPillScale: CGFloat {
+        if isLandscape {
+            if ScreenTier.isSmall {
+                return 0.85
+            } else if ScreenTier.isPhone {
+                return 0.95
+            } else {
+                return 1.0
+            }
+        } else {
+            return ScreenTier.isPhone ? 0.85 : 0.9
+        }
+    }
+
+    private var navigationPillPadding: CGFloat {
+        if isLandscape {
+            return ScreenTier.isSmall ? 6 : 10
+        } else {
+            return ScreenTier.isSE ? 4 : 8
+        }
+    }
+
     var body: some View {
         Group {
         ZStack {
@@ -67,7 +170,7 @@ struct AppHeader: View {
             } 
         }) {
             Text("Velora.")
-                .font(.custom("Stardom", size: isLandscape ? (ScreenTier.isSmall ? 64 : (ScreenTier.isPhone ? 48 : 54)) : (ScreenTier.isPhone ? (ScreenTier.isSmall ? 26 : 32) : 34.0)).weight(.bold))
+                .font(.custom("Stardom", size: logoFontSize).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
         }
@@ -93,23 +196,23 @@ struct AppHeader: View {
             ZStack {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
-                    .frame(width: isLandscape ? 84 : 72, height: isLandscape ? 40 : 36)
+                    .frame(width: themeToggleWidth, height: themeToggleHeight)
                 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: isLandscape ? 32 : 28, height: isLandscape ? 32 : 28)
-                    .offset(x: isDarkMode ? (isLandscape ? 22 : 18) : (isLandscape ? -22 : -18))
+                    .frame(width: themeToggleCircleSize, height: themeToggleCircleSize)
+                    .offset(x: isDarkMode ? themeToggleOffset : -themeToggleOffset)
                 
                 HStack {
                     Image(systemName: "sun.max.fill")
-                        .font(.system(size: isLandscape ? 13 : 11, weight: .bold))
+                        .font(.system(size: themeToggleIconSize, weight: .bold))
                         .foregroundColor(isDarkMode ? .gray : .yellow)
                     Spacer()
                     Image(systemName: "moon.fill")
-                        .font(.system(size: isLandscape ? 13 : 11, weight: .bold))
+                        .font(.system(size: themeToggleIconSize, weight: .bold))
                         .foregroundColor(isDarkMode ? .blue : .gray)
                 }
-                .frame(width: isLandscape ? 56 : 48)
+                .frame(width: themeToggleHStackWidth)
             }
         }
         .accessibilityLabel("Toggle Dark Mode")
@@ -123,7 +226,7 @@ struct AppHeader: View {
             }
         }) {
             Image(systemName: "person.crop.circle.fill")
-                .font(.system(size: isLandscape ? (ScreenTier.isSmall ? 44 : (ScreenTier.isPhone ? 32 : 38)) : (ScreenTier.isPhone ? 24 : 26)))
+                .font(.system(size: profileButtonSize))
                 .foregroundColor(headerFG)
         }
         .accessibilityLabel("Profile and Settings")
@@ -137,13 +240,13 @@ struct AppHeader: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
-        .padding(isLandscape ? (ScreenTier.isSmall ? 12 : 10) : (ScreenTier.isSE ? 4 : 8))
+        .padding(navigationPillPadding)
         .background(
             isPlayingTab ? AnyShapeStyle(Color.white.opacity(0.1)) :
             (isDarkMode ? AnyShapeStyle(Color(hex: "#1a1a1a")) : AnyShapeStyle(Color(hex: "#e5e7eb")))
         )
         .clipShape(Capsule())
-        .scaleEffect(isLandscape ? (ScreenTier.isSmall ? 1.45 : (ScreenTier.isPhone ? 1.15 : 1.05)) : (ScreenTier.isPhone ? 0.85 : 0.9))
+        .scaleEffect(navigationPillScale)
     }
 }
 
@@ -215,6 +318,56 @@ struct TabButton: View {
         }
     }
 
+    private var fontSize: CGFloat {
+        if isLandscape {
+            if ScreenTier.isSmall {
+                return 12
+            } else if ScreenTier.isPhone {
+                return 14
+            } else {
+                return 16
+            }
+        } else {
+            if ScreenTier.isSmall {
+                return 13
+            } else {
+                return 16
+            }
+        }
+    }
+    
+    private var horizontalPadding: CGFloat {
+        if isLandscape {
+            if ScreenTier.isSmall {
+                return 12
+            } else if ScreenTier.isPhone {
+                return 18
+            } else {
+                return 16
+            }
+        } else {
+            if ScreenTier.isSmall {
+                return isActive ? 16 : 12
+            } else {
+                return 16
+            }
+        }
+    }
+    
+    private var verticalPadding: CGFloat {
+        if isLandscape {
+            if ScreenTier.isSmall {
+                return 6
+            } else if ScreenTier.isPhone {
+                return 8
+            } else {
+                return 8
+            }
+        } else {
+            return 8
+        }
+    }
+
     var body: some View {
         Button(action: { 
             onAction()
@@ -230,12 +383,12 @@ struct TabButton: View {
                         .font(.system(size: 10, weight: .medium))
                         .lineLimit(1)
                 } else {
-                Text(label)
-                    .font(.system(size: isLandscape ? (ScreenTier.isSmall ? 22 : (ScreenTier.isPhone ? 20 : 16)) : (ScreenTier.isSmall ? 13 : 16), weight: isActive ? .bold : .medium))
-                    .padding(.horizontal, isLandscape ? (ScreenTier.isSmall ? 32 : (ScreenTier.isPhone ? 28 : 16)) : (ScreenTier.isSmall ? (isActive ? 16 : 12) : 16))
-                    .padding(.vertical, isLandscape ? (ScreenTier.isSmall ? 18 : (ScreenTier.isPhone ? 14 : 8)) : 8)
-                    .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
-                    .clipShape(Capsule())
+                    Text(label)
+                        .font(.system(size: fontSize, weight: isActive ? .bold : .medium))
+                        .padding(.horizontal, horizontalPadding)
+                        .padding(.vertical, verticalPadding)
+                        .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
+                        .clipShape(Capsule())
                 }
             }
             .foregroundColor(isActive ? (isDarkMode ? .white : .black) : .gray)
