@@ -20,6 +20,10 @@ public enum ScreenTier {
     @MainActor public static var isSmall: Bool { min(UIScreen.main.bounds.width, UIScreen.main.bounds.height) <= 375 }
     @MainActor public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
     @MainActor public static var isHuge: Bool { current == .huge }
+    @MainActor public static var isCarDisplay: Bool {
+        let minDim = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+        return UIDevice.current.userInterfaceIdiom == .carPlay || (UIDevice.current.userInterfaceIdiom == .phone && minDim >= 480)
+    }
 }
 
 // MARK: - App Header
@@ -90,6 +94,7 @@ struct AppHeader: View {
     }
 
     private var profileButtonSize: CGFloat {
+        if ScreenTier.isCarDisplay && isLandscape { return 36 }
         if isLandscape {
             if ScreenTier.isSmall {
                 return 28
@@ -104,6 +109,7 @@ struct AppHeader: View {
     }
 
     private var logoFontSize: CGFloat {
+        if ScreenTier.isCarDisplay && isLandscape { return 36 }
         if isLandscape {
             if ScreenTier.isSmall {
                 return 27
@@ -122,6 +128,7 @@ struct AppHeader: View {
     }
 
     private var navigationPillScale: CGFloat {
+        if ScreenTier.isCarDisplay && isLandscape { return 1.10 }
         if isLandscape {
             if ScreenTier.isSmall {
                 return 0.93
@@ -143,6 +150,21 @@ struct AppHeader: View {
         }
     }
 
+    private var mainHeaderHorizontalPadding: CGFloat {
+        if ScreenTier.isCarDisplay && isLandscape { return 44.0 }
+        if isLandscape {
+            if ScreenTier.isSmall {
+                return 24.0
+            } else if ScreenTier.isPhone {
+                return 24.0
+            } else {
+                return 48.0
+            }
+        } else {
+            return ScreenTier.isSmall ? 16.0 : (isCompact ? 24.0 : 48.0)
+        }
+    }
+
     var body: some View {
         Group {
         ZStack {
@@ -159,7 +181,7 @@ struct AppHeader: View {
             Spacer()
             headerActions
         }
-        .padding(.horizontal, ScreenTier.isSmall ? (isLandscape ? 24.0 : 16.0) : (isCompact ? 24.0 : 48.0))
+        .padding(.horizontal, mainHeaderHorizontalPadding)
     }
     
     private var logoButton: some View {
