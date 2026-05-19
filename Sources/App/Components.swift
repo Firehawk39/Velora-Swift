@@ -92,7 +92,7 @@ struct AppHeader: View {
     private var profileButtonSize: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 26
+                return 28
             } else if ScreenTier.isPhone {
                 return 32
             } else {
@@ -106,7 +106,7 @@ struct AppHeader: View {
     private var logoFontSize: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 25
+                return 27
             } else if ScreenTier.isPhone {
                 return 26
             } else {
@@ -124,7 +124,7 @@ struct AppHeader: View {
     private var navigationPillScale: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 0.90
+                return 0.93
             } else if ScreenTier.isPhone {
                 return 0.95
             } else {
@@ -159,7 +159,7 @@ struct AppHeader: View {
             Spacer()
             headerActions
         }
-        .padding(.horizontal, ScreenTier.isSmall ? 16.0 : (isCompact ? 24.0 : 48.0))
+        .padding(.horizontal, ScreenTier.isSmall ? (isLandscape ? 24.0 : 16.0) : (isCompact ? 24.0 : 48.0))
     }
     
     private var logoButton: some View {
@@ -321,7 +321,7 @@ struct TabButton: View {
     private var fontSize: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 13
+                return 14
             } else if ScreenTier.isPhone {
                 return 14
             } else {
@@ -339,7 +339,7 @@ struct TabButton: View {
     private var horizontalPadding: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 14
+                return 15
             } else if ScreenTier.isPhone {
                 return 18
             } else {
@@ -357,7 +357,7 @@ struct TabButton: View {
     private var verticalPadding: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 7
+                return 8
             } else if ScreenTier.isPhone {
                 return 8
             } else {
