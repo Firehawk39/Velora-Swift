@@ -21,8 +21,12 @@ public enum ScreenTier {
     @MainActor public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
     @MainActor public static var isHuge: Bool { current == .huge }
     @MainActor public static var isCarDisplay: Bool {
-        let minDim = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
-        return UIDevice.current.userInterfaceIdiom == .carPlay || (UIDevice.current.userInterfaceIdiom == .phone && minDim >= 480)
+        if UIDevice.current.userInterfaceIdiom == .carPlay { return true }
+        if UIScreen.screens.count > 1 { return true }
+        let w = UIScreen.main.bounds.width
+        let h = UIScreen.main.bounds.height
+        if UIDevice.current.userInterfaceIdiom == .phone && w > h && min(w, h) > 375 { return true }
+        return false
     }
 }
 
