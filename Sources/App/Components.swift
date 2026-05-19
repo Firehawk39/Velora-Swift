@@ -92,7 +92,7 @@ struct AppHeader: View {
     private var profileButtonSize: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 22
+                return 26
             } else if ScreenTier.isPhone {
                 return 32
             } else {
@@ -106,7 +106,7 @@ struct AppHeader: View {
     private var logoFontSize: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 22
+                return 25
             } else if ScreenTier.isPhone {
                 return 26
             } else {
@@ -124,7 +124,7 @@ struct AppHeader: View {
     private var navigationPillScale: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 0.85
+                return 0.90
             } else if ScreenTier.isPhone {
                 return 0.95
             } else {
@@ -137,7 +137,7 @@ struct AppHeader: View {
 
     private var navigationPillPadding: CGFloat {
         if isLandscape {
-            return ScreenTier.isSmall ? 6 : 10
+            return ScreenTier.isSmall ? 8 : 10
         } else {
             return ScreenTier.isSE ? 4 : 8
         }
@@ -321,7 +321,7 @@ struct TabButton: View {
     private var fontSize: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 12
+                return 13
             } else if ScreenTier.isPhone {
                 return 14
             } else {
@@ -339,7 +339,7 @@ struct TabButton: View {
     private var horizontalPadding: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 12
+                return 14
             } else if ScreenTier.isPhone {
                 return 18
             } else {
@@ -357,7 +357,7 @@ struct TabButton: View {
     private var verticalPadding: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
-                return 6
+                return 7
             } else if ScreenTier.isPhone {
                 return 8
             } else {
