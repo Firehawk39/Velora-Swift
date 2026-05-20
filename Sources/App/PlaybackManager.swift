@@ -98,6 +98,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     private var timeObserver: Any?
     private var playerItemObserver: Any?
     private var currentArtworkTrackId: String? = nil
+    // Artwork download race-proofing
+    private var artworkDownloadTask: URLSessionDataTask? = nil
+    private var downloadingArtworkTrackId: String? = nil
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
@@ -324,21 +327,28 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         player?.play()
         self.isPlaying = true
         
-        // Track progress
+        // Track progress — capture player instance to prevent stale-observer race condition
+        let capturedPlayer = player
         timeObserver = player?.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
-        ) { [weak self] time in
+        ) { [weak self, weak capturedPlayer] time in
             guard let self = self,
-                  let item = self.player?.currentItem,
+                  let capturedPlayer = capturedPlayer,
+                  self.player === capturedPlayer,  // Only the ACTIVE player may update progress
+                  let item = capturedPlayer.currentItem,
                   item.duration.isNumeric else { return }
             
             self.progress = time.seconds
             self.duration = item.duration.seconds
             self.updateNowPlayingInfo()
             
-            // Crossfade check
-            if self.isCrossfadeEnabled && !self.isCrossfading && self.duration > 0 && time.seconds > (self.duration - self.crossfadeDuration) {
+            // Crossfade check — also gate against short tracks shorter than 2x the fade window
+            let triggerTime = self.duration - self.crossfadeDuration
+            if self.isCrossfadeEnabled &&
+               !self.isCrossfading &&
+               self.duration > (self.crossfadeDuration * 2.0) &&
+               time.seconds > triggerTime {
                 self.startCrossfade()
             }
         }
@@ -521,25 +531,67 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         
-        // Asynchronously load artwork for the Control Center only once per track
-        if currentArtworkTrackId != track.id {
-            currentArtworkTrackId = track.id
+        // Asynchronously load artwork for the Control Center:
+        // - Cancel any in-flight download for a previous track
+        // - Track downloadingArtworkTrackId separately from currentArtworkTrackId so a
+        //   failed/slow download can be retried on the next updateNowPlayingInfo() call
+        if currentArtworkTrackId != track.id && downloadingArtworkTrackId != track.id {
+            // Cancel the previous download task if it is still in flight
+            artworkDownloadTask?.cancel()
+            artworkDownloadTask = nil
+
             if let artworkUrl = track.coverArtUrl {
-                URLSession.shared.dataTask(with: artworkUrl) { data, _, _ in
-                    if let data = data, let image = UIImage(data: data) {
-                        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                        let extractedColor = image.dominantColor() ?? .black
+                downloadingArtworkTrackId = track.id
+
+                let task = URLSession.shared.dataTask(with: artworkUrl) { [weak self] data, _, error in
+                    guard let self = self else { return }
+
+                    // On failure, clear downloadingArtworkTrackId so the next tick can retry
+                    if error != nil || data == nil {
                         DispatchQueue.main.async {
-                            // Check if we are still playing the same track
-                            if self.currentTrack?.id == track.id {
-                                var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
-                                updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                                MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
-                                self.currentPrimaryColor = extractedColor
+                            if self.downloadingArtworkTrackId == track.id {
+                                self.downloadingArtworkTrackId = nil
                             }
                         }
+                        return
                     }
-                }.resume()
+
+                    guard let data = data, let image = UIImage(data: data) else {
+                        DispatchQueue.main.async {
+                            if self.downloadingArtworkTrackId == track.id {
+                                self.downloadingArtworkTrackId = nil
+                            }
+                        }
+                        return
+                    }
+
+                    // Persist to the local CoverArt cache so subsequent plays load instantly
+                    let artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+                    let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                    let coverArtDir = docs.appendingPathComponent("CoverArt")
+                    let localUrl = coverArtDir.appendingPathComponent("\(artId).jpg")
+                    if !FileManager.default.fileExists(atPath: coverArtDir.path) {
+                        try? FileManager.default.createDirectory(at: coverArtDir, withIntermediateDirectories: true, attributes: nil)
+                    }
+                    try? data.write(to: localUrl)
+
+                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    let extractedColor = image.dominantColor() ?? .black
+
+                    DispatchQueue.main.async {
+                        if self.currentTrack?.id == track.id {
+                            var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
+                            updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                            MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                            self.currentPrimaryColor = extractedColor
+                            self.currentArtworkTrackId = track.id
+                        }
+                        self.downloadingArtworkTrackId = nil
+                        self.artworkDownloadTask = nil
+                    }
+                }
+                artworkDownloadTask = task
+                task.resume()
             }
         }
     }
@@ -843,53 +895,81 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
 
     private func startCrossfade() {
         guard !isCrossfading, currentTrack != nil, queue.count > 0 else { return }
-        
+
         let nextIndex = (queueIndex + 1) % queue.count
         if nextIndex == queueIndex && repeatMode == .off { return }
-        
+
         let nextTrack = queue[nextIndex]
         isCrossfading = true
-        
-        // Prepare secondary player
+
+        // Resolve URL for secondary player
         let urlToPlay: URL
         if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
             urlToPlay = localUrl
         } else {
             urlToPlay = client.getStreamUrl(id: nextTrack.id) ?? URL(string: "about:blank")!
         }
+
         let playerItem = AVPlayerItem(url: urlToPlay)
-        secondaryPlayer = AVPlayer(playerItem: playerItem)
-        secondaryPlayer?.volume = 0
-        secondaryPlayer?.play()
-        
-        // Volume transition
-        let duration = crossfadeDuration
-        let steps = 50
-        let interval = duration / Double(steps)
-        
+        // Give the item a head-start buffer window so it is ready quickly
+        playerItem.preferredForwardBufferDuration = 6.0
+
+        let secPlayer = AVPlayer(playerItem: playerItem)
+        secPlayer.volume = 0.0      // Silent until buffered
+        secPlayer.play()            // Start buffering immediately
+        secondaryPlayer = secPlayer
+
         Task { @MainActor in
-            for step in 1...steps {
-                guard self.isCrossfading else { break }
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                guard self.isCrossfading else { break }
-                
-                let factor = Float(step) / Float(steps)
-                self.player?.volume = 1.0 - factor
-                self.secondaryPlayer?.volume = factor
+            // ── Phase 1: Wait for the secondary player to be ready (max 10 s) ──────
+            // While we wait, the PRIMARY player keeps playing at full volume — no gap!
+            var waitSteps = 100     // 100 × 100ms = 10 second timeout
+            while playerItem.status != .readyToPlay && waitSteps > 0 {
+                guard self.isCrossfading && self.secondaryPlayer === secPlayer else { return }
+                try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1 s
+                waitSteps -= 1
             }
-            if self.isCrossfading {
+
+            guard self.isCrossfading && self.secondaryPlayer === secPlayer else { return }
+
+            // ── Phase 2: Override the audio-graph volume reset ────────────────────
+            // When AVPlayer connects its audio nodes (on readyToPlay) it internally
+            // resets the output volume back to 1.0.  We immediately pin it to 0.
+            secPlayer.volume = 0.0
+
+            // ── Phase 3: Equal-power crossfade ────────────────────────────────────
+            // Equal-power (sin/cos) avoids the perceived volume dip at the midpoint
+            // that a simple linear crossfade produces.
+            let fadeDuration = self.crossfadeDuration
+            let steps = 60
+            let interval = fadeDuration / Double(steps)
+
+            for step in 1...steps {
+                guard self.isCrossfading && self.secondaryPlayer === secPlayer else { break }
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                guard self.isCrossfading && self.secondaryPlayer === secPlayer else { break }
+
+                let t = Double(step) / Double(steps)  // 0.0 … 1.0
+                let angle = t * (.pi / 2.0)
+
+                // cos(0→π/2) = 1→0  (primary fades out)
+                // sin(0→π/2) = 0→1  (secondary fades in)
+                self.player?.volume = Float(cos(angle))
+                secPlayer.volume    = Float(sin(angle))
+            }
+
+            if self.isCrossfading && self.secondaryPlayer === secPlayer {
                 self.completeCrossfade(nextTrack: nextTrack, nextItem: playerItem)
             }
         }
     }
-    
+
     private func completeCrossfade(nextTrack: Track, nextItem: AVPlayerItem) {
-        // Scrobble previous
+        // Scrobble previous track
         if let track = self.currentTrack {
             self.client.scrobble(id: track.id, submission: true)
         }
-        
-        // Cleanup old player
+
+        // Cleanly tear down the old player's observers BEFORE swapping references
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
@@ -899,36 +979,53 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             playerItemObserver = nil
         }
         player?.pause()
-        
-        // Switch to new player
+
+        // Swap primary ← secondary
         player = secondaryPlayer
         secondaryPlayer = nil
         currentTrack = nextTrack
         queueIndex = (queueIndex + 1) % queue.count
         isCrossfading = false
         player?.volume = 1.0
-        
-        // Setup observers for new track
+
+        // Clear stale visual & artwork state so the new track loads fresh assets
+        self.progress = 0
+        self.duration = 0
+        self.currentArtworkTrackId = nil
+        self.downloadingArtworkTrackId = nil
+        self.artworkDownloadTask?.cancel()
+        self.artworkDownloadTask = nil
+        FanartManager.shared.currentBackdrop = nil
+
+        // Wire up observers and fetch metadata for the new track
         setupObservers(for: nextItem, track: nextTrack)
-        
-        // Fetch new lyrics/backdrop
         fetchMetadata(for: nextTrack)
     }
     
     private func setupObservers(for item: AVPlayerItem, track: Track) {
+        // Capture the player instance so stale observers from a previous item
+        // cannot update progress/duration after the player has been replaced.
+        let capturedPlayer = player
         timeObserver = player?.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
-        ) { [weak self] time in
+        ) { [weak self, weak capturedPlayer] time in
             guard let self = self,
-                  let currentItem = self.player?.currentItem,
+                  let capturedPlayer = capturedPlayer,
+                  self.player === capturedPlayer,  // Only the ACTIVE player may update progress
+                  let currentItem = capturedPlayer.currentItem,
                   currentItem.duration.isNumeric else { return }
-            
+
             self.progress = time.seconds
             self.duration = currentItem.duration.seconds
             self.updateNowPlayingInfo()
-            
-            if self.isCrossfadeEnabled && !self.isCrossfading && self.duration > 0 && time.seconds > (self.duration - self.crossfadeDuration) {
+
+            // Gate: only crossfade when the track is at least 2× the fade window long
+            let triggerTime = self.duration - self.crossfadeDuration
+            if self.isCrossfadeEnabled &&
+               !self.isCrossfading &&
+               self.duration > (self.crossfadeDuration * 2.0) &&
+               time.seconds > triggerTime {
                 self.startCrossfade()
             }
         }

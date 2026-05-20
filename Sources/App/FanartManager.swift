@@ -80,14 +80,14 @@ class FanartManager: ObservableObject {
         // 2. Check if we are ALREADY fetching it (e.g. from prefetch)
         let alreadyFetching = activeBackdropFetches.contains(sanitized)
         
-        // 3. Only if NOT in cache and it's a new artist, nil it
+        // 3. Only if NOT in cache and it's a new artist, immediately clear the stale backdrop.
+        //    Previously we skipped nilling when alreadyFetching=true to allow "smooth transitions",
+        //    but this caused stale backdrops to persist indefinitely when the prefetch was slow/failed.
+        //    Now we always clear immediately so the dynamic gradient fallback shows right away.
         if isNewArtist {
             self.currentArtistName = artist
-            // If it's already fetching, we don't nil it immediately to allow a possible smooth transition
-            if !alreadyFetching {
-                withAnimation(.easeInOut(duration: 0.4)) {
-                    self.currentBackdrop = nil
-                }
+            withAnimation(.easeInOut(duration: 0.4)) {
+                self.currentBackdrop = nil
             }
         }
         
