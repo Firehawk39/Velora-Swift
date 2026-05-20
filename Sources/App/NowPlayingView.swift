@@ -71,8 +71,8 @@ struct NowPlayingView: View {
                         // PORTRAIT IPHONE: Use Dynamic Gradient (No Blur)
                         LinearGradient(
                             gradient: Gradient(colors: [
-                                Color(playback.currentPrimaryColor).opacity(0.85),
-                                Color(playback.currentPrimaryColor).opacity(0.45),
+                                Color(playback.currentPrimaryColor).opacity(0.8),
+                                Color(playback.currentPrimaryColor).opacity(0.4),
                                 .black
                             ]),
                             startPoint: .top,
@@ -88,17 +88,20 @@ struct NowPlayingView: View {
                                 .clipped()
                                 .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                                 .opacity(isIdle ? 0.45 : 0.35)
+                        } else if let track = playback.currentTrack, let url = track.coverArtUrl {
+                            AsyncImage(url: url) { image in
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                    .clipped()
+                                    .blur(radius: 15) // Restored blur for fallback
+                                    .opacity(isIdle ? 0.4 : 0.3)
+                            } placeholder: {
+                                Color.black
+                            }
                         } else {
-                            // No fanart fallback -> Gradient colors from album (no blur)
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color(playback.currentPrimaryColor).opacity(0.85),
-                                    Color(playback.currentPrimaryColor).opacity(0.45),
-                                    .black
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                            Color.black
                         }
                     }
                 }
