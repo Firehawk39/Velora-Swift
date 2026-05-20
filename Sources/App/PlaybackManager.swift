@@ -97,7 +97,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     private var isCrossfading = false
     private var timeObserver: Any?
     private var playerItemObserver: Any?
-    private var currentArtworkTrackId: String? = nil
+    @Published var currentArtworkTrackId: String? = nil
     // Artwork download race-proofing
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil

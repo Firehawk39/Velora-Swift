@@ -68,7 +68,7 @@ class NavidromeClient: ObservableObject {
         let dir = cacheDir
         
         Task.detached(priority: .userInitiated) { [weak self] in
-            let fileManager = FileManager.default
+
             let decoder = JSONDecoder()
             
             let artistsUrl = dir.appendingPathComponent("cached_artists.json")
