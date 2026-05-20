@@ -277,11 +277,13 @@ struct NowPlayingView: View {
                     .padding(.horizontal, 24)
                 }
                 
-                // Progress Bar
-                progressBar
-                    .padding(.horizontal, 24)
+                if !playback.isLyricsMode {
+                    // Progress Bar
+                    progressBar
+                        .padding(.horizontal, 24)
+                }
                 
-                if !isIdle {
+                if !isIdle && !playback.isLyricsMode {
                     // Controls Section for Portrait
                     VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 24)) {
                         HStack(spacing: isSE ? 20 : (isSmallDevice ? 28 : 36)) {
@@ -352,12 +354,14 @@ struct NowPlayingView: View {
                     .transition(.opacity)
                 }
                 
-                // Progress Bar (Always visible below content)
-                progressBar
-                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                if !playback.isLyricsMode {
+                    // Progress Bar (Always visible below content)
+                    progressBar
+                        .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                }
                 
                 // Controls Section
-                if !isIdle {
+                if !isIdle && !playback.isLyricsMode {
                     HStack(alignment: .center) {
                         // 1. Left Section (Empty now)
                         HStack {
