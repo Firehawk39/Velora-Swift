@@ -104,6 +104,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     // Pre-warmed next-track item for zero-wait crossfading
     private var prewarmedItem: AVPlayerItem? = nil
     private var prewarmedTrackId: String? = nil
+    private var prewarmPlayer: AVPlayer? = nil
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
@@ -270,6 +271,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         // Invalidate any pre-warmed item — it was for the old next track
         prewarmedItem = nil
         prewarmedTrackId = nil
+        prewarmPlayer?.pause()
+        prewarmPlayer = nil
 
         let urlToPlay: URL
         if let localUrl = getLocalAudioUrl(for: track.id) {
@@ -440,6 +443,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             let warmupPlayer = AVPlayer(playerItem: item)
             warmupPlayer.volume = 0.0
             warmupPlayer.play()
+            self.prewarmPlayer = warmupPlayer
 
             // Keep the player alive long enough to fill the buffer, then discard it.
             // 12 s is generous — even a slow connection will have 8 s buffered by then.
@@ -449,7 +453,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                 // the warmup player to stop consuming bandwidth. The buffered bytes
                 // already in the AVPlayerItem are retained for startCrossfade() to use.
                 if self.prewarmedTrackId == nextTrack.id {
-                    warmupPlayer.pause()
+                    self.prewarmPlayer?.pause()
+                    self.prewarmPlayer = nil
                 }
             }
         }
@@ -1003,18 +1008,18 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             // With a cold item this may take 2–4 s on a slow network; the primary
             // player stays at 1.0 volume the whole time — zero audible gap.
             var waitSteps = 100     // 100 × 100 ms = 10 s timeout
-            while playerItem.status != .readyToPlay && waitSteps > 0 {
-                guard self.isCrossfading && self.secondaryPlayer === secPlayer else { return }
+            while self.secondaryPlayer?.currentItem?.status != .readyToPlay && waitSteps > 0 {
+                guard self.isCrossfading else { return }
                 try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1 s
                 waitSteps -= 1
             }
 
-            guard self.isCrossfading && self.secondaryPlayer === secPlayer else { return }
+            guard self.isCrossfading else { return }
 
             // ── Phase 2: Override the audio-graph volume reset ─────────────────────
             // AVPlayer resets volume to 1.0 when its audio nodes connect on
             // readyToPlay. Pin it back to 0 before starting the fade loop.
-            secPlayer.volume = 0.0
+            self.secondaryPlayer?.volume = 0.0
 
             // ── Phase 3: Equal-power crossfade ─────────────────────────────────────
             let fadeDuration = self.crossfadeDuration
@@ -1022,18 +1027,20 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             let interval = fadeDuration / Double(steps)
 
             for step in 1...steps {
-                guard self.isCrossfading && self.secondaryPlayer === secPlayer else { break }
+                guard self.isCrossfading else { break }
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                guard self.isCrossfading && self.secondaryPlayer === secPlayer else { break }
+                guard self.isCrossfading else { break }
 
                 let t = Double(step) / Double(steps)
                 let angle = t * (.pi / 2.0)
                 self.player?.volume = Float(cos(angle))
-                secPlayer.volume    = Float(sin(angle))
+                self.secondaryPlayer?.volume = Float(sin(angle))
             }
 
-            if self.isCrossfading && self.secondaryPlayer === secPlayer {
-                self.completeCrossfade(nextTrack: nextTrack, nextItem: playerItem)
+            if self.isCrossfading {
+                if let nextItem = self.secondaryPlayer?.currentItem {
+                    self.completeCrossfade(nextTrack: nextTrack, nextItem: nextItem)
+                }
             }
         }
     }
