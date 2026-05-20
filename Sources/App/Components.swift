@@ -23,9 +23,44 @@ public enum ScreenTier {
     @MainActor public static var isCarDisplay: Bool {
         if UIDevice.current.userInterfaceIdiom == .carPlay { return true }
         if UIScreen.screens.count > 1 { return true }
+        
         let w = UIScreen.main.bounds.width
         let h = UIScreen.main.bounds.height
-        if UIDevice.current.userInterfaceIdiom == .phone && w > h && min(w, h) > 375 { return true }
+        let minDim = min(w, h)
+        let maxDim = max(w, h)
+        
+        let nativeW = UIScreen.main.nativeBounds.width
+        let nativeH = UIScreen.main.nativeBounds.height
+        let minNative = min(nativeW, nativeH)
+        let maxNative = max(nativeW, nativeH)
+        
+        // Direct check for 720p physical resolution (1280x720 or 720x1280)
+        if minNative == 720 && maxNative == 1280 { return true }
+        
+        // Direct check for 720p logical bounds
+        if minDim == 720 && maxDim == 1280 { return true }
+        
+        // Common car screen sizes in physical pixels
+        if (minNative == 480 && maxNative == 800) ||   // 800x480
+           (minNative == 480 && maxNative == 1280) ||  // 1280x480
+           (minNative == 600 && maxNative == 1024) ||  // 1024x600
+           (minNative == 800 && maxNative == 1280) {   // 1280x800
+            return true
+        }
+        
+        // Generic check: widescreen aspect ratio (>= 1.55 and <= 2.7) on non-phone devices (or mirrored/projected screens)
+        // which distinguishes it from standard 4:3 or 16:10 iPads (iPad Pro 11 is 1.43, iPad 12.9 is 1.33)
+        let aspect = Double(maxNative) / Double(minNative)
+        if aspect >= 1.55 && aspect <= 2.7 && minNative >= 480 && minNative <= 900 {
+            // Exclude standard phones to avoid false positives on standard devices, but keep CarPlay/AI boxes
+            if UIDevice.current.userInterfaceIdiom != .phone {
+                return true
+            }
+        }
+        
+        // Also keep standard iPhone landscape when it is large enough
+        if UIDevice.current.userInterfaceIdiom == .phone && w > h && minDim > 375 { return true }
+        
         return false
     }
 }
@@ -241,6 +276,7 @@ struct AppHeader: View {
                 .frame(width: themeToggleHStackWidth)
             }
         }
+        .scaleEffect(ScreenTier.isCarDisplay && isLandscape ? 1.15 : 1.0)
         .accessibilityLabel("Toggle Dark Mode")
         .hoverEffect()
     }

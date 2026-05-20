@@ -71,8 +71,8 @@ struct NowPlayingView: View {
                         // PORTRAIT IPHONE: Use Dynamic Gradient (No Blur)
                         LinearGradient(
                             gradient: Gradient(colors: [
-                                Color(playback.currentPrimaryColor).opacity(0.8),
-                                Color(playback.currentPrimaryColor).opacity(0.4),
+                                Color(playback.currentPrimaryColor).opacity(0.85),
+                                Color(playback.currentPrimaryColor).opacity(0.45),
                                 .black
                             ]),
                             startPoint: .top,
@@ -87,30 +87,27 @@ struct NowPlayingView: View {
                                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                                 .clipped()
                                 .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                .opacity(isIdle ? 0.45 : 0.35)
-                        } else if let track = playback.currentTrack, let url = track.coverArtUrl {
-                            AsyncImage(url: url) { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                                    .clipped()
-                                    .blur(radius: 15) // Restored blur for fallback
-                                    .opacity(isIdle ? 0.4 : 0.3)
-                            } placeholder: {
-                                Color.black
-                            }
+                                .opacity(isIdle ? 0.60 : 0.50) // Increased brightness
                         } else {
-                            Color.black
+                            // No fanart fallback -> Gradient colors from album (no blur)
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(playback.currentPrimaryColor).opacity(0.85),
+                                    Color(playback.currentPrimaryColor).opacity(0.45),
+                                    .black
+                                ]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         }
                     }
                 }
                 .overlay(
-                    // Combined Vignette: Dark edges + Vertical fade
+                    // Combined Vignette: Dark edges + Vertical fade (slightly reduced for brightness)
                     ZStack {
                         // Edge darkness (Radial)
                         RadialGradient(
-                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
+                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.35 : 0.70)]),
                             center: .center,
                             startRadius: 50, // Start much earlier for deeper center bleed
                             endRadius: proxy.size.width * 1.2 // Ensure edges are fully dark
@@ -119,9 +116,9 @@ struct NowPlayingView: View {
                         // Top and Bottom protection (Linear)
                         LinearGradient(
                             gradient: Gradient(colors: [
-                                .black.opacity(isIdle ? 0.3 : 0.6), 
+                                .black.opacity(isIdle ? 0.2 : 0.45), 
                                 .clear, 
-                                .black.opacity(isIdle ? 0.5 : 0.9)
+                                .black.opacity(isIdle ? 0.35 : 0.75)
                             ]),
                             startPoint: .top,
                             endPoint: .bottom
@@ -256,6 +253,7 @@ struct NowPlayingView: View {
                 if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
+                        .frame(height: proxy.size.height * (isSE ? 0.45 : (isSmallDevice ? 0.55 : 0.60)))
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
@@ -326,6 +324,7 @@ struct NowPlayingView: View {
                         } else {
                             inlineLyricsView
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(height: proxy.size.height * 0.60)
                         }
                         Spacer(minLength: 40)
                     }
@@ -717,20 +716,16 @@ struct NowPlayingView: View {
     }
 
     private var inlineLyricsView: some View {
-        ScrollViewReader { scrollProxy in
+        let syncedLyrics = playback.currentSyncedLyrics ?? []
+        let activeIndex = syncedLyrics.isEmpty ? 0 : (syncedLyrics.lastIndex(where: { playback.progress >= $0.time }) ?? 0)
+        
+        return ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
-                    if let syncedLyrics = playback.currentSyncedLyrics, !syncedLyrics.isEmpty {
-                        let activeIndex = syncedLyrics.lastIndex(where: { playback.progress >= $0.time }) ?? 0
-                        
+                    if !syncedLyrics.isEmpty {
                         ForEach(Array(syncedLyrics.enumerated()), id: \.offset) { index, line in
                             renderLyricLine(line: line, index: index, activeIndex: activeIndex, syncedLyrics: syncedLyrics)
                                 .id(index)
-                        }
-                        .onChange(of: activeIndex) { newIndex in
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                scrollProxy.scrollTo(newIndex, anchor: .center)
-                            }
                         }
                     } else if let lyrics = playback.currentLyrics {
                         let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -757,6 +752,16 @@ struct NowPlayingView: View {
                         playback.isLyricsMode = false
                     }
                     resetIdleTimer()
+                }
+                .onChange(of: activeIndex) { newIndex in
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        scrollProxy.scrollTo(newIndex, anchor: .center)
+                    }
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        scrollProxy.scrollTo(activeIndex, anchor: .center)
+                    }
                 }
             }
         }
