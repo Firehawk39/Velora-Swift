@@ -103,11 +103,11 @@ struct NowPlayingView: View {
                     }
                 }
                 .overlay(
-                    // Combined Vignette: Dark edges + Vertical fade (slightly reduced for brightness)
+                    // Combined Vignette: Dark edges + Vertical fade
                     ZStack {
                         // Edge darkness (Radial)
                         RadialGradient(
-                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.35 : 0.70)]),
+                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
                             center: .center,
                             startRadius: 50, // Start much earlier for deeper center bleed
                             endRadius: proxy.size.width * 1.2 // Ensure edges are fully dark
@@ -116,9 +116,9 @@ struct NowPlayingView: View {
                         // Top and Bottom protection (Linear)
                         LinearGradient(
                             gradient: Gradient(colors: [
-                                .black.opacity(isIdle ? 0.2 : 0.45), 
+                                .black.opacity(isIdle ? 0.3 : 0.6), 
                                 .clear, 
-                                .black.opacity(isIdle ? 0.35 : 0.75)
+                                .black.opacity(isIdle ? 0.5 : 0.9)
                             ]),
                             startPoint: .top,
                             endPoint: .bottom
