@@ -240,13 +240,15 @@ struct NowPlayingView: View {
     // ── PORTRAIT ──────────────────────────────────────────────────────
     private func portraitLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            Spacer()
+            if !playback.isLyricsMode {
+                Spacer()
+            }
             
             VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 32)) {
                 if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
-                        .frame(height: proxy.size.height * (isSE ? 0.45 : (isSmallDevice ? 0.55 : 0.60)))
+                        .frame(height: proxy.size.height - headerHeight - (isSE ? 100 : 120))
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
@@ -270,11 +272,9 @@ struct NowPlayingView: View {
                     .padding(.horizontal, 24)
                 }
                 
-                if !playback.isLyricsMode {
-                    // Progress Bar
-                    progressBar
-                        .padding(.horizontal, 24)
-                }
+                // Progress Bar
+                progressBar
+                    .padding(.horizontal, 24)
                 
                 if !isIdle && !playback.isLyricsMode {
                     // Controls Section for Portrait
@@ -307,7 +307,9 @@ struct NowPlayingView: View {
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            Spacer() // Push everything to bottom
+            if !playback.isLyricsMode {
+                Spacer() // Push everything to bottom
+            }
             
             VStack(spacing: isShortCanvas ? 20 : 32) {
                 if playback.isLyricsMode {
@@ -319,7 +321,7 @@ struct NowPlayingView: View {
                         } else {
                             inlineLyricsView
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .frame(height: proxy.size.height * 0.60)
+                                .frame(height: proxy.size.height - headerHeight - (isShortCanvas ? 100 : 130))
                         }
                         Spacer(minLength: 40)
                     }
@@ -347,11 +349,9 @@ struct NowPlayingView: View {
                     .transition(.opacity)
                 }
                 
-                if !playback.isLyricsMode {
-                    // Progress Bar (Always visible below content)
-                    progressBar
-                        .padding(.horizontal, isLargeCanvas ? 60 : 32)
-                }
+                // Progress Bar (Always visible below content)
+                progressBar
+                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
                 
                 // Controls Section
                 if !isIdle && !playback.isLyricsMode {
@@ -741,7 +741,8 @@ struct NowPlayingView: View {
                             .foregroundColor(.white.opacity(0.4))
                     }
                 }
-                .padding(.vertical, 40)
+                .padding(.top, 10)
+                .padding(.bottom, 40)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
