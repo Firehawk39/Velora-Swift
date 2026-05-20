@@ -101,6 +101,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     // Artwork download race-proofing
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil
+    // Pre-warmed next-track item for zero-wait crossfading
+    private var prewarmedItem: AVPlayerItem? = nil
+    private var prewarmedTrackId: String? = nil
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
@@ -264,6 +267,10 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             player?.volume = 1.0
         }
 
+        // Invalidate any pre-warmed item — it was for the old next track
+        prewarmedItem = nil
+        prewarmedTrackId = nil
+
         let urlToPlay: URL
         if let localUrl = getLocalAudioUrl(for: track.id) {
             urlToPlay = localUrl
@@ -386,6 +393,67 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         
         updateNowPlayingInfo()
         prefetchNextTracks()
+        prewarmNextTrack()
+    }
+
+    /// Pre-warms the AVPlayerItem for the immediate next track so that when
+    /// startCrossfade() fires, the item is already at .readyToPlay.
+    ///
+    /// Data policy:
+    ///   - Local file  → always pre-warm (zero network cost, instant readiness)
+    ///   - Stream      → only pre-warm when crossfade is enabled (the item will
+    ///                   definitely be needed) and use a conservative 8 s buffer
+    ///                   window instead of the full track length.
+    private func prewarmNextTrack() {
+        guard queue.count > 1 else { return }
+
+        let nextIndex = (queueIndex + 1) % queue.count
+        guard nextIndex != queueIndex else { return }   // single-item queue
+
+        let nextTrack = queue[nextIndex]
+
+        // Don't re-warm the same track twice
+        if prewarmedTrackId == nextTrack.id { return }
+
+        if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
+            // ── Offline path: always pre-warm, no data cost ────────────────────────
+            let item = AVPlayerItem(url: localUrl)
+            // Local files resolve instantly; a large buffer just forces the OS to
+            // read ahead into RAM — fine because this is already downloaded data.
+            item.preferredForwardBufferDuration = 30.0
+            prewarmedItem    = item
+            prewarmedTrackId = nextTrack.id
+
+        } else if isCrossfadeEnabled {
+            // ── Stream path: only pre-warm when crossfade is turned on ─────────────
+            // We use 8 s of forward buffer — enough to guarantee readiness by the
+            // time the crossfade trigger fires, without wasting mobile data on a
+            // full pre-download of the entire next track.
+            guard let streamUrl = client.getStreamUrl(id: nextTrack.id) else { return }
+            let item = AVPlayerItem(url: streamUrl)
+            item.preferredForwardBufferDuration = 8.0
+            prewarmedItem    = item
+            prewarmedTrackId = nextTrack.id
+
+            // Attach a silent AVPlayer to the item so AVFoundation actually starts
+            // pulling bytes. Without a player owner, the item never buffers.
+            let warmupPlayer = AVPlayer(playerItem: item)
+            warmupPlayer.volume = 0.0
+            warmupPlayer.play()
+
+            // Keep the player alive long enough to fill the buffer, then discard it.
+            // 12 s is generous — even a slow connection will have 8 s buffered by then.
+            Task {
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                // If the item is still the one we warmed (no skip happened), pause
+                // the warmup player to stop consuming bandwidth. The buffered bytes
+                // already in the AVPlayerItem are retained for startCrossfade() to use.
+                if self.prewarmedTrackId == nextTrack.id {
+                    warmupPlayer.pause()
+                }
+            }
+        }
+        // Stream + crossfade disabled → no pre-warm, save data.
     }
     
     private func prefetchNextTracks() {
@@ -902,27 +970,39 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         let nextTrack = queue[nextIndex]
         isCrossfading = true
 
-        // Resolve URL for secondary player
-        let urlToPlay: URL
-        if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
-            urlToPlay = localUrl
+        // ── Resolve the AVPlayerItem ───────────────────────────────────────────────
+        // Prefer the pre-warmed item that has been buffering since track start.
+        // If it matches the next track, reuse it directly → Phase 1 wait is ~0 ms.
+        // If there's no pre-warmed item (e.g. crossfade was toggled on mid-track),
+        // fall back to creating a fresh item with a conservative buffer hint.
+        let playerItem: AVPlayerItem
+        if let warmed = prewarmedItem, prewarmedTrackId == nextTrack.id {
+            playerItem = warmed
+            prewarmedItem    = nil
+            prewarmedTrackId = nil
         } else {
-            urlToPlay = client.getStreamUrl(id: nextTrack.id) ?? URL(string: "about:blank")!
+            // Cold fallback path
+            let urlToPlay: URL
+            if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
+                urlToPlay = localUrl
+            } else {
+                urlToPlay = client.getStreamUrl(id: nextTrack.id) ?? URL(string: "about:blank")!
+            }
+            playerItem = AVPlayerItem(url: urlToPlay)
+            playerItem.preferredForwardBufferDuration = 6.0
         }
-
-        let playerItem = AVPlayerItem(url: urlToPlay)
-        // Give the item a head-start buffer window so it is ready quickly
-        playerItem.preferredForwardBufferDuration = 6.0
 
         let secPlayer = AVPlayer(playerItem: playerItem)
         secPlayer.volume = 0.0      // Silent until buffered
-        secPlayer.play()            // Start buffering immediately
+        secPlayer.play()            // Ensure playback is running
         secondaryPlayer = secPlayer
 
         Task { @MainActor in
-            // ── Phase 1: Wait for the secondary player to be ready (max 10 s) ──────
-            // While we wait, the PRIMARY player keeps playing at full volume — no gap!
-            var waitSteps = 100     // 100 × 100ms = 10 second timeout
+            // ── Phase 1: Wait for readyToPlay (max 10 s) ──────────────────────────
+            // With a pre-warmed item this resolves instantly (0–1 poll iterations).
+            // With a cold item this may take 2–4 s on a slow network; the primary
+            // player stays at 1.0 volume the whole time — zero audible gap.
+            var waitSteps = 100     // 100 × 100 ms = 10 s timeout
             while playerItem.status != .readyToPlay && waitSteps > 0 {
                 guard self.isCrossfading && self.secondaryPlayer === secPlayer else { return }
                 try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1 s
@@ -931,14 +1011,12 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
 
             guard self.isCrossfading && self.secondaryPlayer === secPlayer else { return }
 
-            // ── Phase 2: Override the audio-graph volume reset ────────────────────
-            // When AVPlayer connects its audio nodes (on readyToPlay) it internally
-            // resets the output volume back to 1.0.  We immediately pin it to 0.
+            // ── Phase 2: Override the audio-graph volume reset ─────────────────────
+            // AVPlayer resets volume to 1.0 when its audio nodes connect on
+            // readyToPlay. Pin it back to 0 before starting the fade loop.
             secPlayer.volume = 0.0
 
-            // ── Phase 3: Equal-power crossfade ────────────────────────────────────
-            // Equal-power (sin/cos) avoids the perceived volume dip at the midpoint
-            // that a simple linear crossfade produces.
+            // ── Phase 3: Equal-power crossfade ─────────────────────────────────────
             let fadeDuration = self.crossfadeDuration
             let steps = 60
             let interval = fadeDuration / Double(steps)
@@ -948,11 +1026,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard self.isCrossfading && self.secondaryPlayer === secPlayer else { break }
 
-                let t = Double(step) / Double(steps)  // 0.0 … 1.0
+                let t = Double(step) / Double(steps)
                 let angle = t * (.pi / 2.0)
-
-                // cos(0→π/2) = 1→0  (primary fades out)
-                // sin(0→π/2) = 0→1  (secondary fades in)
                 self.player?.volume = Float(cos(angle))
                 secPlayer.volume    = Float(sin(angle))
             }
