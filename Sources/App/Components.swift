@@ -77,7 +77,10 @@ struct AppHeader: View {
     @Environment(\.verticalSizeClass) var vSizeClass
     var isCompact: Bool { hSizeClass == .compact }
     var isLandscape: Bool {
-        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+            return windowScene.coordinateSpace.bounds.width > windowScene.coordinateSpace.bounds.height
+        }
+        return UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
 
     var isPlayingTab: Bool { activeTab == "now-playing" }
@@ -85,123 +88,58 @@ struct AppHeader: View {
 
     // MARK: - Responsive Layout Configs
     private var themeToggleWidth: CGFloat {
-        if isLandscape {
-            return ScreenTier.isSmall ? 64 : 84
-        } else {
-            return 72
-        }
+        if isLandscape { return 84 }
+        return 72
     }
     
     private var themeToggleHeight: CGFloat {
-        if isLandscape {
-            return ScreenTier.isSmall ? 32 : 40
-        } else {
-            return 36
-        }
+        if isLandscape { return 40 }
+        return 36
     }
     
     private var themeToggleCircleSize: CGFloat {
-        if isLandscape {
-            return ScreenTier.isSmall ? 24 : 32
-        } else {
-            return 28
-        }
+        if isLandscape { return 32 }
+        return 28
     }
     
     private var themeToggleOffset: CGFloat {
-        if isLandscape {
-            return ScreenTier.isSmall ? 16 : 22
-        } else {
-            return 18
-        }
+        if isLandscape { return 22 }
+        return 18
     }
     
     private var themeToggleIconSize: CGFloat {
-        if isLandscape {
-            return ScreenTier.isSmall ? 10 : 13
-        } else {
-            return 11
-        }
+        if isLandscape { return 13 }
+        return 11
     }
     
     private var themeToggleHStackWidth: CGFloat {
-        if isLandscape {
-            return ScreenTier.isSmall ? 42 : 56
-        } else {
-            return 48
-        }
+        if isLandscape { return 56 }
+        return 48
     }
 
     private var profileButtonSize: CGFloat {
-        if ScreenTier.isCarDisplay && isLandscape { return 36 }
-        if isLandscape {
-            if ScreenTier.isSmall {
-                return 28
-            } else if ScreenTier.isPhone {
-                return 32
-            } else {
-                return 38
-            }
-        } else {
-            return ScreenTier.isPhone ? 24 : 26
-        }
+        if isLandscape { return 36 }
+        return ScreenTier.isPhone ? 24 : 26
     }
 
     private var logoFontSize: CGFloat {
-        if ScreenTier.isCarDisplay && isLandscape { return 36 }
-        if isLandscape {
-            if ScreenTier.isSmall {
-                return 27
-            } else if ScreenTier.isPhone {
-                return 26
-            } else {
-                return 32
-            }
-        } else {
-            if ScreenTier.isPhone {
-                return ScreenTier.isSmall ? 26 : 32
-            } else {
-                return 34
-            }
-        }
+        if isLandscape { return 36 }
+        return ScreenTier.isPhone ? (ScreenTier.isSmall ? 26 : 32) : 34
     }
 
     private var navigationPillScale: CGFloat {
-        if ScreenTier.isCarDisplay && isLandscape { return 1.10 }
-        if isLandscape {
-            if ScreenTier.isSmall {
-                return 0.93
-            } else if ScreenTier.isPhone {
-                return 0.95
-            } else {
-                return 1.0
-            }
-        } else {
-            return ScreenTier.isPhone ? 0.85 : 0.9
-        }
+        if isLandscape { return 1.10 }
+        return ScreenTier.isPhone ? 0.85 : 0.9
     }
 
     private var navigationPillPadding: CGFloat {
-        if isLandscape {
-            return ScreenTier.isSmall ? 8 : 10
-        } else {
-            return ScreenTier.isSE ? 4 : 8
-        }
+        if isLandscape { return 10 }
+        return ScreenTier.isSE ? 4 : 8
     }
 
     private var mainHeaderHorizontalPadding: CGFloat {
-        if ScreenTier.isCarDisplay && isLandscape { return 44.0 }
-        if isLandscape {
-            if ScreenTier.isSmall {
-                return 24.0
-            } else if ScreenTier.isPhone {
-                return 24.0
-            } else {
-                return 48.0
-            }
-        } else {
-            return ScreenTier.isSmall ? 16.0 : (isCompact ? 24.0 : 48.0)
-        }
+        if isLandscape { return 44.0 }
+        return ScreenTier.isSmall ? 16.0 : (isCompact ? 24.0 : 48.0)
     }
 
     var body: some View {

@@ -87,7 +87,7 @@ struct NowPlayingView: View {
                                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                                 .clipped()
                                 .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                .opacity(isIdle ? 0.60 : 0.50) // Increased brightness
+                                .opacity(isIdle ? 0.45 : 0.35)
                         } else {
                             // No fanart fallback -> Gradient colors from album (no blur)
                             LinearGradient(
