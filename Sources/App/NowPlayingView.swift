@@ -37,31 +37,16 @@ struct NowPlayingView: View {
     
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
-        if ScreenTier.isCarDisplay && isLandscape {
-            let base: CGFloat = isLargeCanvas ? 230 : (!isCompact ? 170 : (isSE ? 135.0 : 125.0))
-            return base * 1.25
-        } else {
-            let base: CGFloat = isLargeCanvas ? 220 : (!isCompact ? 160 : (isSE ? 130.0 : 120.0))
-            return isLandscape ? base * 1.25 : base
-        }
+        let base: CGFloat = isLargeCanvas ? 220 : (!isCompact ? 160 : (isSE ? 130.0 : 120.0))
+        return isLandscape ? base * 1.25 : base // 25% increase in landscape
     }
     private var tabletTitleSize: CGFloat { 
-        if ScreenTier.isCarDisplay && isLandscape {
-            let base: CGFloat = isLargeCanvas ? 34 : (!isCompact ? 28 : (isSE ? 19.0 : 21.0))
-            return base * 1.2
-        } else {
-            let base: CGFloat = isLargeCanvas ? 32 : (!isCompact ? 26 : (isSE ? 18.0 : 20.0))
-            return isLandscape ? base * 1.2 : base
-        }
+        let base: CGFloat = isLargeCanvas ? 32 : (!isCompact ? 26 : (isSE ? 18.0 : 20.0))
+        return isLandscape ? base * 1.2 : base // 20% increase in landscape
     }
     private var tabletArtistSize: CGFloat { 
-        if ScreenTier.isCarDisplay && isLandscape {
-            let base: CGFloat = isLargeCanvas ? 20 : (!isCompact ? 17 : 15.0)
-            return base * 1.2
-        } else {
-            let base: CGFloat = isLargeCanvas ? 18 : (!isCompact ? 16 : 14.0)
-            return isLandscape ? base * 1.2 : base
-        }
+        let base: CGFloat = isLargeCanvas ? 18 : (!isCompact ? 16 : 14.0)
+        return isLandscape ? base * 1.2 : base // 20% increase in landscape
     }
 
     var displayProgress: Double {
@@ -84,7 +69,15 @@ struct NowPlayingView: View {
                 Group {
                     if isCompact && !isLandscape {
                         // PORTRAIT IPHONE: Use Dynamic Gradient (No Blur)
-                        DynamicFluidGradientView(primaryColor: playback.currentPrimaryColor)
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(playback.currentPrimaryColor).opacity(0.8),
+                                Color(playback.currentPrimaryColor).opacity(0.4),
+                                .black
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     } else {
                         // LANDSCAPE OR IPAD: Use High-Fidelity Backdrop
                         if let backdrop = fanart.currentBackdrop {
@@ -96,8 +89,9 @@ struct NowPlayingView: View {
                                 .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                                 .opacity(isIdle ? 0.45 : 0.35)
                         } else {
-                            // No fanart fallback -> Gradient colors from album (no blur)
-                            DynamicFluidGradientView(primaryColor: playback.currentPrimaryColor)
+                            // No fanart — Apple Music-style ambient gradient from album color
+                            // Black while artwork loads, transitions to real color once extracted
+                            AlbumAmbientGradientView(primaryColor: playback.currentPrimaryColor)
                         }
                     }
                 }
@@ -125,8 +119,7 @@ struct NowPlayingView: View {
                     }
                 )
                 .ignoresSafeArea()
-                // Single unified spring for all isIdle transitions on the background
-                .animation(.spring(response: 0.75, dampingFraction: 0.85), value: isIdle)
+                .animation(.easeInOut(duration: 0.6), value: isIdle)
                 .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
                 .allowsHitTesting(false)
                 .drawingGroup()
@@ -149,9 +142,9 @@ struct NowPlayingView: View {
                             .padding(.top, 40)
                             .padding(.bottom, 20)
                             .opacity(isIdle ? 0.0 : 1.0)
-                            .offset(y: isIdle ? 24 : 0)
+                            .offset(y: isIdle ? 20 : 0)
                             .allowsHitTesting(!isIdle)
-                            // No local .animation here — inherited from parent spring
+                            .animation(.easeInOut(duration: 0.7), value: isIdle)
                     }
                     .padding(.top, isIdle ? 0 : headerHeight + 20)
                     .padding(.bottom, 20)
@@ -247,15 +240,13 @@ struct NowPlayingView: View {
     // ── PORTRAIT ──────────────────────────────────────────────────────
     private func portraitLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            if !playback.isLyricsMode {
-                Spacer()
-            }
+            Spacer()
             
             VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 32)) {
                 if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
-                        .frame(height: proxy.size.height - headerHeight - (isSE ? 100 : 120))
+                        .frame(height: proxy.size.height * (isSE ? 0.45 : (isSmallDevice ? 0.55 : 0.60)))
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
@@ -279,11 +270,14 @@ struct NowPlayingView: View {
                     .padding(.horizontal, 24)
                 }
                 
-                // Progress Bar
-                progressBar
-                    .padding(.horizontal, 24)
+                if !playback.isLyricsMode {
+                    // Progress Bar
+                    progressBar
+                        .padding(.horizontal, 24)
+                }
                 
-                    // Controls Section for Portrait — always kept in tree for smooth transitions
+                if !isIdle && !playback.isLyricsMode {
+                    // Controls Section for Portrait
                     VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 24)) {
                         HStack(spacing: isSE ? 20 : (isSmallDevice ? 28 : 36)) {
                             playbackControls
@@ -301,24 +295,19 @@ struct NowPlayingView: View {
                         }
                         .scaleEffect(isSE ? 0.75 : (isSmallDevice ? 0.85 : 0.9))
                     }
-                    // Keep in layout tree at all times — use opacity + offset instead of conditional removal
-                    .opacity((isIdle || playback.isLyricsMode) ? 0.0 : 1.0)
-                    .offset(y: (isIdle || playback.isLyricsMode) ? 36 : 0)
-                    .allowsHitTesting(!isIdle && !playback.isLyricsMode)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .padding(.bottom, isSE ? 12 : (isIdle ? 60 : 32))
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
-        // Unified spring for ALL isIdle-driven layout changes in portrait
-        .animation(.spring(response: 0.75, dampingFraction: 0.85), value: isIdle)
+        .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
     private func tabletLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
-            if !playback.isLyricsMode {
-                Spacer() // Push everything to bottom
-            }
+            Spacer() // Push everything to bottom
             
             VStack(spacing: isShortCanvas ? 20 : 32) {
                 if playback.isLyricsMode {
@@ -330,7 +319,7 @@ struct NowPlayingView: View {
                         } else {
                             inlineLyricsView
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .frame(height: proxy.size.height - headerHeight - (isShortCanvas ? 100 : 130))
+                                .frame(height: proxy.size.height * 0.60)
                         }
                         Spacer(minLength: 40)
                     }
@@ -358,50 +347,53 @@ struct NowPlayingView: View {
                     .transition(.opacity)
                 }
                 
-                // Progress Bar (Always visible below content)
-                progressBar
-                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
-                
-                // Controls Section — always in tree, fades in/out for fluid idle transitions
-                HStack(alignment: .center) {
-                    // 1. Left Section (Empty now)
-                    HStack {
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                    
-                    // 2. Center Section: Playback Controls Pill
-                    HStack(spacing: isLargeCanvas ? 48 : 36) {
-                        playbackControls
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 16)
-                    .background(Color.black.opacity(0.5))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
-                    
-                    // 3. Right Section: Lyrics, Queue & Download
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 12) {
-                            lyricsButton
-                            queueButton
-                            downloadButton
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
+                if !playback.isLyricsMode {
+                    // Progress Bar (Always visible below content)
+                    progressBar
+                        .padding(.horizontal, isLargeCanvas ? 60 : 32)
                 }
-                .padding(.horizontal, isLargeCanvas ? 60 : 32)
-                // Keep in layout tree — opacity + offset avoid hierarchy destruction
-                .opacity((isIdle || playback.isLyricsMode) ? 0.0 : 1.0)
-                .offset(y: (isIdle || playback.isLyricsMode) ? 36 : 0)
-                .allowsHitTesting(!isIdle && !playback.isLyricsMode)
+                
+                // Controls Section
+                if !isIdle && !playback.isLyricsMode {
+                    HStack(alignment: .center) {
+                        // 1. Left Section (Empty now)
+                        HStack {
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                        
+                        // 2. Center Section: Playback Controls Pill
+                        HStack(spacing: isLargeCanvas ? 48 : 36) {
+                            playbackControls
+                        }
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 16)
+                        .background(Color.black.opacity(0.5))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
+                        
+                        // 3. Right Section: Lyrics, Queue & Download
+                        HStack {
+                            Spacer()
+                            HStack(spacing: 12) {
+                                lyricsButton
+                                queueButton
+                                downloadButton
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                    ))
+                }
             }
             .padding(.bottom, isIdle ? (isShortCanvas ? 40 : 60) : 32)
         }
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
-        // Unified spring for ALL isIdle-driven layout changes in landscape/tablet
-        .animation(.spring(response: 0.75, dampingFraction: 0.85), value: isIdle)
+        .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
     @ViewBuilder
@@ -461,10 +453,7 @@ struct NowPlayingView: View {
                     Color.white.opacity(0.1)
                 }
             }
-            // Double-keyed .id(): refresh when track changes AND when artwork download completes.
-            // This defeats the AsyncImage failure-state freeze — once the background task saves
-            // the cover art and sets currentArtworkTrackId, SwiftUI discards the stale view.
-            .id("\(playback.currentTrack?.id ?? "")-\(playback.currentArtworkTrackId ?? "")")
+            .id(playback.currentTrack?.id) // Force refresh on track change
             
             // Hidden Secret Feedback Overlay
             if showPlayPauseHint {
@@ -622,9 +611,7 @@ struct NowPlayingView: View {
                     Capsule().fill(Color.white.opacity(0.2)).frame(height: 4)
                     Capsule().fill(Color.white)
                         .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 4)
-                        // Match update interval exactly: 0.1s ticks → 0.1s animation
-                        // This eliminates drift/lag behind the true playhead position
-                        .animation(isDragging ? nil : .linear(duration: 0.1), value: progressFraction)
+                        .animation(isDragging ? nil : .linear(duration: 0.5), value: progressFraction)
                 }
                 .contentShape(Rectangle())
                 .gesture(
@@ -754,8 +741,7 @@ struct NowPlayingView: View {
                             .foregroundColor(.white.opacity(0.4))
                     }
                 }
-                .padding(.top, 10)
-                .padding(.bottom, 40)
+                .padding(.vertical, 40)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -857,74 +843,117 @@ struct NowPlayingView: View {
     }
 }
 
-// MARK: - UIColor Adjust Extension
+// MARK: - UIColor HSB Adjust Helper
 extension UIColor {
     func adjust(hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0) -> UIColor {
-        var h: CGFloat = 0
-        var s: CGFloat = 0
-        var b: CGFloat = 0
-        var a: CGFloat = 0
-        if self.getHue(&h, saturation: &s, brightness: &b, alpha: &a) {
-            let newHue = (h + hue).truncatingRemainder(dividingBy: 1.0)
-            let finalHue = newHue < 0 ? newHue + 1.0 : newHue
-            let finalSat = max(0, min(1.0, s + saturation))
-            let finalBright = max(0, min(1.0, b + brightness))
-            let finalAlpha = max(0, min(1.0, a + alpha))
-            return UIColor(hue: finalHue, saturation: finalSat, brightness: finalBright, alpha: finalAlpha)
-        }
-        return self
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard self.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else { return self }
+        return UIColor(
+            hue:        (h + hue).truncatingRemainder(dividingBy: 1.0) < 0
+                            ? (h + hue).truncatingRemainder(dividingBy: 1.0) + 1.0
+                            : (h + hue).truncatingRemainder(dividingBy: 1.0),
+            saturation: max(0, min(1, s + saturation)),
+            brightness: max(0, min(1, b + brightness)),
+            alpha:      max(0, min(1, a + alpha))
+        )
     }
 }
 
-// MARK: - Dynamic Fluid Gradient Backdrop Component (iOS 15+ compatible, No Blur, No Material)
+// MARK: - Album Ambient Gradient (Apple Music style)
+// Dispatches to MeshGradient on iOS 18+ or animated radial blobs on iOS 15–17.
+// Both start from .black while artwork is loading and animate to real album colors.
+struct AlbumAmbientGradientView: View {
+    let primaryColor: UIColor
+
+    var body: some View {
+        if #available(iOS 18.0, *) {
+            AnimatedMeshGradientView(primaryColor: primaryColor)
+        } else {
+            DynamicFluidGradientView(primaryColor: primaryColor)
+        }
+    }
+}
+
+// MARK: - iOS 18+ MeshGradient (native Apple Music look)
+@available(iOS 18.0, *)
+struct AnimatedMeshGradientView: View {
+    let primaryColor: UIColor
+    @State private var phase = false
+
+    private func colors(phase: Bool) -> [Color] {
+        let a = Color(primaryColor.adjust(hue:  0.08, saturation: 0.15, brightness:  0.05))
+        let b = Color(primaryColor.adjust(hue: -0.12, saturation: 0.20, brightness: -0.05))
+        let c = Color(primaryColor.adjust(hue:  0.25, saturation: 0.15, brightness:  0.10))
+        let d = Color(primaryColor.adjust(hue: -0.05, saturation: 0.10, brightness: -0.10))
+        let dark = Color.black
+        // Swap color positions between phases — SwiftUI interpolates between them
+        return phase
+            ? [a, b, dark, c, a, d, dark, d, dark]
+            : [b, a, c, dark, d, a, dark, c, dark]
+    }
+
+    var body: some View {
+        MeshGradient(
+            width: 3, height: 3,
+            points: [
+                .init(0, 0), .init(0.5, 0), .init(1, 0),
+                .init(0, 0.5), .init(0.5, 0.5), .init(1, 0.5),
+                .init(0, 1), .init(0.5, 1), .init(1, 1)
+            ],
+            colors: colors(phase: phase)
+        )
+        .ignoresSafeArea()
+        .onAppear {
+            withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+                phase = true
+            }
+        }
+    }
+}
+
+// MARK: - iOS 15-17 Animated Radial Blobs (pre-MeshGradient Apple Music equivalent)
 struct DynamicFluidGradientView: View {
     let primaryColor: UIColor
     @State private var animate = false
 
     var body: some View {
-        let baseColor = Color(primaryColor.adjust(brightness: -0.2))
-        
-        let colorA = Color(primaryColor.adjust(hue: 0.08, saturation: 0.1, brightness: 0.05))
-        let colorB = Color(primaryColor.adjust(hue: -0.12, saturation: 0.15, brightness: -0.1))
-        let colorC = Color(primaryColor.adjust(hue: 0.25, saturation: 0.2, brightness: 0.1))
-        let colorD = Color(primaryColor.adjust(hue: -0.05, saturation: -0.05, brightness: 0.05))
+        let base  = Color(primaryColor)
+        let colorA = Color(primaryColor.adjust(hue:  0.08, saturation: 0.10, brightness:  0.05))
+        let colorB = Color(primaryColor.adjust(hue: -0.12, saturation: 0.15, brightness: -0.10))
+        let colorC = Color(primaryColor.adjust(hue:  0.25, saturation: 0.20, brightness:  0.10))
+        let colorD = Color(primaryColor.adjust(hue: -0.05, saturation: -0.05, brightness:  0.05))
 
         GeometryReader { geo in
             ZStack {
-                baseColor
-                    .ignoresSafeArea()
+                base.opacity(0.6).ignoresSafeArea()
 
-                // Overlapping animated color blobs merging dynamically via smooth opacity falloff
                 RadialGradient(
                     colors: [colorA.opacity(0.85), .clear],
                     center: animate ? UnitPoint(x: 0.1, y: 0.4) : UnitPoint(x: 0.3, y: 0.2),
                     startRadius: 0,
                     endRadius: geo.size.width * 0.85
                 )
-                
                 RadialGradient(
-                    colors: [colorB.opacity(0.8), .clear],
+                    colors: [colorB.opacity(0.80), .clear],
                     center: animate ? UnitPoint(x: 0.9, y: 0.15) : UnitPoint(x: 0.7, y: 0.35),
                     startRadius: 0,
-                    endRadius: geo.size.width * 0.8
+                    endRadius: geo.size.width * 0.80
                 )
-
                 RadialGradient(
                     colors: [colorC.opacity(0.75), .clear],
-                    center: animate ? UnitPoint(x: 0.25, y: 0.75) : UnitPoint(x: 0.15, y: 0.9),
+                    center: animate ? UnitPoint(x: 0.25, y: 0.75) : UnitPoint(x: 0.15, y: 0.90),
                     startRadius: 0,
                     endRadius: geo.size.width * 0.75
                 )
-
                 RadialGradient(
                     colors: [colorD.opacity(0.85), .clear],
                     center: animate ? UnitPoint(x: 0.8, y: 0.85) : UnitPoint(x: 0.9, y: 0.65),
                     startRadius: 0,
-                    endRadius: geo.size.width * 0.7
+                    endRadius: geo.size.width * 0.70
                 )
             }
             .onAppear {
-                withAnimation(.easeInOut(duration: 12.0).repeatForever(autoreverses: true)) {
+                withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
                     animate = true
                 }
             }
