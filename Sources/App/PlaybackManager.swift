@@ -27,7 +27,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     @Published var currentSyncedLyrics: [LyricLine]? = nil
     @Published var isLyricsMode: Bool = false
     @Published var currentPrimaryColor: UIColor = .black
-    
+    @Published var currentPalette: [UIColor] = [.black, .black, .black, .black, .black]
     // Queue support
     @Published var queue: [Track] = []
     @Published var queueIndex: Int = 0
@@ -299,6 +299,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         self.duration = 0
         self.currentLyrics = nil
         self.currentSyncedLyrics = nil
+        self.currentPrimaryColor = .black
+        self.currentPalette = [.black, .black, .black, .black, .black]
         
         // Immediately clear backdrop to prevent ghosting on slow networks
         self.currentArtworkTrackId = nil
@@ -650,6 +652,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
 
                     let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                     let extractedColor = image.dominantColor() ?? .black
+                    let extractedPalette = image.extractPalette(count: 5)
 
                     DispatchQueue.main.async {
                         if self.currentTrack?.id == track.id {
@@ -657,6 +660,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                             updatedInfo[MPMediaItemPropertyArtwork] = artwork
                             MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
                             self.currentPrimaryColor = extractedColor
+                            self.currentPalette = extractedPalette
                             self.currentArtworkTrackId = track.id
                         }
                         self.downloadingArtworkTrackId = nil
@@ -1166,6 +1170,21 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     
 }
 
+extension UIColor {
+    fileprivate func adjustColor(hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0) -> UIColor {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard self.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else { return self }
+        return UIColor(
+            hue:        (h + hue).truncatingRemainder(dividingBy: 1.0) < 0
+                            ? (h + hue).truncatingRemainder(dividingBy: 1.0) + 1.0
+                            : (h + hue).truncatingRemainder(dividingBy: 1.0),
+            saturation: max(0, min(1, s + saturation)),
+            brightness: max(0, min(1, b + brightness)),
+            alpha:      max(0, min(1, a + alpha))
+        )
+    }
+}
+
 extension UIImage {
     func dominantColor() -> UIColor? {
         guard let inputImage = CIImage(image: self) else { return nil }
@@ -1179,5 +1198,106 @@ extension UIImage {
         context.render(outputImage, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
 
         return UIColor(red: CGFloat(bitmap[0]) / 255, green: CGFloat(bitmap[1]) / 255, blue: CGFloat(bitmap[2]) / 255, alpha: CGFloat(bitmap[3]) / 255)
+    }
+
+    func extractPalette(count: Int = 5) -> [UIColor] {
+        // 1. Resize image to 16x16 for performance
+        let size = CGSize(width: 16, height: 16)
+        UIGraphicsBeginImageContextWithOptions(size, false, 1.0)
+        self.draw(in: CGRect(origin: .zero, size: size))
+        let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        
+        guard let cgImage = resizedImage?.cgImage else { return [] }
+        
+        let width = cgImage.width
+        let height = cgImage.height
+        let bytesPerPixel = 4
+        let bytesPerRow = bytesPerPixel * width
+        var rawData = [UInt8](repeating: 0, count: height * bytesPerRow)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        
+        guard let context = CGContext(
+            data: &rawData,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        ) else { return [] }
+        
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        
+        // 2. Gather all pixels
+        var colors: [UIColor] = []
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * bytesPerRow) + (x * bytesPerPixel)
+                let r = rawData[offset]
+                let g = rawData[offset + 1]
+                let b = rawData[offset + 2]
+                let a = rawData[offset + 3]
+                
+                if a > 0 {
+                    colors.append(UIColor(red: CGFloat(r)/255, green: CGFloat(g)/255, blue: CGFloat(b)/255, alpha: CGFloat(a)/255))
+                }
+            }
+        }
+        
+        // Helper to compute color distance
+        func distance(from c1: UIColor, to c2: UIColor) -> CGFloat {
+            var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+            var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+            c1.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+            c2.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+            let dr = r1 - r2
+            let dg = g1 - g2
+            let db = b1 - b2
+            return sqrt(dr*dr + dg*dg + db*db)
+        }
+        
+        // Sort colors based on saturation and brightness (more vibrant colors first)
+        let sortedColors = colors.sorted { c1, c2 in
+            var h1: CGFloat = 0, s1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+            var h2: CGFloat = 0, s2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+            c1.getHue(&h1, saturation: &s1, brightness: &b1, alpha: &a1)
+            c2.getHue(&h2, saturation: &s2, brightness: &b2, alpha: &a2)
+            return (s1 * b1) > (s2 * b2)
+        }
+        
+        var distinctColors: [UIColor] = []
+        for color in sortedColors {
+            var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            color.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+            // Filter out extremely dark or light backgrounds to keep gradients readable
+            if b < 0.15 || b > 0.95 { continue }
+            
+            // Ensure color is distinct from already selected colors
+            let isDistinct = distinctColors.allSatisfy { distance(from: color, to: $0) > 0.22 }
+            if isDistinct {
+                distinctColors.append(color)
+                if distinctColors.count >= count {
+                    break
+                }
+            }
+        }
+        
+        // Fallbacks
+        if distinctColors.isEmpty {
+            if let firstDominant = dominantColor() {
+                distinctColors.append(firstDominant)
+            } else {
+                distinctColors.append(.black)
+            }
+        }
+        
+        while distinctColors.count < count {
+            let baseColor = distinctColors[0]
+            let offset = CGFloat(distinctColors.count) * 0.12
+            distinctColors.append(baseColor.adjustColor(hue: offset, saturation: 0.1, brightness: -0.05))
+        }
+        
+        return distinctColors
     }
 }

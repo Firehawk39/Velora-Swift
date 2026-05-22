@@ -114,7 +114,7 @@ struct NowPlayingView: View {
                         } else {
                             // No fanart — Apple Music-style ambient gradient from album color
                             // Black while artwork loads, transitions to real color once extracted
-                            AlbumAmbientGradientView(primaryColor: playback.currentPrimaryColor)
+                            AlbumAmbientGradientView(colors: playback.currentPalette)
                         }
                     }
                 }
@@ -864,13 +864,13 @@ extension UIColor {
 // Dispatches to MeshGradient on iOS 18+ or animated radial blobs on iOS 15–17.
 // Both start from .black while artwork is loading and animate to real album colors.
 struct AlbumAmbientGradientView: View {
-    let primaryColor: UIColor
+    let colors: [UIColor]
 
     var body: some View {
         if #available(iOS 18.0, *) {
-            AnimatedMeshGradientView(primaryColor: primaryColor)
+            AnimatedMeshGradientView(colors: colors)
         } else {
-            DynamicFluidGradientView(primaryColor: primaryColor)
+            DynamicFluidGradientView(colors: colors)
         }
     }
 }
@@ -878,19 +878,20 @@ struct AlbumAmbientGradientView: View {
 // MARK: - iOS 18+ MeshGradient (native Apple Music look)
 @available(iOS 18.0, *)
 struct AnimatedMeshGradientView: View {
-    let primaryColor: UIColor
+    let colors: [UIColor]
     @State private var phase = false
 
-    private func colors(phase: Bool) -> [Color] {
-        let a = Color(primaryColor.adjust(hue:  0.08, saturation: 0.15, brightness:  0.05))
-        let b = Color(primaryColor.adjust(hue: -0.12, saturation: 0.20, brightness: -0.05))
-        let c = Color(primaryColor.adjust(hue:  0.25, saturation: 0.15, brightness:  0.10))
-        let d = Color(primaryColor.adjust(hue: -0.05, saturation: 0.10, brightness: -0.10))
+    private func meshColors(phase: Bool) -> [Color] {
+        let a = colors.indices.contains(0) ? Color(colors[0]) : Color.black
+        let b = colors.indices.contains(1) ? Color(colors[1]) : Color.black
+        let c = colors.indices.contains(2) ? Color(colors[2]) : Color.black
+        let d = colors.indices.contains(3) ? Color(colors[3]) : Color.black
+        let e = colors.indices.contains(4) ? Color(colors[4]) : Color.black
         let dark = Color.black
-        // Swap color positions between phases — SwiftUI interpolates between them
+        
         return phase
-            ? [a, b, dark, c, a, d, dark, d, dark]
-            : [b, a, c, dark, d, a, dark, c, dark]
+            ? [a, b, dark, c, e, d, dark, d, dark]
+            : [b, a, e, dark, d, c, dark, b, dark]
     }
 
     var body: some View {
@@ -901,7 +902,7 @@ struct AnimatedMeshGradientView: View {
                 .init(0, 0.5), .init(0.5, 0.5), .init(1, 0.5),
                 .init(0, 1), .init(0.5, 1), .init(1, 1)
             ],
-            colors: colors(phase: phase)
+            colors: meshColors(phase: phase)
         )
         .ignoresSafeArea()
         .onAppear {
@@ -914,15 +915,15 @@ struct AnimatedMeshGradientView: View {
 
 // MARK: - iOS 15-17 Animated Radial Blobs (pre-MeshGradient Apple Music equivalent)
 struct DynamicFluidGradientView: View {
-    let primaryColor: UIColor
+    let colors: [UIColor]
     @State private var animate = false
 
     var body: some View {
-        let base  = Color(primaryColor)
-        let colorA = Color(primaryColor.adjust(hue:  0.08, saturation: 0.10, brightness:  0.05))
-        let colorB = Color(primaryColor.adjust(hue: -0.12, saturation: 0.15, brightness: -0.10))
-        let colorC = Color(primaryColor.adjust(hue:  0.25, saturation: 0.20, brightness:  0.10))
-        let colorD = Color(primaryColor.adjust(hue: -0.05, saturation: -0.05, brightness:  0.05))
+        let base   = colors.indices.contains(0) ? Color(colors[0]) : Color.black
+        let colorA = colors.indices.contains(1) ? Color(colors[1]) : Color.black
+        let colorB = colors.indices.contains(2) ? Color(colors[2]) : Color.black
+        let colorC = colors.indices.contains(3) ? Color(colors[3]) : Color.black
+        let colorD = colors.indices.contains(4) ? Color(colors[4]) : Color.black
 
         GeometryReader { geo in
             ZStack {
