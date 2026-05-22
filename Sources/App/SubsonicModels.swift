@@ -51,6 +51,7 @@ struct SubsonicSong: Codable {
     let starred: String?
     let playCount: Int?
     let suffix: String?
+    let created: String?
 }
 
 struct SubsonicError: Codable {
@@ -71,6 +72,7 @@ struct SubsonicAlbum: Codable {
     let songCount: Int?
     let duration: Int?
     let coverArt: String?
+    let created: String?
 }
 
 struct ArtistsIndex: Codable {
@@ -111,6 +113,7 @@ struct SubsonicPlaylist: Codable {
     let owner: String?
     let songCount: Int?
     let duration: Int?
+    let created: String?
 }
 
 struct PlaylistWrapper: Codable {

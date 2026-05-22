@@ -56,10 +56,12 @@ extension NavidromeClient {
                     }
                     
                     self.recentlyPlayed = items.map { s in
-                        Track(id: s.id, title: s.title ?? "Unknown",
+                        var t = Track(id: s.id, title: s.title ?? "Unknown",
                                album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
                                duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
                                artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                        t.created = s.created
+                        return t
                     }
                     self.saveOfflineMetadata()
                 }
@@ -86,10 +88,12 @@ extension NavidromeClient {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.recentlyPlayed = items.map { s in
-                        Track(id: s.id, title: s.title ?? "Unknown",
+                        var t = Track(id: s.id, title: s.title ?? "Unknown",
                                album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
                                duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
                                artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                        t.created = s.created
+                        return t
                     }
                     self.saveOfflineMetadata()
                 }
@@ -110,10 +114,12 @@ extension NavidromeClient {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.albums = items.map { sub in
-                        Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
-                               artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
-                               songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
-                               coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
+                        var a = Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
+                              artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
+                              songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
+                              coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
+                        a.created = sub.created
+                        return a
                     }
                     self.saveOfflineMetadata()
                 }
@@ -185,6 +191,7 @@ extension NavidromeClient {
                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                         t.isStarred = s.starred != nil
                         t.playCount = s.playCount
+                        t.created = s.created
                         return t
                     }
                     completion(tracks)
@@ -211,7 +218,7 @@ extension NavidromeClient {
                     guard let self = self else { completion([], [], nil, nil); return }
                     
                     let albums = albumsData.map { a -> Album in
-                        Album(
+                        var albumModel = Album(
                             id: a.id,
                             name: a.name ?? a.title ?? "Unknown Album",
                             artist: a.artist,
@@ -220,6 +227,8 @@ extension NavidromeClient {
                             duration: a.duration,
                             coverArt: a.coverArt != nil ? self.getCoverArtUrl(id: a.coverArt!) : nil
                         )
+                        albumModel.created = a.created
+                        return albumModel
                     }
                     
                     var allTracks: [Track] = []
@@ -301,13 +310,16 @@ extension NavidromeClient {
                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                         t.isStarred = s.starred != nil
                         t.playCount = s.playCount
+                        t.created = s.created
                         return t
                     }
                     let albums = rawAlbums.map { sub in
-                        Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
+                        var a = Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
                               artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
                               songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
                               coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
+                        a.created = sub.created
+                        return a
                     }
                     let artists = rawArtists.map { sub in
                         Artist(id: sub.id, name: sub.name, coverArt: self.getCoverArtUrl(id: sub.id))
@@ -333,7 +345,7 @@ extension NavidromeClient {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.playlists = rawPlaylists.map { p in
-                        Playlist(id: p.id, name: p.name, owner: p.owner, songCount: p.songCount, duration: p.duration, created: nil)
+                        Playlist(id: p.id, name: p.name, owner: p.owner, songCount: p.songCount, duration: p.duration, created: p.created)
                     }
                     self.saveOfflineMetadata()
                 }
@@ -361,6 +373,7 @@ extension NavidromeClient {
                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                         t.isStarred = s.starred != nil
                         t.playCount = s.playCount
+                        t.created = s.created
                         return t
                     }
                     completion(tracks)
@@ -468,6 +481,7 @@ extension NavidromeClient {
                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
                         t.isStarred = s.starred != nil
                         t.playCount = s.playCount
+                        t.created = s.created
                         return t
                     }
                     

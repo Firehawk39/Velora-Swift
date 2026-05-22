@@ -416,18 +416,36 @@ struct SongArtworkView: View {
     var height: CGFloat? = nil
     
     var body: some View {
-        AsyncImage(url: track.coverArtUrl) { phase in
-            if let img = phase.image {
-                img.resizable()
-                    .scaledToFill()
-            } else {
-                Color.gray.opacity(0.1)
+        if size == nil && height == nil {
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay(
+                    AsyncImage(url: track.coverArtUrl) { phase in
+                        if let img = phase.image {
+                            img.resizable()
+                                .scaledToFill()
+                        } else {
+                            Color.gray.opacity(0.1)
+                        }
+                    }
+                )
+                .clipped()
+                .cornerRadius(12)
+                .id(track.id)
+        } else {
+            AsyncImage(url: track.coverArtUrl) { phase in
+                if let img = phase.image {
+                    img.resizable()
+                        .scaledToFill()
+                } else {
+                    Color.gray.opacity(0.1)
+                }
             }
+            .id(track.id)
+            .frame(width: size, height: height ?? size)
+            .clipped()
+            .cornerRadius((size == 56 || size == 48) ? 8 : 16)
         }
-        .id(track.id)
-        .frame(width: size, height: height ?? size)
-        .cornerRadius(size == 56 ? 8 : 16)
-        .clipped()
     }
 }
 

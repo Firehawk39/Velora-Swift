@@ -499,8 +499,20 @@ private struct AlbumGridView: View {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { a in
                     VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
-                        AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                            .aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
+                        Color.clear
+                            .aspectRatio(1, contentMode: .fit)
+                            .overlay(
+                                AsyncImage(url: a.coverArtUrl) { phase in
+                                    if let img = phase.image {
+                                        img.resizable()
+                                            .scaledToFill()
+                                    } else {
+                                        Color.gray.opacity(0.1)
+                                    }
+                                }
+                            )
+                            .clipped()
+                            .cornerRadius(isCompact ? 8 : 12)
                             .id("album-grid-\(a.id)")
                         
                         VStack(alignment: .leading, spacing: 2) {
@@ -522,9 +534,18 @@ private struct AlbumGridView: View {
             LazyVStack(spacing: 0) {
                 ForEach(sorted) { a in
                     HStack(spacing: 16) {
-                        AsyncImage(url: a.coverArtUrl) { img in img.resizable().scaledToFill() } placeholder: { Rectangle().fill(Color.gray.opacity(0.1)) }
-                            .frame(width: isCompact ? 50 : 60, height: isCompact ? 50 : 60).cornerRadius(8)
-                            .id("album-list-\(a.id)")
+                        AsyncImage(url: a.coverArtUrl) { phase in
+                            if let img = phase.image {
+                                img.resizable()
+                                    .scaledToFill()
+                            } else {
+                                Color.gray.opacity(0.1)
+                            }
+                        }
+                        .frame(width: isCompact ? 50 : 60, height: isCompact ? 50 : 60)
+                        .clipped()
+                        .cornerRadius(8)
+                        .id("album-list-\(a.id)")
                         VStack(alignment: .leading, spacing: 4) {
                             Text(a.name).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
                             Text(a.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)

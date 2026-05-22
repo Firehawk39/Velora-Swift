@@ -631,14 +631,16 @@ struct NowPlayingView: View {
             }
             .frame(height: 12)
 
-            HStack {
-                Text(formatTime(displayProgress))
-                Spacer()
-                Text(formatTime(playback.duration))
+            if !playback.isLyricsMode {
+                HStack {
+                    Text(formatTime(displayProgress))
+                    Spacer()
+                    Text(formatTime(playback.duration))
+                }
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundColor(.white.opacity(0.5))
+                .opacity(isIdle ? 0 : 1)
             }
-            .font(.system(size: 13, weight: .bold, design: .rounded))
-            .foregroundColor(.white.opacity(0.5))
-            .opacity(isIdle ? 0 : 1)
         }
     }
     private var lyricsButton: some View {
