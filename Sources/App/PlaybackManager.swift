@@ -351,23 +351,25 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak capturedPlayer] time in
-            guard let self = self,
-                  let capturedPlayer = capturedPlayer,
-                  self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                  let item = capturedPlayer.currentItem,
-                  item.duration.isNumeric else { return }
-            
-            self.progress = time.seconds
-            self.duration = item.duration.seconds
-            self.updateNowPlayingInfo()
-            
-            // Crossfade check — also gate against short tracks shorter than 2x the fade window
-            let triggerTime = self.duration - self.crossfadeDuration
-            if self.isCrossfadeEnabled &&
-               !self.isCrossfading &&
-               self.duration > (self.crossfadeDuration * 2.0) &&
-               time.seconds > triggerTime {
-                self.startCrossfade()
+            MainActor.assumeIsolated {
+                guard let self = self,
+                      let capturedPlayer = capturedPlayer,
+                      self.player === capturedPlayer,  // Only the ACTIVE player may update progress
+                      let item = capturedPlayer.currentItem,
+                      item.duration.isNumeric else { return }
+                
+                self.progress = time.seconds
+                self.duration = item.duration.seconds
+                self.updateNowPlayingInfo()
+                
+                // Crossfade check — also gate against short tracks shorter than 2x the fade window
+                let triggerTime = self.duration - self.crossfadeDuration
+                if self.isCrossfadeEnabled &&
+                   !self.isCrossfading &&
+                   self.duration > (self.crossfadeDuration * 2.0) &&
+                   time.seconds > triggerTime {
+                    self.startCrossfade()
+                }
             }
         }
         

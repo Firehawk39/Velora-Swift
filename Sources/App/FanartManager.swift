@@ -194,7 +194,7 @@ class FanartManager: ObservableObject {
         
         guard let validMBID = mbid, !validMBID.isEmpty else {
             self.getMBID(for: artist) { [weak self] resolved in
-                guard let self = self else { completion(nil); return }
+                guard self != nil else { completion(nil); return }
                 if let resolved = resolved {
                     queryFanartPortrait(resolved)
                 } else {

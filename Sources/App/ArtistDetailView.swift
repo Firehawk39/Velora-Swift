@@ -395,13 +395,11 @@ struct ArtistPortraitView: View {
         let fallbackUrl = client.getCoverArtUrl(id: artistId)
         let resolvedUrl = resolveCoverArtUrl(id: artistId, serverUrl: fallbackUrl)
         
-        SelfHealingAsyncImage(url: resolvedUrl) { phase in
-            if let img = phase.image {
-                img.resizable()
-                    .scaledToFill()
-            } else {
-                Color.gray.opacity(0.1)
-            }
+        SelfHealingAsyncImage(url: resolvedUrl) { img in
+            img.resizable()
+                .scaledToFill()
+        } placeholder: {
+            Color.gray.opacity(0.1)
         }
         .id(artistId)
         .frame(width: size, height: size)
@@ -420,26 +418,22 @@ struct SongArtworkView: View {
             Color.clear
                 .aspectRatio(1, contentMode: .fit)
                 .overlay(
-                    SelfHealingAsyncImage(url: track.coverArtUrl) { phase in
-                        if let img = phase.image {
-                            img.resizable()
-                                .scaledToFill()
-                        } else {
-                            Color.gray.opacity(0.1)
-                        }
+                    SelfHealingAsyncImage(url: track.coverArtUrl) { img in
+                        img.resizable()
+                            .scaledToFill()
+                    } placeholder: {
+                        Color.gray.opacity(0.1)
                     }
                 )
                 .clipped()
                 .cornerRadius(12)
                 .id(track.id)
         } else {
-            SelfHealingAsyncImage(url: track.coverArtUrl) { phase in
-                if let img = phase.image {
-                    img.resizable()
-                        .scaledToFill()
-                } else {
-                    Color.gray.opacity(0.1)
-                }
+            SelfHealingAsyncImage(url: track.coverArtUrl) { img in
+                img.resizable()
+                    .scaledToFill()
+            } placeholder: {
+                Color.gray.opacity(0.1)
             }
             .id(track.id)
             .frame(width: size, height: height ?? size)
