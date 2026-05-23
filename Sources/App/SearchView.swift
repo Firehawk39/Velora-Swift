@@ -190,7 +190,7 @@ private struct SearchSongRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
-                AsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() }
+                SelfHealingAsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() }
                 placeholder: { Rectangle().fill(isDarkMode ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb")) }
                 .frame(width: 54, height: 54).cornerRadius(8).clipped()
                 
@@ -217,7 +217,7 @@ private struct SearchAlbumCard: View {
     let isDark: Bool
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: album.coverArtUrl) { img in img.resizable().scaledToFill() }
+            SelfHealingAsyncImage(url: album.coverArtUrl) { img in img.resizable().scaledToFill() }
             placeholder: { Rectangle().fill(isDark ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb")) }
             .frame(width: 180, height: 110).clipped()
             LinearGradient(colors: [.clear, Color.black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
@@ -236,7 +236,7 @@ private struct SearchArtistCircle: View {
     let isDark: Bool
     var body: some View {
         VStack(spacing: 8) {
-            AsyncImage(url: artist.coverArtUrl) { img in img.resizable().scaledToFill() }
+            SelfHealingAsyncImage(url: artist.coverArtUrl) { img in img.resizable().scaledToFill() }
             placeholder: { Circle().fill(isDark ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb")) }
             .frame(width: 80, height: 80).clipShape(Circle())
             Text(artist.name).font(.system(size: 12, weight: .bold))

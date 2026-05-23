@@ -65,6 +65,49 @@ public enum ScreenTier {
     }
 }
 
+// MARK: - Self-Healing Async Image
+public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
+    public let url: URL?
+    @ViewBuilder public let content: (Image) -> Content
+    @ViewBuilder public let placeholder: () -> Placeholder
+    
+    @State private var retryCount = 0
+    @State private var reloadTrigger = UUID()
+    
+    public init(url: URL?, @ViewBuilder content: @escaping (Image) -> Content, @ViewBuilder placeholder: @escaping () -> Placeholder) {
+        self.url = url
+        self.content = content
+        self.placeholder = placeholder
+    }
+    
+    public var body: some View {
+        AsyncImage(url: url) { phase in
+            if let image = phase.image {
+                content(image)
+                    .onAppear { retryCount = 0 } // Reset on success
+            } else if phase.error != nil {
+                placeholder()
+                    .onAppear {
+                        scheduleRetry()
+                    }
+            } else {
+                placeholder() // Loading state
+            }
+        }
+        .id(reloadTrigger)
+    }
+    
+    private func scheduleRetry() {
+        guard retryCount < 5 else { return } // Max retries
+        retryCount += 1
+        let delay = min(pow(2.0, Double(retryCount)), 30.0) // 2s, 4s, 8s, 16s, 30s
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            reloadTrigger = UUID()
+        }
+    }
+}
+
 // MARK: - App Header
 struct AppHeader: View {
     @Binding var activeTab: String
@@ -410,7 +453,7 @@ struct TrackCard: View {
     var body: some View {
         Button(action: onPlay) {
             VStack(alignment: .leading, spacing: 12) {
-                AsyncImage(url: track.coverArtUrl) { img in
+                SelfHealingAsyncImage(url: track.coverArtUrl) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Rectangle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
@@ -445,7 +488,7 @@ struct ArtistCircle: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            AsyncImage(url: artist.coverArtUrl) { img in
+            SelfHealingAsyncImage(url: artist.coverArtUrl) { img in
                 img.resizable().scaledToFill()
             } placeholder: {
                 Circle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
@@ -473,7 +516,7 @@ struct AlbumCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            AsyncImage(url: album.coverArtUrl) { img in
+            SelfHealingAsyncImage(url: album.coverArtUrl) { img in
                 img.resizable().scaledToFill()
             } placeholder: {
                 Rectangle().fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
@@ -690,7 +733,7 @@ struct QueueRow: View {
     var body: some View {
         HStack(spacing: 16) {
             ZStack {
-                AsyncImage(url: track.coverArtUrl) { img in
+                SelfHealingAsyncImage(url: track.coverArtUrl) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Color.white.opacity(0.05)

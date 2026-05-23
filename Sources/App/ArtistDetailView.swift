@@ -395,7 +395,7 @@ struct ArtistPortraitView: View {
         let fallbackUrl = client.getCoverArtUrl(id: artistId)
         let resolvedUrl = resolveCoverArtUrl(id: artistId, serverUrl: fallbackUrl)
         
-        AsyncImage(url: resolvedUrl) { phase in
+        SelfHealingAsyncImage(url: resolvedUrl) { phase in
             if let img = phase.image {
                 img.resizable()
                     .scaledToFill()
@@ -420,7 +420,7 @@ struct SongArtworkView: View {
             Color.clear
                 .aspectRatio(1, contentMode: .fit)
                 .overlay(
-                    AsyncImage(url: track.coverArtUrl) { phase in
+                    SelfHealingAsyncImage(url: track.coverArtUrl) { phase in
                         if let img = phase.image {
                             img.resizable()
                                 .scaledToFill()
@@ -433,7 +433,7 @@ struct SongArtworkView: View {
                 .cornerRadius(12)
                 .id(track.id)
         } else {
-            AsyncImage(url: track.coverArtUrl) { phase in
+            SelfHealingAsyncImage(url: track.coverArtUrl) { phase in
                 if let img = phase.image {
                     img.resizable()
                         .scaledToFill()

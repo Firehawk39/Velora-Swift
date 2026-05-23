@@ -502,7 +502,7 @@ private struct AlbumGridView: View {
                         Color.clear
                             .aspectRatio(1, contentMode: .fit)
                             .overlay(
-                                AsyncImage(url: a.coverArtUrl) { phase in
+                                SelfHealingAsyncImage(url: a.coverArtUrl) { phase in
                                     if let img = phase.image {
                                         img.resizable()
                                             .scaledToFill()
@@ -534,7 +534,7 @@ private struct AlbumGridView: View {
             LazyVStack(spacing: 0) {
                 ForEach(sorted) { a in
                     HStack(spacing: 16) {
-                        AsyncImage(url: a.coverArtUrl) { phase in
+                        SelfHealingAsyncImage(url: a.coverArtUrl) { phase in
                             if let img = phase.image {
                                 img.resizable()
                                     .scaledToFill()
