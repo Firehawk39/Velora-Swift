@@ -20,6 +20,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     @MainActor static var sharedBackgroundCompletion: (() -> Void)?
     
     @Published var currentTrack: Track?
+    @Published var playbackSessionId: UUID = UUID()
     @Published var isPlaying: Bool = false
     @Published var progress: Double = 0
     @Published var duration: Double = 0
@@ -295,6 +296,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         let playerItem = AVPlayerItem(url: urlToPlay)
         self.player = AVPlayer(playerItem: playerItem)
         self.currentTrack = track
+        self.playbackSessionId = UUID()
         self.progress = 0
         self.duration = 0
         self.currentLyrics = nil

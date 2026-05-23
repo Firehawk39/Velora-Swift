@@ -453,7 +453,7 @@ struct NowPlayingView: View {
                     Color.white.opacity(0.1)
                 }
             }
-            .id(playback.currentTrack?.id) // Force refresh on track change
+            .id(playback.playbackSessionId) // Force refresh on track change or manual replay
             
             // Hidden Secret Feedback Overlay
             if showPlayPauseHint {
@@ -596,6 +596,7 @@ struct NowPlayingView: View {
                 } placeholder: {
                     Circle().fill(Color.white.opacity(0.1))
                 }
+                .id(playback.playbackSessionId)
             } else {
                 Circle().fill(Color.white.opacity(0.1))
             }
