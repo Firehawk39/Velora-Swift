@@ -102,6 +102,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     // Artwork download race-proofing
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil
+    private var artworkRetryCount = 0
+    private var nextArtworkRetryTime: Date? = nil
     // Pre-warmed next-track item for zero-wait crossfading
     private var prewarmedItem: AVPlayerItem? = nil
     private var prewarmedTrackId: String? = nil
@@ -297,6 +299,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         self.player = AVPlayer(playerItem: playerItem)
         self.currentTrack = track
         self.playbackSessionId = UUID()
+        self.artworkRetryCount = 0
+        self.nextArtworkRetryTime = nil
         self.progress = 0
         self.duration = 0
         self.currentLyrics = nil
@@ -613,6 +617,10 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         // - Track downloadingArtworkTrackId separately from currentArtworkTrackId so a
         //   failed/slow download can be retried on the next updateNowPlayingInfo() call
         if currentArtworkTrackId != track.id && downloadingArtworkTrackId != track.id {
+            if let retryTime = nextArtworkRetryTime, Date() < retryTime {
+                return
+            }
+
             // Cancel the previous download task if it is still in flight
             artworkDownloadTask?.cancel()
             artworkDownloadTask = nil
@@ -628,6 +636,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                         DispatchQueue.main.async {
                             if self.downloadingArtworkTrackId == track.id {
                                 self.downloadingArtworkTrackId = nil
+                                self.artworkRetryCount += 1
+                                let delay = min(pow(2.0, Double(self.artworkRetryCount)), 60.0)
+                                self.nextArtworkRetryTime = Date().addingTimeInterval(delay)
                             }
                         }
                         return
@@ -637,6 +648,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                         DispatchQueue.main.async {
                             if self.downloadingArtworkTrackId == track.id {
                                 self.downloadingArtworkTrackId = nil
+                                self.artworkRetryCount += 1
+                                let delay = min(pow(2.0, Double(self.artworkRetryCount)), 60.0)
+                                self.nextArtworkRetryTime = Date().addingTimeInterval(delay)
                             }
                         }
                         return
@@ -663,8 +677,15 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                             MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
                             self.currentPrimaryColor = extractedColor
                             self.currentPalette = extractedPalette
+                            
+                            // If this was a successful self-healing attempt after a failure, force the UI to refresh
+                            if self.currentArtworkTrackId != track.id {
+                                self.playbackSessionId = UUID()
+                            }
                             self.currentArtworkTrackId = track.id
                         }
+                        self.artworkRetryCount = 0
+                        self.nextArtworkRetryTime = nil
                         self.downloadingArtworkTrackId = nil
                         self.artworkDownloadTask = nil
                     }
