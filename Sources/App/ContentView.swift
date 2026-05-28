@@ -215,18 +215,29 @@ struct ContentView: View {
 
     private func autoLogin() {
         let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
+        let savedOnlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url") ?? "https://sopranosnavi.share.zrok.io"
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
         let isOnline = UserDefaults.standard.bool(forKey: "velora_is_online_mode")
         
-        let localUrl = savedUrl.isEmpty ? "http://192.168.1.13:4533" : savedUrl
-        let finalUrl = isOnline ? "https://sopranosnavi.share.zrok.io" : localUrl
+        // If there are no saved credentials, do not log in automatically.
+        // Instead, show the settings wizard (login screen) on fresh install.
+        guard !savedUrl.isEmpty, !savedUser.isEmpty else {
+            showSettings = true
+            return
+        }
         
-        let finalUser = savedUser.isEmpty ? "Harsh" : savedUser
-        let finalPass = "u4vTyG7BcBxR-9-"
-        
-        client.configure(url: finalUrl, user: finalUser, pass: finalPass)
-        client.loadOfflineMetadata()
-        client.fetchEverything()
-        showSettings = false
+        // Retrieve the password securely from Keychain
+        if let passData = KeychainHelper.shared.read(service: "velora-password", account: savedUser),
+           let savedPass = String(data: passData, encoding: .utf8) {
+            
+            let finalUrl = isOnline ? (savedOnlineUrl.isEmpty ? "https://sopranosnavi.share.zrok.io" : savedOnlineUrl) : savedUrl
+            client.configure(url: finalUrl, user: savedUser, pass: savedPass)
+            client.loadOfflineMetadata()
+            client.fetchEverything()
+            showSettings = false
+        } else {
+            // Fallback to showing settings if Keychain read fails
+            showSettings = true
+        }
     }
 }

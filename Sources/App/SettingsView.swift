@@ -310,6 +310,7 @@ struct AppSettingsView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var sync: SyncManager
     @AppStorage("velora_server_url") private var serverUrl: String = ""
+    @AppStorage("velora_online_server_url") private var onlineServerUrl: String = "https://sopranosnavi.share.zrok.io"
     @AppStorage("velora_username") private var username: String = ""
     @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
     @State private var cacheCleared = false
@@ -356,7 +357,6 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
-                            
                             Toggle(isOn: Binding(
                                 get: { isOnlineMode },
                                 set: { newValue in
@@ -379,12 +379,31 @@ struct AppSettingsView: View {
                             .cornerRadius(16)
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Server").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
-                                Text(isOnlineMode ? "https://sopranosnavi.share.zrok.io" : serverUrl).font(.system(size: 14)).foregroundColor(isDark ? .white.opacity(0.6) : .black.opacity(0.6))
+                            VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Local Server").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
+                                    Text(serverUrl).font(.system(size: 14)).foregroundColor(isDark ? .white.opacity(0.6) : .black.opacity(0.6))
+                                }
                                 
-                                Text("User").font(.system(size: 12, weight: .medium)).foregroundColor(.gray).padding(.top, 8)
-                                Text(username).font(.system(size: 14)).foregroundColor(isDark ? .white.opacity(0.6) : .black.opacity(0.6))
+                                Divider().opacity(0.1)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Online Server").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
+                                    TextField("https://sopranosnavi.share.zrok.io", text: $onlineServerUrl, onCommit: {
+                                        if isOnlineMode { reconnectWithCurrentMode() }
+                                    })
+                                    .font(.system(size: 14))
+                                    .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+                                }
+                                
+                                Divider().opacity(0.1)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("User").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
+                                    Text(username).font(.system(size: 14)).foregroundColor(isDark ? .white.opacity(0.6) : .black.opacity(0.6))
+                                }
                             }
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -707,15 +726,17 @@ struct AppSettingsView: View {
             LogsView()
         }
     }
-
+    
     private func reconnectWithCurrentMode() {
-        let localUrl = serverUrl.isEmpty ? "http://192.168.1.13:4533" : serverUrl
-        let finalUrl = isOnlineMode ? "https://sopranosnavi.share.zrok.io" : localUrl
-        let finalUser = username.isEmpty ? "Harsh" : username
-        let finalPass = "u4vTyG7BcBxR-9-"
+        guard !username.isEmpty else { return }
+        let localUrl = serverUrl
+        let finalUrl = isOnlineMode ? (onlineServerUrl.isEmpty ? "https://sopranosnavi.share.zrok.io" : onlineServerUrl) : localUrl
         
-        client.configure(url: finalUrl, user: finalUser, pass: finalPass)
-        client.fetchEverything()
+        if let passData = KeychainHelper.shared.read(service: "velora-password", account: username),
+           let savedPass = String(data: passData, encoding: .utf8) {
+            client.configure(url: finalUrl, user: username, pass: savedPass)
+            client.fetchEverything()
+        }
     }
 }
 
