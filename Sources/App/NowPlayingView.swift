@@ -712,6 +712,15 @@ struct NowPlayingView: View {
             .clipShape(Circle())
             .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
+        .contextMenu {
+            if let trackId = playback.currentTrack?.id, playback.downloadedTrackIds.contains(trackId) {
+                Button(role: .destructive) {
+                    playback.deleteDownload(trackId: trackId)
+                } label: {
+                    Label("Remove Download", systemImage: "trash")
+                }
+            }
+        }
         .accessibilityLabel("Download")
     }
 

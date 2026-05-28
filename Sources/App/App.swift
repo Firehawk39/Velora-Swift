@@ -16,6 +16,10 @@ struct VeloraApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     init() {
+        // Migrate data from Documents/ to Application Support/VeloraData/ (one-time)
+        VeloraStorage.migrateFromDocumentsIfNeeded()
+        VeloraStorage.ensureDirectories()
+        
         registerCustomFonts()
         setupURLCache()
     }

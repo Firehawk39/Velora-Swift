@@ -502,17 +502,7 @@ extension NavidromeClient {
     // MARK: - Cover Art Caching
 
     func downloadCoverArt(id: String) {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let coverArtDir = docs.appendingPathComponent("CoverArt")
-        
-        do {
-            if !FileManager.default.fileExists(atPath: coverArtDir.path) {
-                try FileManager.default.createDirectory(at: coverArtDir, withIntermediateDirectories: true, attributes: nil)
-            }
-        } catch {
-            print("Failed to create CoverArt directory: \(error)")
-            return
-        }
+        let coverArtDir = VeloraStorage.coverArt
         
         let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
@@ -540,8 +530,7 @@ extension NavidromeClient {
     // MARK: - Lyrics
 
     func fetchLyrics(trackId: String, artist: String, title: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let lyricsDir = docs.appendingPathComponent("Lyrics")
+        let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
         
         // If cached on disk, return immediately
@@ -637,24 +626,19 @@ extension NavidromeClient {
             contents.forEach { try? fileManager.removeItem(at: $0) }
         }
         
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let backdropDir = docs.appendingPathComponent("Backdrops")
-        let portraitDir = docs.appendingPathComponent("ArtistPortraits")
-        let metadataDir = docs.appendingPathComponent("Metadata")
-        let coverArtDir = docs.appendingPathComponent("CoverArt")
+        // Clear all VeloraStorage subdirectories
+        let dirsToClean = [
+            VeloraStorage.backdrops,
+            VeloraStorage.artistPortraits,
+            VeloraStorage.metadata,
+            VeloraStorage.coverArt,
+            VeloraStorage.tracks,
+            VeloraStorage.lyrics,
+        ]
         
-        for dir in [backdropDir, portraitDir, metadataDir, coverArtDir] {
+        for dir in dirsToClean {
             if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
                 contents.forEach { try? fileManager.removeItem(at: $0) }
-            }
-        }
-        
-        if let contents = try? fileManager.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil) {
-            for item in contents {
-                let name = item.lastPathComponent
-                if name != "Backdrops" && name != "ArtistPortraits" && name != "Metadata" && name != "CoverArt" {
-                    try? fileManager.removeItem(at: item)
-                }
             }
         }
         
@@ -680,19 +664,13 @@ extension NavidromeClient {
             }
         }
         
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let backdropDir = docs.appendingPathComponent("Backdrops")
-        let portraitDir = docs.appendingPathComponent("ArtistPortraits")
-        let metadataDir = docs.appendingPathComponent("Metadata")
-        
-        for dir in [docs, backdropDir, portraitDir, metadataDir] {
-            if let enumerator = fileManager.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
-                for case let fileURL as URL in enumerator {
-                    var isDir: ObjCBool = false
-                    if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue {
-                        if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                            totalSize += Int64(fileSize)
-                        }
+        // Scan VeloraData directory recursively
+        if let enumerator = fileManager.enumerator(at: VeloraStorage.root, includingPropertiesForKeys: [.fileSizeKey]) {
+            for case let fileURL as URL in enumerator {
+                var isDir: ObjCBool = false
+                if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue {
+                    if let fileSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                        totalSize += Int64(fileSize)
                     }
                 }
             }

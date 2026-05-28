@@ -10,10 +10,7 @@ class IntegrityManager: ObservableObject {
     
     private let manifestName = "downloads_manifest.json"
     private var manifestUrl: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        // Ensure directory exists
-        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        return appSupport.appendingPathComponent(manifestName)
+        return VeloraStorage.root.appendingPathComponent(manifestName)
     }
     
     struct DownloadIndex: Codable {
@@ -74,6 +71,11 @@ class IntegrityManager: ObservableObject {
         saveIndex()
     }
     
+    /// Returns the stored file name for a given track ID, or nil if not in the index.
+    func getFileName(for trackId: String) -> String? {
+        return index.tracks[trackId]?.fileName
+    }
+    
     /// Rebuilds the index from scratch by scanning the Documents directory.
     /// Used for backwards compatibility or recovery.
     func rebuildIndex(from fileURLs: [URL]) {
@@ -116,24 +118,26 @@ class IntegrityManager: ObservableObject {
     
     func getStorageInfo() -> StorageInfo {
         let fileManager = FileManager.default
-        let path = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first!
+        let storagePath = VeloraStorage.root.path
         
         var totalSpace: Int64 = 0
         var freeSpace: Int64 = 0
         var appSpace: Int64 = 0
         
         // System Space
-        if let attrs = try? fileManager.attributesOfFileSystem(forPath: path) {
+        if let attrs = try? fileManager.attributesOfFileSystem(forPath: storagePath) {
             totalSpace = attrs[.systemSize] as? Int64 ?? 0
             freeSpace = attrs[.systemFreeSize] as? Int64 ?? 0
         }
         
-        // App Space (Documents folder)
-        let docUrl = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        if let contents = try? fileManager.contentsOfDirectory(at: docUrl, includingPropertiesForKeys: [.fileSizeKey]) {
-            for url in contents {
-                let res = try? url.resourceValues(forKeys: [.fileSizeKey])
-                appSpace += Int64(res?.fileSize ?? 0)
+        // App Space (VeloraData folder — recursive)
+        if let enumerator = fileManager.enumerator(at: VeloraStorage.root, includingPropertiesForKeys: [.fileSizeKey]) {
+            for case let fileURL as URL in enumerator {
+                var isDir: ObjCBool = false
+                if fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue {
+                    let res = try? fileURL.resourceValues(forKeys: [.fileSizeKey])
+                    appSpace += Int64(res?.fileSize ?? 0)
+                }
             }
         }
         

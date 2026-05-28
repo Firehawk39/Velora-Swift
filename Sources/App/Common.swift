@@ -4,11 +4,9 @@ import CryptoKit
 // MARK: - Offline Artwork Helper
 
 func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
-    if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-        let localUrl = docs.appendingPathComponent("CoverArt/\(id).jpg")
-        if FileManager.default.fileExists(atPath: localUrl.path) {
-            return localUrl
-        }
+    let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(id).jpg")
+    if FileManager.default.fileExists(atPath: localUrl.path) {
+        return localUrl
     }
     return serverUrl.flatMap { URL(string: $0) }
 }

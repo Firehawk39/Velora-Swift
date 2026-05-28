@@ -52,11 +52,11 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     func checkFileSystemForTrack(_ trackId: String) -> Bool {
         if isDownloaded(trackId) { return true }
         
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let tracksDir = VeloraStorage.tracks
         let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
         
         for ext in audioExtensions {
-            let path = docs.appendingPathComponent("\(trackId).\(ext)").path
+            let path = tracksDir.appendingPathComponent("\(trackId).\(ext)").path
             if FileManager.default.fileExists(atPath: path) {
                 return true
             }
@@ -70,6 +70,11 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     
     enum RepeatMode {
         case off, one, all
+    }
+    
+    enum DownloadPriority {
+        case high    // Currently playing album/playlist — inserted at front of queue
+        case normal  // Bulk sync, manual background downloads
     }
     
     @Published var downloadProgress: [String: Double] = [:]
@@ -92,6 +97,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     }
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
+    private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
+    private let maxRetries = 3
     
     private var player: AVPlayer?
     private var secondaryPlayer: AVPlayer?
@@ -251,10 +258,10 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     }
     
     private func getLocalAudioUrl(for trackId: String) -> URL? {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let tracksDir = VeloraStorage.tracks
         let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
         for ext in audioExtensions {
-            let path = docs.appendingPathComponent("\(trackId).\(ext)")
+            let path = tracksDir.appendingPathComponent("\(trackId).\(ext)")
             if FileManager.default.fileExists(atPath: path.path) {
                 return path
             }
@@ -407,6 +414,24 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         updateNowPlayingInfo()
         prefetchNextTracks()
         prewarmNextTrack()
+        
+        // Prioritize downloads for the current playback context
+        boostCurrentContextDownloads()
+    }
+    
+    private func boostCurrentContextDownloads() {
+        // Move tracks from the current playback queue to the front of the download queue
+        let currentQueueIds = Set(queue.map { $0.id })
+        let matchingIndices = downloadQueue.enumerated()
+            .filter { currentQueueIds.contains($0.element.id) }
+            .map { $0.offset }
+            .reversed() // Reverse to maintain stable indices during removal
+        
+        var boosted: [Track] = []
+        for idx in matchingIndices {
+            boosted.insert(downloadQueue.remove(at: idx), at: 0)
+        }
+        downloadQueue.insert(contentsOf: boosted, at: 0)
     }
 
     /// Pre-warms the AVPlayerItem for the immediate next track so that when
@@ -660,8 +685,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
 
                     // Persist to the local CoverArt cache so subsequent plays load instantly
                     let artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-                    let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-                    let coverArtDir = docs.appendingPathComponent("CoverArt")
+                    let coverArtDir = VeloraStorage.coverArt
                     let localUrl = coverArtDir.appendingPathComponent("\(artId).jpg")
                     if !FileManager.default.fileExists(atPath: coverArtDir.path) {
                         try? FileManager.default.createDirectory(at: coverArtDir, withIntermediateDirectories: true, attributes: nil)
@@ -754,9 +778,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             return
         }
         
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let tracksDirectory = VeloraStorage.tracks
         do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
+            let fileURLs = try FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil)
             
             // Rebuild index from disk (First run or recovery)
             integrityManager.rebuildIndex(from: fileURLs)
@@ -774,7 +798,72 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         loadDownloadedTracks()
     }
     
-    func downloadTrack(_ track: Track) {
+    func deleteDownload(trackId: String) {
+        // 1. Cancel active download if in progress
+        if let task = activeDownloadTasksByTrackId[trackId] {
+            task.cancel()
+            activeDownloadTasksByTrackId.removeValue(forKey: trackId)
+            downloadProgress.removeValue(forKey: trackId)
+            downloadETAs.removeValue(forKey: trackId)
+            downloadStartTimes.removeValue(forKey: trackId)
+            pausedDownloadIds.remove(trackId)
+        }
+        // Also remove from pending queue
+        downloadQueue.removeAll { $0.id == trackId }
+        
+        // 2. Delete the file from disk
+        if let fileName = integrityManager.getFileName(for: trackId) {
+            let filePath = VeloraStorage.tracks.appendingPathComponent(fileName)
+            try? FileManager.default.removeItem(at: filePath)
+        } else {
+            // Fallback: scan all extensions
+            let audioExtensions = ["mp3","flac","m4a","ogg","wav","aac","opus","alac"]
+            for ext in audioExtensions {
+                let path = VeloraStorage.tracks.appendingPathComponent("\(trackId).\(ext)")
+                if FileManager.default.fileExists(atPath: path.path) {
+                    try? FileManager.default.removeItem(at: path)
+                    break
+                }
+            }
+        }
+        
+        // 3. Unregister from index
+        integrityManager.unregisterDownload(trackId: trackId)
+        downloadedTrackIds.remove(trackId)
+        failedDownloadIds.remove(trackId)
+        objectWillChange.send()
+        
+        AppLogger.shared.log("Deleted download for track \(trackId)", level: .info)
+    }
+
+    func deleteAlbumDownloads(albumId: String) {
+        let tracks = client.allSongs.filter { $0.albumId == albumId }
+        for track in tracks {
+            if isDownloaded(track.id) { deleteDownload(trackId: track.id) }
+        }
+    }
+
+    func deleteArtistDownloads(artistId: String) {
+        let tracks = client.allSongs.filter { $0.artistId == artistId }
+        for track in tracks {
+            if isDownloaded(track.id) { deleteDownload(trackId: track.id) }
+        }
+    }
+    
+    /// Returns (downloaded, total) count for an album
+    func albumDownloadStatus(albumId: String) -> (downloaded: Int, total: Int) {
+        let tracks = client.allSongs.filter { $0.albumId == albumId }
+        let downloaded = tracks.filter { isDownloaded($0.id) }.count
+        return (downloaded, tracks.count)
+    }
+
+    /// Returns (downloaded, total) for a list of tracks (e.g., playlist tracks)
+    func tracksDownloadStatus(_ tracks: [Track]) -> (downloaded: Int, total: Int) {
+        let downloaded = tracks.filter { isDownloaded($0.id) }.count
+        return (downloaded, tracks.count)
+    }
+    
+    func downloadTrack(_ track: Track, priority: DownloadPriority = .normal) {
         AppLogger.shared.log("downloadTrack requested for \(track.id) - \(track.title)", level: .debug)
         
         // 1. Check if already downloaded
@@ -806,7 +895,13 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             self.downloadProgress[track.id] = 0.0
         }
         
-        downloadQueue.append(track)
+        switch priority {
+        case .high:
+            // Insert at front (after any already-active items)
+            downloadQueue.insert(track, at: 0)
+        case .normal:
+            downloadQueue.append(track)
+        }
         processQueue()
     }
     
@@ -893,7 +988,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             suffix = s.lowercased()
         }
         
-        let downloadsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let downloadsDir = VeloraStorage.tracks
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
         
         do {
@@ -907,9 +1002,32 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             let fileSize = attributes[.size] as? Int64 ?? 0
             
             if fileSize < 1024 {
-                 AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is empty or corrupted (\(fileSize) bytes)", level: .error)
+                 AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is empty or corrupted (\(fileSize) bytes). Will retry.", level: .error)
                  try FileManager.default.removeItem(at: destinationUrl)
-                 throw NSError(domain: "com.velora.integrity", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty or corrupted file download"])
+                 
+                 // Auto-retry with backoff
+                 let retries = downloadRetryCount[trackId, default: 0]
+                 if retries < maxRetries {
+                     downloadRetryCount[trackId] = retries + 1
+                     let delay = pow(2.0, Double(retries)) // 1s, 2s, 4s
+                     AppLogger.shared.log("Scheduling retry \(retries + 1)/\(maxRetries) for \(trackId) in \(delay)s", level: .info)
+                     
+                     // Re-queue the track for download after delay
+                     Task {
+                         try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                         if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
+                             DispatchQueue.main.async {
+                                 self.downloadProgress[trackId] = nil // Reset so downloadTrack accepts it
+                                 self.downloadTrack(track)
+                             }
+                         }
+                     }
+                     return // Don't mark as failed yet
+                 } else {
+                     AppLogger.shared.log("Track \(trackId) failed after \(maxRetries) retries. Giving up.", level: .error)
+                     downloadRetryCount.removeValue(forKey: trackId)
+                     throw NSError(domain: "com.velora.integrity", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty or corrupted file download"])
+                 }
             }
 
             // Register in the Lightning Index
@@ -942,6 +1060,31 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         }
         
         if let error = error {
+            let nsError = error as NSError
+            // Don't retry user-cancelled downloads
+            if nsError.code != NSURLErrorCancelled, let trackId = downloadTasks[task.taskIdentifier] {
+                let retries = downloadRetryCount[trackId, default: 0]
+                if retries < maxRetries {
+                    downloadRetryCount[trackId] = retries + 1
+                    let delay = pow(2.0, Double(retries))
+                    AppLogger.shared.log("Scheduling retry \(retries + 1)/\(maxRetries) for \(trackId) in \(delay)s after network error", level: .info)
+                    
+                    Task {
+                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                        if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
+                            DispatchQueue.main.async {
+                                self.downloadProgress[trackId] = nil
+                                self.downloadTrack(track)
+                            }
+                        }
+                    }
+                    downloadTasks.removeValue(forKey: task.taskIdentifier)
+                    activeDownloadCount -= 1
+                    processQueue()
+                    return
+                }
+            }
+            
             AppLogger.shared.log("Download task \(task.taskIdentifier) failed: \(error.localizedDescription)", level: .error)
             if let trackId = downloadTasks[task.taskIdentifier] {
                 DispatchQueue.main.async {
@@ -949,6 +1092,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                     self.downloadProgress.removeValue(forKey: trackId)
                     self.downloadETAs.removeValue(forKey: trackId)
                     self.downloadStartTimes.removeValue(forKey: trackId)
+                    self.downloadRetryCount.removeValue(forKey: trackId)
                 }
             }
         } else {
@@ -980,8 +1124,8 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         downloadTasks.removeAll()
         activeDownloadTasksByTrackId.removeAll()
         downloadProgress.removeAll()
-        downloadETAs.removeAll()
         downloadStartTimes.removeAll()
+        downloadRetryCount.removeAll()
         activeDownloadCount = 0
         failedDownloadIds.removeAll()
         pausedDownloadIds.removeAll()
@@ -1233,7 +1377,7 @@ extension UIImage {
         let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
         
-        guard let cgImage = resizedImage?.cgImage else { return [] }
+        guard let cgImage = resizedImage?.cgImage else { return [.black, .black, .black, .black, .black] }
         
         let width = cgImage.width
         let height = cgImage.height
@@ -1250,24 +1394,45 @@ extension UIImage {
             bytesPerRow: bytesPerRow,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
-        ) else { return [] }
+        ) else { return [.black, .black, .black, .black, .black] }
         
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         
-        // 2. Gather all pixels
-        var colors: [UIColor] = []
+        // 2. Count color frequencies using a quantization bucket (5 bits per channel)
+        var colorCounts: [Int: (r: Int, g: Int, b: Int, count: Int)] = [:]
+        
         for y in 0..<height {
             for x in 0..<width {
                 let offset = (y * bytesPerRow) + (x * bytesPerPixel)
-                let r = rawData[offset]
-                let g = rawData[offset + 1]
-                let b = rawData[offset + 2]
-                let a = rawData[offset + 3]
+                let r = Int(rawData[offset])
+                let g = Int(rawData[offset + 1])
+                let b = Int(rawData[offset + 2])
+                let a = Int(rawData[offset + 3])
                 
-                if a > 0 {
-                    colors.append(UIColor(red: CGFloat(r)/255, green: CGFloat(g)/255, blue: CGFloat(b)/255, alpha: CGFloat(a)/255))
+                if a > 127 { // Only consider mostly opaque pixels
+                    // Quantize to 32 levels per channel (15-bit color precision for bucketing)
+                    let qr = r >> 3
+                    let qg = g >> 3
+                    let qb = b >> 3
+                    let key = (qr << 10) | (qg << 5) | qb
+                    
+                    if let existing = colorCounts[key] {
+                        colorCounts[key] = (existing.r + r, existing.g + g, existing.b + b, existing.count + 1)
+                    } else {
+                        colorCounts[key] = (r, g, b, 1)
+                    }
                 }
             }
+        }
+        
+        // 3. Average the colors in each bucket and convert to UIColor, sorted by frequency
+        let frequentColors = colorCounts.values.sorted { $0.count > $1.count }.map { bucket -> UIColor in
+            return UIColor(
+                red: CGFloat(bucket.r / bucket.count) / 255.0,
+                green: CGFloat(bucket.g / bucket.count) / 255.0,
+                blue: CGFloat(bucket.b / bucket.count) / 255.0,
+                alpha: 1.0
+            )
         }
         
         // Helper to compute color distance
@@ -1282,33 +1447,33 @@ extension UIImage {
             return sqrt(dr*dr + dg*dg + db*db)
         }
         
-        // Sort colors based on saturation and brightness (more vibrant colors first)
-        let sortedColors = colors.sorted { c1, c2 in
-            var h1: CGFloat = 0, s1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
-            var h2: CGFloat = 0, s2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
-            c1.getHue(&h1, saturation: &s1, brightness: &b1, alpha: &a1)
-            c2.getHue(&h2, saturation: &s2, brightness: &b2, alpha: &a2)
-            return (s1 * b1) > (s2 * b2)
+        var distinctColors: [UIColor] = []
+        for color in frequentColors {
+            var brightness: CGFloat = 0
+            color.getHue(nil, saturation: nil, brightness: &brightness, alpha: nil)
+            
+            // Skip extremely dark/bright colors for gradient aesthetics, unless it's the only color left
+            if (brightness < 0.1 || brightness > 0.9) && distinctColors.count > 0 { continue }
+            
+            // Ensure color is visually distinct from already selected colors
+            let isDistinct = distinctColors.allSatisfy { distance(from: color, to: $0) > 0.20 }
+            if isDistinct || distinctColors.isEmpty {
+                distinctColors.append(color)
+                if distinctColors.count >= count { break }
+            }
         }
         
-        var distinctColors: [UIColor] = []
-        for color in sortedColors {
-            var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            color.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-            // Filter out extremely dark or light backgrounds to keep gradients readable
-            if b < 0.15 || b > 0.95 { continue }
-            
-            // Ensure color is distinct from already selected colors
-            let isDistinct = distinctColors.allSatisfy { distance(from: color, to: $0) > 0.22 }
-            if isDistinct {
-                distinctColors.append(color)
-                if distinctColors.count >= count {
-                    break
+        // Fallback: fill remaining slots with the most frequent colors if we couldn't find enough distinct ones
+        if distinctColors.count < count {
+            for color in frequentColors {
+                if !distinctColors.contains(color) {
+                    distinctColors.append(color)
+                    if distinctColors.count >= count { break }
                 }
             }
         }
         
-        // Fallbacks
+        // Final fallback if image was empty or pure transparent
         if distinctColors.isEmpty {
             if let firstDominant = dominantColor() {
                 distinctColors.append(firstDominant)
@@ -1316,11 +1481,22 @@ extension UIImage {
                 distinctColors.append(.black)
             }
         }
-        
         while distinctColors.count < count {
             let baseColor = distinctColors[0]
-            let offset = CGFloat(distinctColors.count) * 0.12
-            distinctColors.append(baseColor.adjustColor(hue: offset, saturation: 0.1, brightness: -0.05))
+            
+            // To pad the palette without introducing new color families,
+            // we create analogous and monochromatic variations using tiny hue shifts
+            // and alternating brightness/saturation adjustments. This is the 
+            // golden standard approach used to preserve the album's tonal identity.
+            let step = CGFloat(distinctColors.count)
+            let isEven = distinctColors.count % 2 == 0
+            
+            // A micro-shift in hue (0.02 is ~7 degrees) creates natural "analogous" colors
+            let hueShift = isEven ? 0.02 * step : -0.02 * step
+            let saturationShift = isEven ? -0.05 * step : 0.05 * step
+            let brightnessShift = isEven ? 0.08 * step : -0.08 * step
+            
+            distinctColors.append(baseColor.adjustColor(hue: hueShift, saturation: saturationShift, brightness: brightnessShift))
         }
         
         return distinctColors

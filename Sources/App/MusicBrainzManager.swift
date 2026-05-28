@@ -36,13 +36,8 @@ class MusicBrainzManager: ObservableObject {
     private let userAgent = "VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )"
     
     init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.metadataDir = docs.appendingPathComponent("Metadata", isDirectory: true)
-        self.cacheFile = docs.appendingPathComponent("name_to_mbid.json")
-        
-        if !FileManager.default.fileExists(atPath: self.metadataDir.path) {
-            try? FileManager.default.createDirectory(at: self.metadataDir, withIntermediateDirectories: true, attributes: nil)
-        }
+        self.metadataDir = VeloraStorage.metadata
+        self.cacheFile = VeloraStorage.root.appendingPathComponent("name_to_mbid.json")
         
         // Load cache
         if let data = try? Data(contentsOf: self.cacheFile),

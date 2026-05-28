@@ -129,8 +129,7 @@ final class SyncManager: ObservableObject {
                             let mb = await MusicBrainzManager.shared
                             let fa = await FanartManager.shared
                             
-                            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-                            let localPortraitUrl = docs.appendingPathComponent("CoverArt/\(artist.id).jpg")
+                            let localPortraitUrl = VeloraStorage.coverArt.appendingPathComponent("\(artist.id).jpg")
                             let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
                             
                             let hasArtist = await mb.hasArtistMetadata(for: artist.name)
@@ -209,7 +208,7 @@ final class SyncManager: ObservableObject {
                 return
             }
 
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let lyricsDir = VeloraStorage.lyrics
             let maxConcurrentLyricsRequests = 15
             var skippedCount = 0
             var tasksCompleted = 0.0
@@ -217,7 +216,7 @@ final class SyncManager: ObservableObject {
             
             // Filter out songs that already have local cached lyrics first so we skip them instantly
             let missingSongs = tracks.filter { song in
-                let cacheFile = docs.appendingPathComponent("Lyrics/\(song.id).txt")
+                let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
                 if FileManager.default.fileExists(atPath: cacheFile.path) {
                     skippedCount += 1
                     tasksCompleted += 1

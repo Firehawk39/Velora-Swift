@@ -9,16 +9,16 @@ struct LibraryView: View {
 
     @Environment(\.horizontalSizeClass) var hSizeClass
     @State private var activeCategory: String? = nil
-    @State private var viewMode: ViewMode = .grid
-    @State private var sortMode: SortMode = .alphabetical
+    @AppStorage("library_viewMode") private var viewMode: ViewMode = .grid
+    @AppStorage("library_sortMode") private var sortMode: SortMode = .alphabetical
     @State private var showSortDropdown: Bool = false
     @State private var showOfflineOnly: Bool = false
     @State private var selectedPlaylist: Playlist? = nil
     @State private var playlistTracks: [Track] = []
     @State private var isLoadingPlaylist: Bool = false
     
-    enum ViewMode { case grid, list }
-    enum SortMode { case alphabetical, recent, topPlayed }
+    enum ViewMode: String { case grid, list }
+    enum SortMode: String { case alphabetical, recent, topPlayed }
     
     var onArtistClick: ((String, String) -> Void)?
 
@@ -521,11 +521,19 @@ private struct AlbumGridView: View {
                             Text(a.artist ?? "")
                                 .font(.system(size: isCompact ? 11 : 13))
                                 .foregroundColor(.gray)
-                                .lineLimit(1)
                                 .minimumScaleFactor(0.75)
                         }
                     }
                     .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
+                    .contextMenu {
+                        if playback.albumDownloadStatus(albumId: a.id).downloaded > 0 {
+                            Button(role: .destructive, action: {
+                                playback.deleteAlbumDownloads(albumId: a.id)
+                            }) {
+                                Label("Remove Album Downloads", systemImage: "trash")
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -544,13 +552,30 @@ private struct AlbumGridView: View {
                         .id("album-list-\(a.id)")
                         VStack(alignment: .leading, spacing: 4) {
                             Text(a.name).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
-                            Text(a.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text(a.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
+                                let status = playback.albumDownloadStatus(albumId: a.id)
+                                if status.downloaded > 0 {
+                                    Text("•").foregroundColor(.gray).font(.system(size: 10))
+                                    Image(systemName: "arrow.down.circle.fill").foregroundColor(.red).font(.system(size: 10))
+                                    Text("\(status.downloaded)/\(status.total)").font(.system(size: 10, weight: .bold)).foregroundColor(.red)
+                                }
+                            }
                         }
                         Spacer()
                         Image(systemName: "chevron.right").foregroundColor(.gray.opacity(0.5))
                     }
                     .padding(.vertical, 10)
                     .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
+                    .contextMenu {
+                        if playback.albumDownloadStatus(albumId: a.id).downloaded > 0 {
+                            Button(role: .destructive, action: {
+                                playback.deleteAlbumDownloads(albumId: a.id)
+                            }) {
+                                Label("Remove Album Downloads", systemImage: "trash")
+                            }
+                        }
+                    }
                     Divider().opacity(0.1)
                 }
             }
@@ -621,12 +646,19 @@ private struct SongListView: View {
                                 }
                             }
                         }
-                        Button(action: {
-                            playback.downloadTrack(t)
-                        }) {
-                            Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+                        if playback.isDownloaded(t.id) {
+                            Button(role: .destructive, action: {
+                                playback.deleteDownload(trackId: t.id)
+                            }) {
+                                Label("Remove Download", systemImage: "trash")
+                            }
+                        } else {
+                            Button(action: {
+                                playback.downloadTrack(t)
+                            }) {
+                                Label("Download", systemImage: "arrow.down.circle")
+                            }
                         }
-                        .disabled(playback.isDownloaded(t.id))
                     }
                 }
             }
@@ -668,12 +700,19 @@ private struct SongListView: View {
                             }
                         }
                         
-                        Button(action: {
-                            playback.downloadTrack(t)
-                        }) {
-                            Label(playback.isDownloaded(t.id) ? "Downloaded" : "Download", systemImage: playback.isDownloaded(t.id) ? "checkmark.circle.fill" : "arrow.down.circle")
+                        if playback.isDownloaded(t.id) {
+                            Button(role: .destructive, action: {
+                                playback.deleteDownload(trackId: t.id)
+                            }) {
+                                Label("Remove Download", systemImage: "trash")
+                            }
+                        } else {
+                            Button(action: {
+                                playback.downloadTrack(t)
+                            }) {
+                                Label("Download", systemImage: "arrow.down.circle")
+                            }
                         }
-                        .disabled(playback.isDownloaded(t.id))
                     }
                     Divider().opacity(0.1)
                 }
@@ -695,8 +734,8 @@ private struct PlaylistDetailView: View {
     let hPad: CGFloat
     var onBack: () -> Void
     
-    @State private var viewMode: LibraryView.ViewMode = .list
-    @State private var sortMode: LibraryView.SortMode = .alphabetical
+    @AppStorage("playlist_viewMode") private var viewMode: LibraryView.ViewMode = .list
+    @AppStorage("playlist_sortMode") private var sortMode: LibraryView.SortMode = .alphabetical
     @State private var showOfflineOnly: Bool = false
 
     var body: some View {
@@ -802,7 +841,8 @@ private struct PlaylistDetailView: View {
                 Text(playlist.name)
                     .font(.system(size: isCompact ? 28 : 36, weight: .bold))
                     .foregroundColor(isDarkMode ? .white : .black)
-                Text("\(sorted.count) tracks • \(playlist.owner ?? "Unknown")")
+                let status = playback.tracksDownloadStatus(sorted)
+                Text("\(sorted.count) tracks • \(playlist.owner ?? "Unknown")\(status.downloaded > 0 ? " • \(status.downloaded) offline" : "")")
                     .font(.system(size: isCompact ? 14 : 16))
                     .foregroundColor(.gray)
             }
@@ -940,23 +980,27 @@ private struct PlaylistDetailView: View {
             Label("Remove from Playlist", systemImage: "minus.circle")
         }
         
-        Button(action: {
-            playback.downloadTrack(track)
-        }) {
-            let isDownloaded = playback.isDownloaded(track.id)
-            let isDownloading = playback.downloadProgress[track.id] != nil
-            let isPaused = playback.pausedDownloadIds.contains(track.id)
-            
-            if isDownloaded {
-                Label("Downloaded", systemImage: "checkmark.circle.fill")
-            } else if isPaused {
-                Label("Resume Download", systemImage: "play.circle")
-            } else if isDownloading {
-                Label("Pause Download", systemImage: "pause.circle")
-            } else {
-                Label("Download", systemImage: "arrow.down.circle")
+        if playback.isDownloaded(track.id) {
+            Button(role: .destructive, action: {
+                playback.deleteDownload(trackId: track.id)
+            }) {
+                Label("Remove Download", systemImage: "trash")
+            }
+        } else {
+            Button(action: {
+                playback.downloadTrack(track)
+            }) {
+                let isDownloading = playback.downloadProgress[track.id] != nil
+                let isPaused = playback.pausedDownloadIds.contains(track.id)
+                
+                if isPaused {
+                    Label("Resume Download", systemImage: "play.circle")
+                } else if isDownloading {
+                    Label("Pause Download", systemImage: "pause.circle")
+                } else {
+                    Label("Download", systemImage: "arrow.down.circle")
+                }
             }
         }
-        .disabled(playback.isDownloaded(track.id))
     }
 }

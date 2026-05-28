@@ -14,12 +14,7 @@ class BackdropManager: ObservableObject {
     private let fanartApiKey = "53406560946a364a51e608034d67394c" 
     
     init() {
-        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        cacheDirectory = docs.appendingPathComponent("Backdrops", isDirectory: true)
-        
-        if !fileManager.fileExists(atPath: cacheDirectory.path) {
-            try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true, attributes: nil)
-        }
+        cacheDirectory = VeloraStorage.backdrops
     }
     
     func fetchBackdrop(for artist: String, artistId: String? = nil) {

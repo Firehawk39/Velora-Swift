@@ -16,15 +16,8 @@ class FanartManager: ObservableObject {
     private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80" 
     
     init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.backdropDir = docs.appendingPathComponent("Backdrops", isDirectory: true)
-        self.portraitDir = docs.appendingPathComponent("ArtistPortraits", isDirectory: true)
-        
-        [self.backdropDir, self.portraitDir].forEach { dir in
-            if !FileManager.default.fileExists(atPath: dir.path) {
-                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
-            }
-        }
+        self.backdropDir = VeloraStorage.backdrops
+        self.portraitDir = VeloraStorage.artistPortraits
     }
     
     // MARK: - Backdrops

@@ -59,9 +59,7 @@ class NavidromeClient: ObservableObject {
     }
 
     private var cacheDir: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
-        return appSupport
+        return VeloraStorage.root
     }
 
     func loadOfflineMetadata() {
@@ -164,9 +162,7 @@ class NavidromeClient: ObservableObject {
         }
         
         let dir = self.cacheDir
-        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            try? FileManager.default.removeItem(at: docs.appendingPathComponent("Lyrics"))
-        }
+        try? FileManager.default.removeItem(at: VeloraStorage.lyrics)
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_artists.json"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_albums.json"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_playlists.json"))
