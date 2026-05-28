@@ -310,7 +310,7 @@ struct AppSettingsView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var sync: SyncManager
     @AppStorage("velora_server_url") private var serverUrl: String = ""
-    @AppStorage("velora_online_server_url") private var onlineServerUrl: String = "https://sopranosnavi.share.zrok.io"
+    @AppStorage("velora_online_server_url") private var onlineServerUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""
     @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
     @State private var cacheCleared = false
@@ -389,7 +389,7 @@ struct AppSettingsView: View {
                                 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Online Server").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
-                                    TextField("https://sopranosnavi.share.zrok.io", text: $onlineServerUrl, onCommit: {
+                                    TextField("https://your-online-server.com", text: $onlineServerUrl, onCommit: {
                                         if isOnlineMode { reconnectWithCurrentMode() }
                                     })
                                     .font(.system(size: 14))
@@ -730,7 +730,7 @@ struct AppSettingsView: View {
     private func reconnectWithCurrentMode() {
         guard !username.isEmpty else { return }
         let localUrl = serverUrl
-        let finalUrl = isOnlineMode ? (onlineServerUrl.isEmpty ? "https://sopranosnavi.share.zrok.io" : onlineServerUrl) : localUrl
+        let finalUrl = isOnlineMode ? onlineServerUrl : localUrl
         
         if let passData = KeychainHelper.shared.read(service: "velora-password", account: username),
            let savedPass = String(data: passData, encoding: .utf8) {

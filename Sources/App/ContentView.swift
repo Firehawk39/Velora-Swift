@@ -215,7 +215,7 @@ struct ContentView: View {
 
     private func autoLogin() {
         let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
-        let savedOnlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url") ?? "https://sopranosnavi.share.zrok.io"
+        let savedOnlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url") ?? ""
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
         let isOnline = UserDefaults.standard.bool(forKey: "velora_is_online_mode")
         
@@ -230,7 +230,7 @@ struct ContentView: View {
         if let passData = KeychainHelper.shared.read(service: "velora-password", account: savedUser),
            let savedPass = String(data: passData, encoding: .utf8) {
             
-            let finalUrl = isOnline ? (savedOnlineUrl.isEmpty ? "https://sopranosnavi.share.zrok.io" : savedOnlineUrl) : savedUrl
+            let finalUrl = isOnline ? savedOnlineUrl : savedUrl
             client.configure(url: finalUrl, user: savedUser, pass: savedPass)
             client.loadOfflineMetadata()
             client.fetchEverything()
