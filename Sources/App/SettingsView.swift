@@ -80,7 +80,8 @@ struct SettingsView: View {
                 text: $serverAddress,
                 isDark: isDark,
                 borderCol: borderCol,
-                labelCol: labelCol
+                labelCol: labelCol,
+                contentType: .URL
             )
 
             // Next button
@@ -135,7 +136,8 @@ struct SettingsView: View {
                 text: $username,
                 isDark: isDark,
                 borderCol: borderCol,
-                labelCol: labelCol
+                labelCol: labelCol,
+                contentType: .username
             )
 
             FloatingLabelField(
@@ -146,6 +148,7 @@ struct SettingsView: View {
                 borderCol: borderCol,
                 labelCol: labelCol,
                 isSecure: !showPassword,
+                contentType: .password,
                 trailingIcon: showPassword ? "eye.slash" : "eye",
                 onTrailingTap: { showPassword.toggle() }
             )
@@ -252,6 +255,7 @@ struct FloatingLabelField: View {
     let borderCol: Color
     let labelCol: Color
     var isSecure: Bool = false
+    var contentType: UITextContentType? = nil
     var trailingIcon: String? = nil
     var onTrailingTap: (() -> Void)? = nil
 
@@ -277,7 +281,7 @@ struct FloatingLabelField: View {
                     TextField(placeholder, text: $text)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
-                        .textContentType(.URL)
+                        .textContentType(contentType)
                 }
 
                 if let icon = trailingIcon {

@@ -119,10 +119,15 @@ struct NowPlayingView: View {
                     }
                 )
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.6), value: isIdle)
-                .animation(.easeInOut(duration: 0.6), value: fanart.currentBackdrop)
+                // Stagger layer 2 of 3: background lightens AFTER controls exit (0.15s delay),
+                // and re-darkens immediately when waking (no delay — sets the stage first).
+                .animation(
+                    isIdle
+                        ? .spring(response: 1.4, dampingFraction: 0.95, blendDuration: 0.5).delay(0.15)
+                        : .spring(response: 0.6, dampingFraction: 0.82, blendDuration: 0.3),
+                    value: isIdle
+                )
                 .allowsHitTesting(false)
-                .drawingGroup()
 
 
 
@@ -144,7 +149,14 @@ struct NowPlayingView: View {
                             .opacity(isIdle ? 0.0 : 1.0)
                             .offset(y: isIdle ? 20 : 0)
                             .allowsHitTesting(!isIdle)
-                            .animation(.easeInOut(duration: 0.7), value: isIdle)
+                            // Stagger layer 3 of 3: metadata trails last (0.25s delay going idle),
+                            // but appears immediately on wake so content is ready when controls arrive.
+                            .animation(
+                                isIdle
+                                    ? .spring(response: 1.4, dampingFraction: 0.95, blendDuration: 0.5).delay(0.25)
+                                    : .spring(response: 0.6, dampingFraction: 0.82, blendDuration: 0.3),
+                                value: isIdle
+                            )
                     }
                     .padding(.top, isIdle ? 0 : headerHeight + 20)
                     .padding(.bottom, 20)
@@ -216,7 +228,11 @@ struct NowPlayingView: View {
         
         idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
             DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 2.5)) {
+                // Golden standard: ONE animation context drives the entire view tree.
+                // blendDuration: if the user taps during this dissolve, the reverse
+                // animation blends in smoothly instead of snapping.
+                // High dampingFraction → no overshoot on a slow cinematic transition.
+                withAnimation(.spring(response: 1.4, dampingFraction: 0.95, blendDuration: 0.5)) {
                     self.isIdle = true
                 }
             }
@@ -225,7 +241,9 @@ struct NowPlayingView: View {
 
     private func resetIdleTimer() {
         if isIdle {
-            withAnimation(.spring(response: animationResponse, dampingFraction: 0.8)) {
+            // Snappier spring for waking up — feels alive and responsive.
+            // blendDuration handles the case where idle fires again mid-wakeup.
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.82, blendDuration: 0.3)) {
                 isIdle = false
             }
         }
@@ -295,13 +313,21 @@ struct NowPlayingView: View {
                         }
                         .scaleEffect(isSE ? 0.75 : (isSmallDevice ? 0.85 : 0.9))
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // Stagger layer 1 of 3: controls exit FIRST (no delay) and are the LAST
+                    // to reappear on wake (0.2s delay) — mirrors Apple Music's cinematic mode.
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.82, blendDuration: 0.3).delay(0.2)),
+                        removal: .move(edge: .bottom).combined(with: .opacity)
+                            .animation(.spring(response: 1.4, dampingFraction: 0.95, blendDuration: 0.5))
+                    ))
                 }
             }
             .padding(.bottom, isSE ? 12 : (isIdle ? 60 : 32))
         }
+        // isLyricsMode still gets its own local animation — it's a separate interaction,
+        // not part of the idle transition context.
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
-        .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
     // ── TABLET / LANDSCAPE ────────────────────────────────────────────
@@ -385,15 +411,17 @@ struct NowPlayingView: View {
                     }
                     .padding(.horizontal, isLargeCanvas ? 60 : 32)
                     .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        insertion: .move(edge: .bottom).combined(with: .opacity)
+                            .animation(.spring(response: 0.6, dampingFraction: 0.82, blendDuration: 0.3).delay(0.2)),
                         removal: .move(edge: .bottom).combined(with: .opacity)
+                            .animation(.spring(response: 1.4, dampingFraction: 0.95, blendDuration: 0.5))
                     ))
                 }
             }
             .padding(.bottom, isIdle ? (isShortCanvas ? 40 : 60) : 32)
         }
+        // isLyricsMode still gets its own local animation — separate interaction context.
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: playback.isLyricsMode)
-        .animation(.spring(response: 1.0, dampingFraction: 0.85), value: isIdle)
     }
 
     @ViewBuilder
@@ -472,6 +500,9 @@ struct NowPlayingView: View {
         .frame(width: size, height: size)
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 20)
+        // Apple Music-style: artwork subtly expands 3% during idle, making it the
+        // visual anchor as everything else retreats. Driven by withAnimation context.
+        .scaleEffect(isIdle ? 1.03 : 1.0)
         .onTapGesture {
             if isIdle {
                 // Secret Toggle: No resetIdleTimer() called here

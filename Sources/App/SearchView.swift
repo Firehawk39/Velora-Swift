@@ -11,6 +11,13 @@ struct SearchView: View {
     @State private var albums: [Album] = []
     @State private var artists: [Artist] = []
     @State private var isLoading: Bool = false
+
+    // MARK: - Search Race Condition Guards
+    /// Cancels any in-flight debounce sleep task when a new keystroke arrives.
+    @State private var searchTask: Task<Void, Never>?
+    /// Monotonically-increasing counter. Each new search increments it.
+    /// Completion callbacks compare against this to discard stale responses.
+    @State private var searchGeneration: Int = 0
     
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
@@ -46,17 +53,43 @@ struct SearchView: View {
     }
     
     private func performSearch(query: String) {
+        // ── Step 1: Cancel the previous debounce sleep (if still pending) ──────
+        searchTask?.cancel()
+
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             self.tracks = []; self.albums = []; self.artists = []
+            self.isLoading = false
             return
         }
+
+        // ── Step 2: Mint a new generation token for this search attempt ────────
+        searchGeneration &+= 1          // wrapping increment, never overflows
+        let myGeneration = searchGeneration
+
         isLoading = true
-        client.search(query: trimmed) { foundTracks, foundAlbums, foundArtists in
-            self.tracks = foundTracks
-            self.albums = foundAlbums
-            self.artists = foundArtists
-            self.isLoading = false
+
+        // ── Step 3: Debounce — sleep 300 ms, cancel if another keystroke arrives
+        searchTask = Task {
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+            } catch {
+                // Task was cancelled (new keystroke arrived) — bail out silently
+                return
+            }
+
+            // ── Step 4: Fire the network request ─────────────────────────────
+            client.search(query: trimmed) { foundTracks, foundAlbums, foundArtists in
+                // ── Step 5: Generation guard — discard stale responses ────────
+                // If the user typed again while this request was in-flight,
+                // searchGeneration will have advanced. We simply ignore the result.
+                guard self.searchGeneration == myGeneration else { return }
+
+                self.tracks = foundTracks
+                self.albums = foundAlbums
+                self.artists = foundArtists
+                self.isLoading = false
+            }
         }
     }
 }

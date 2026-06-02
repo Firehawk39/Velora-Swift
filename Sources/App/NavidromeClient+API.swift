@@ -288,8 +288,14 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
             completion([], [], []); return
         }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else {
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            if let error = error {
+                print("[Search] Network error: \(error.localizedDescription)")
+                DispatchQueue.main.async { completion([], [], []) }
+                return
+            }
+            guard let data = data else {
+                print("[Search] No data received from server")
                 DispatchQueue.main.async { completion([], [], []) }
                 return
             }
@@ -327,6 +333,7 @@ extension NavidromeClient {
                     completion(tracks, albums, artists)
                 }
             } catch {
+                print("[Search] JSON decode error: \(error)")
                 DispatchQueue.main.async { completion([], [], []) }
             }
         }.resume()
