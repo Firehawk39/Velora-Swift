@@ -32,6 +32,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     // Queue support
     @Published var queue: [Track] = []
     @Published var queueIndex: Int = 0
+    private var unshuffledQueue: [Track] = []
     @Published var isShuffle: Bool = false
     @Published var repeatMode: RepeatMode = .off
     @Published var downloadedTrackIds = Set<String>()
@@ -248,9 +249,12 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         
         if !context.isEmpty {
             self.queue = context
+            self.unshuffledQueue = context
             self.queueIndex = context.firstIndex(where: { $0.id == track.id }) ?? 0
+            if isShuffle { applyShuffle() }
         } else {
             self.queue = [track]
+            self.unshuffledQueue = [track]
             self.queueIndex = 0
         }
         
@@ -555,15 +559,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             if playbackHistory.count > 100 { playbackHistory.removeFirst() }
         }
         
-        let nextIndex: Int
-        if isShuffle {
-            var rand = Int.random(in: 0..<queue.count)
-            // Avoid playing the same song twice if possible
-            if rand == queueIndex && queue.count > 1 { rand = (rand + 1) % queue.count }
-            nextIndex = rand
-        } else {
-            nextIndex = (queueIndex + 1) % queue.count
-        }
+        let nextIndex = (queueIndex + 1) % queue.count
         
         isNavigatingHistory = false
         queueIndex = nextIndex
@@ -1187,8 +1183,37 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         pausedDownloadIds.removeAll()
     }
     
+    func toggleShuffle() {
+        isShuffle.toggle()
+        if isShuffle {
+            applyShuffle()
+        } else {
+            restoreUnshuffledQueue()
+        }
+    }
+    
+    private func applyShuffle() {
+        guard !queue.isEmpty else { return }
+        let current = queue[queueIndex]
+        unshuffledQueue = queue
+        var newQueue = queue.shuffled()
+        if let idx = newQueue.firstIndex(where: { $0.id == current.id }) {
+            newQueue.swapAt(0, idx)
+        }
+        queue = newQueue
+        queueIndex = 0
+    }
+    
+    private func restoreUnshuffledQueue() {
+        guard !unshuffledQueue.isEmpty else { return }
+        let current = queue[queueIndex]
+        queue = unshuffledQueue
+        queueIndex = queue.firstIndex(where: { $0.id == current.id }) ?? 0
+    }
+
     func shufflePlay(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
+        isShuffle = true
         let shuffled = tracks.shuffled()
         if let first = shuffled.first {
             playTrack(first, context: shuffled)

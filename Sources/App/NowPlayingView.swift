@@ -427,7 +427,7 @@ struct NowPlayingView: View {
     @ViewBuilder
     private var playbackControls: some View {
         // Shuffle
-        Button { playback.isShuffle.toggle(); resetIdleTimer() } label: {
+        Button { playback.toggleShuffle(); resetIdleTimer() } label: {
             Image(systemName: "shuffle").font(.system(size: 16)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
         }
         .accessibilityLabel("Shuffle")
