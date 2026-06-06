@@ -1196,7 +1196,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         guard !queue.isEmpty else { return }
         let current = queue[queueIndex]
         unshuffledQueue = queue
-        var newQueue = queue.shuffled()
+        var newQueue = distributedShuffle(tracks: queue)
         if let idx = newQueue.firstIndex(where: { $0.id == current.id }) {
             newQueue.swapAt(0, idx)
         }
@@ -1214,10 +1214,40 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     func shufflePlay(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
         isShuffle = true
-        let shuffled = tracks.shuffled()
+        let shuffled = distributedShuffle(tracks: tracks)
         if let first = shuffled.first {
             playTrack(first, context: shuffled)
         }
+    }
+
+    private func distributedShuffle(tracks: [Track]) -> [Track] {
+        guard tracks.count > 1 else { return tracks }
+        
+        // 1. Group tracks by artist
+        var grouped: [String: [Track]] = [:]
+        for track in tracks {
+            let key = track.artist ?? "Unknown Artist"
+            grouped[key, default: []].append(track)
+        }
+        
+        var scoredTracks: [(track: Track, score: Double)] = []
+        
+        // 2. Assign spaced-out scores to each track
+        for (_, group) in grouped {
+            let shuffledGroup = group.shuffled()
+            let increment = 1.0 / Double(shuffledGroup.count)
+            
+            for (index, track) in shuffledGroup.enumerated() {
+                // Perfect spacing + random jitter
+                let baseScore = Double(index) * increment
+                let jitter = Double.random(in: 0..<increment)
+                let finalScore = baseScore + jitter
+                scoredTracks.append((track: track, score: finalScore))
+            }
+        }
+        
+        // 3. Sort by score
+        return scoredTracks.sorted { $0.score < $1.score }.map { $0.track }
     }
 
     private func startCrossfade() {
