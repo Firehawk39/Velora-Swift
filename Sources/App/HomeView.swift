@@ -111,9 +111,10 @@ struct HomeView: View {
                                 ForEach(offlineAlbums.prefix(isCompact ? 6 : 8)) { album in
                                     AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 180, cardH: ScreenTier.isPhone ? 100 : 120)
                                         .onTapGesture {
+                                            let pManager = playback
                                             client.fetchAlbumTracks(albumId: album.id) { tracks in
                                                 if let first = tracks.first {
-                                                    playback.playTrack(first, context: tracks)
+                                                    pManager.playTrack(first, context: tracks)
                                                 }
                                             }
                                         }

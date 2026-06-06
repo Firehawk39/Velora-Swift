@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 
 @MainActor
-class NavidromeClient: ObservableObject {
+final class NavidromeClient: ObservableObject {
     @Published var artists: [Artist] = []
     @Published var albums: [Album] = []
     @Published var recentlyPlayed: [Track] = []

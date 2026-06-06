@@ -40,7 +40,7 @@ struct ContentView: View {
         _playback = StateObject(wrappedValue: playbackInstance)
     }
 
-    @StateObject private var network = NetworkMonitor.shared
+    @ObservedObject private var network = NetworkMonitor.shared
 
     var body: some View {
         ZStack(alignment: .top) {
