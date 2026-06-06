@@ -78,17 +78,49 @@ struct SearchView: View {
                 return
             }
 
-            // ── Step 4: Fire the network request ─────────────────────────────
-            client.search(query: trimmed) { foundTracks, foundAlbums, foundArtists in
-                // ── Step 5: Generation guard — discard stale responses ────────
-                // If the user typed again while this request was in-flight,
-                // searchGeneration will have advanced. We simply ignore the result.
-                guard self.searchGeneration == myGeneration else { return }
-
-                self.tracks = foundTracks
-                self.albums = foundAlbums
-                self.artists = foundArtists
-                self.isLoading = false
+            // ── Step 4: Fire the network request or local search ─────────────────────────────
+            if NetworkMonitor.shared.isConnected {
+                client.search(query: trimmed) { foundTracks, foundAlbums, foundArtists in
+                    // ── Step 5: Generation guard — discard stale responses ────────
+                    guard self.searchGeneration == myGeneration else { return }
+                    self.tracks = foundTracks
+                    self.albums = foundAlbums
+                    self.artists = foundArtists
+                    self.isLoading = false
+                }
+            } else {
+                // Offline Local Search
+                let lowerQuery = trimmed.lowercased()
+                
+                // Tracks
+                let foundTracks = self.client.allSongs.filter { 
+                    $0.title.lowercased().contains(lowerQuery) || 
+                    ($0.artist?.lowercased().contains(lowerQuery) ?? false) ||
+                    ($0.album?.lowercased().contains(lowerQuery) ?? false)
+                }.filter { self.playback.isDownloaded($0.id) }
+                
+                // Albums
+                let foundAlbums = self.client.albums.filter {
+                    $0.name.lowercased().contains(lowerQuery) ||
+                    ($0.artist?.lowercased().contains(lowerQuery) ?? false)
+                }.filter { album in
+                    self.client.allSongs.contains { $0.albumId == album.id && self.playback.isDownloaded($0.id) }
+                }
+                
+                // Artists
+                let foundArtists = self.client.artists.filter {
+                    $0.name.lowercased().contains(lowerQuery)
+                }.filter { artist in
+                    self.client.allSongs.contains { $0.artistId == artist.id && self.playback.isDownloaded($0.id) }
+                }
+                
+                DispatchQueue.main.async {
+                    guard self.searchGeneration == myGeneration else { return }
+                    self.tracks = Array(foundTracks.prefix(20))
+                    self.albums = Array(foundAlbums.prefix(10))
+                    self.artists = Array(foundArtists.prefix(10))
+                    self.isLoading = false
+                }
             }
         }
     }

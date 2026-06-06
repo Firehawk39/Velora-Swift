@@ -40,6 +40,8 @@ struct ContentView: View {
         _playback = StateObject(wrappedValue: playbackInstance)
     }
 
+    @StateObject private var network = NetworkMonitor.shared
+
     var body: some View {
         ZStack(alignment: .top) {
             // ── Layer 1: Global Canvas Background ──────────────────────────
@@ -70,10 +72,32 @@ struct ContentView: View {
                 .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) 
-
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea()
+
+            // ── Layer 3: Global Offline Banner ──────────────────────────────
+            if !network.isConnected {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "wifi.slash")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("You are offline. Showing downloaded content only.")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.85))
+                    .cornerRadius(20)
+                    .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                    .padding(.bottom, isCompact ? 100 : 120) // Hover above the nav bar area
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(800)
+                }
+                .ignoresSafeArea()
+            }
 
             // ── Layer 5: Profile menu dropdown ──────────────────────
             if showProfileMenu {
@@ -217,7 +241,8 @@ struct ContentView: View {
         let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
         let savedOnlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url") ?? ""
         let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
-        let isOnline = UserDefaults.standard.bool(forKey: "velora_is_online_mode")
+        let connMode = UserDefaults.standard.integer(forKey: "velora_connection_mode")
+        let isOnline = (connMode == 1)
         
         // If there are no saved credentials, do not log in automatically.
         // Instead, show the settings wizard (login screen) on fresh install.
@@ -233,7 +258,7 @@ struct ContentView: View {
             let finalUrl = isOnline ? savedOnlineUrl : savedUrl
             client.configure(url: finalUrl, user: savedUser, pass: savedPass)
             client.loadOfflineMetadata()
-            client.fetchEverything()
+            client.fetchEverything() // Self-gates on NetworkMonitor; no-ops when offline
             showSettings = false
         } else {
             // Fallback to showing settings if Keychain read fails

@@ -76,7 +76,7 @@ struct SettingsView: View {
             // Floating-label field
             FloatingLabelField(
                 label: "Server Endpoint URL",
-                placeholder: "http://192.168.1.6:4533",
+                placeholder: "http://your-server-ip:4533",
                 text: $serverAddress,
                 isDark: isDark,
                 borderCol: borderCol,
@@ -132,7 +132,7 @@ struct SettingsView: View {
 
             FloatingLabelField(
                 label: "Username",
-                placeholder: "admin",
+                placeholder: "username",
                 text: $username,
                 isDark: isDark,
                 borderCol: borderCol,
@@ -316,7 +316,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_server_url") private var serverUrl: String = ""
     @AppStorage("velora_online_server_url") private var onlineServerUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""
-    @AppStorage("velora_is_online_mode") private var isOnlineMode: Bool = false
+    @AppStorage("velora_connection_mode") private var connectionMode: Int = 0
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
@@ -361,23 +361,31 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
-                            Toggle(isOn: Binding(
-                                get: { isOnlineMode },
-                                set: { newValue in
-                                    isOnlineMode = newValue
-                                    reconnectWithCurrentMode()
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Connection Mode")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(isDark ? .white : .black)
+                                
+                                Picker("Connection Mode", selection: Binding(
+                                    get: { connectionMode },
+                                    set: { newValue in
+                                        connectionMode = newValue
+                                        NetworkMonitor.shared.evaluateConnectionState()
+                                        if newValue != 2 {
+                                            reconnectWithCurrentMode()
+                                        }
+                                    }
+                                )) {
+                                    Text("Local").tag(0)
+                                    Text("Online").tag(1)
+                                    Text("Offline").tag(2)
                                 }
-                            )) {
-                                VStack(alignment: .leading) {
-                                    Text("Online Mode")
-                                        .font(.system(size: 16, weight: .medium))
-                                        .foregroundColor(isDark ? .white : .black)
-                                    Text(isOnlineMode ? "Using remote server (zrok.io)" : "Using local server")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.gray)
-                                }
+                                .pickerStyle(SegmentedPickerStyle())
+                                
+                                Text(connectionMode == 0 ? "Using local server URL" : (connectionMode == 1 ? "Using remote server (zrok.io)" : "Forcing offline mode (No network requests)"))
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.gray)
                             }
-                            .tint(accentBg)
                             .padding()
                             .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
                             .cornerRadius(16)
@@ -394,7 +402,7 @@ struct AppSettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Online Server").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
                                     TextField("https://your-online-server.com", text: $onlineServerUrl, onCommit: {
-                                        if isOnlineMode { reconnectWithCurrentMode() }
+                                        if connectionMode == 1 { reconnectWithCurrentMode() }
                                     })
                                     .font(.system(size: 14))
                                     .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
@@ -734,12 +742,14 @@ struct AppSettingsView: View {
     private func reconnectWithCurrentMode() {
         guard !username.isEmpty else { return }
         let localUrl = serverUrl
-        let finalUrl = isOnlineMode ? onlineServerUrl : localUrl
+        let finalUrl = (connectionMode == 1) ? onlineServerUrl : localUrl
         
         if let passData = KeychainHelper.shared.read(service: "velora-password", account: username),
            let savedPass = String(data: passData, encoding: .utf8) {
             client.configure(url: finalUrl, user: username, pass: savedPass)
-            client.fetchEverything()
+            if connectionMode != 2 {
+                client.fetchEverything()
+            }
         }
     }
 }

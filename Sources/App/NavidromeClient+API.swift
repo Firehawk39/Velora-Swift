@@ -456,6 +456,12 @@ extension NavidromeClient {
 
     func fetchAllSongs(completion: (@MainActor @Sendable ([Track]) -> Void)? = nil) {
         fetchSongsPage(offset: 0, batchSize: 500) { allFetchedSongs in
+            // Guard: never overwrite good cached data with an empty result
+            // (network failure returns [] via the pagination error path)
+            guard !allFetchedSongs.isEmpty else {
+                completion?(allFetchedSongs)
+                return
+            }
             self.allSongs = allFetchedSongs
             self.syncLosslessPlaylist()
             self.saveOfflineMetadata()
@@ -608,6 +614,11 @@ extension NavidromeClient {
     // MARK: - Batch Fetch
 
     func fetchEverything() {
+        // Don't fire server requests when offline — rely on cached metadata
+        guard NetworkMonitor.shared.isConnected else {
+            AppLogger.shared.log("[Offline] Skipping fetchEverything — no network connection.")
+            return
+        }
         fetchRecentlyPlayed()
         fetchAlbums()
         fetchArtists()

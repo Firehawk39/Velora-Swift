@@ -4,6 +4,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager
+    @ObservedObject var network = NetworkMonitor.shared
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
     @Environment(\.horizontalSizeClass) var hSizeClass
 
@@ -38,78 +39,93 @@ struct HomeView: View {
                     .padding(.bottom, ScreenTier.isPhone ? 24 : 32)
 
                 // ── Recent Tracks ─────────────────────────────────────
-                SectionHeader(title: "Recent tracks", isDark: isDark, hPad: hPad)
+                let offlineRecent = !network.isConnected ? playback.filterOffline(client.recentTracks) : client.recentTracks
+                if !offlineRecent.isEmpty || network.isConnected {
+                    SectionHeader(title: "Recent tracks", isDark: isDark, hPad: hPad)
 
-                if client.recentTracks.isEmpty {
-                    SkeletonRow(count: 4, cardWidth: ScreenTier.isPhone ? 140 : 150, cardHeight: ScreenTier.isPhone ? 140 : 150, isDark: isDark)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: ScreenTier.isPhone ? 16 : 32) {
-                            ForEach(client.recentTracks.prefix(isCompact ? 4 : 6)) { track in
-                                TrackCard(
-                                    track: track,
-                                    isDark: isDark,
-                                    size: ScreenTier.isPhone ? 140 : 150,
-                                    onPlay: { playback.playTrack(track, context: Array(client.recentTracks)) }
-                                )
+                    if client.recentTracks.isEmpty {
+                        SkeletonRow(count: 4, cardWidth: ScreenTier.isPhone ? 140 : 150, cardHeight: ScreenTier.isPhone ? 140 : 150, isDark: isDark)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: ScreenTier.isPhone ? 16 : 32) {
+                                ForEach(offlineRecent.prefix(isCompact ? 4 : 6)) { track in
+                                    TrackCard(
+                                        track: track,
+                                        isDark: isDark,
+                                        size: ScreenTier.isPhone ? 140 : 150,
+                                        onPlay: { playback.playTrack(track, context: Array(offlineRecent)) }
+                                    )
+                                }
                             }
+                            .padding(.horizontal, hPad)
+                            .padding(.bottom, 8)
                         }
-                        .padding(.horizontal, hPad)
-                        .padding(.bottom, 8)
                     }
-                }
 
-                Spacer().frame(height: 32)
+                    Spacer().frame(height: 32)
+                }
 
                 // ── Artists ───────────────────────────────────────────
-                SectionHeader(title: "Artists", isDark: isDark, hPad: hPad)
+                let offlineArtists = !network.isConnected ? client.artists.filter { artist in
+                    client.allSongs.contains(where: { $0.artistId == artist.id && playback.isDownloaded($0.id) })
+                } : client.artists
 
-                if client.artists.isEmpty {
-                    SkeletonRow(count: 5, cardWidth: isCompact ? 75 : 90, cardHeight: isCompact ? 75 : 90, isDark: isDark, circular: true)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: isCompact ? 16 : 24) {
-                            ForEach(client.artists.prefix(isCompact ? 8 : 12)) { artist in
-                                ArtistCircle(artist: artist, isDark: isDark, size: isCompact ? 75 : 90)
-                                    .onTapGesture {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            onArtistClick?(artist.id, artist.name)
-                                        }
-                                    }
-                            }
-                        }
-                        .padding(.horizontal, hPad)
-                        .padding(.bottom, 8)
-                    }
-                }
+                if !offlineArtists.isEmpty || network.isConnected {
+                    SectionHeader(title: "Artists", isDark: isDark, hPad: hPad)
 
-                Spacer().frame(height: 32)
-
-                // ── Recently Added Albums ─────────────────────────────
-                SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad)
-
-                if client.albums.isEmpty {
-                    SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 160 : 200, cardHeight: ScreenTier.isPhone ? 100 : 130, isDark: isDark, rounded: 24)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: ScreenTier.isPhone ? 12 : 24) {
-                            ForEach(client.albums.prefix(isCompact ? 6 : 8)) { album in
-                                AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 180, cardH: ScreenTier.isPhone ? 100 : 120)
-                                    .onTapGesture {
-                                        client.fetchAlbumTracks(albumId: album.id) { tracks in
-                                            if let first = tracks.first {
-                                                playback.playTrack(first, context: tracks)
+                    if client.artists.isEmpty {
+                        SkeletonRow(count: 5, cardWidth: isCompact ? 75 : 90, cardHeight: isCompact ? 75 : 90, isDark: isDark, circular: true)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: isCompact ? 16 : 24) {
+                                ForEach(offlineArtists.prefix(isCompact ? 8 : 12)) { artist in
+                                    ArtistCircle(artist: artist, isDark: isDark, size: isCompact ? 75 : 90)
+                                        .onTapGesture {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                                onArtistClick?(artist.id, artist.name)
                                             }
                                         }
-                                    }
+                                }
                             }
+                            .padding(.horizontal, hPad)
+                            .padding(.bottom, 8)
                         }
-                        .padding(.horizontal, hPad)
-                        .padding(.bottom, 4)
                     }
+
+                    Spacer().frame(height: 32)
                 }
 
-                Spacer().frame(height: 48)
+                // ── Recently Added Albums ─────────────────────────────
+                let offlineAlbums = !network.isConnected ? client.albums.filter { album in
+                    client.allSongs.contains(where: { $0.albumId == album.id && playback.isDownloaded($0.id) })
+                } : client.albums
+
+                if !offlineAlbums.isEmpty || network.isConnected {
+                    SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad)
+
+                    if client.albums.isEmpty {
+                        SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 160 : 200, cardHeight: ScreenTier.isPhone ? 100 : 130, isDark: isDark, rounded: 24)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: ScreenTier.isPhone ? 12 : 24) {
+                                ForEach(offlineAlbums.prefix(isCompact ? 6 : 8)) { album in
+                                    AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 180, cardH: ScreenTier.isPhone ? 100 : 120)
+                                        .onTapGesture {
+                                            client.fetchAlbumTracks(albumId: album.id) { tracks in
+                                                if let first = tracks.first {
+                                                    playback.playTrack(first, context: tracks)
+                                                }
+                                            }
+                                        }
+                                }
+                            }
+                            .padding(.horizontal, hPad)
+                            .padding(.bottom, 4)
+                        }
+                    }
+
+                    Spacer().frame(height: 48)
+                }
             }
             .padding(.top, 4)
         .onAppear {

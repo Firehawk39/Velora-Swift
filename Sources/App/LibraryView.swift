@@ -5,6 +5,7 @@ struct LibraryView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager
     @EnvironmentObject var sync: SyncManager
+    @ObservedObject var network = NetworkMonitor.shared
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     @Environment(\.horizontalSizeClass) var hSizeClass
@@ -104,20 +105,22 @@ struct LibraryView: View {
                     .accessibilityLabel("View Options")
                     
                     // Offline Only Toggle
+                    let isForcedOffline = !network.isConnected
                     Button(action: { showOfflineOnly.toggle() }) {
                         HStack(spacing: 6) {
-                            Image(systemName: showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
+                            Image(systemName: isForcedOffline ? "wifi.slash" : (showOfflineOnly ? "checkmark.icloud.fill" : "icloud"))
                             if !isCompact {
-                                Text("Offline")
+                                Text(isForcedOffline ? "Offline Mode" : "Offline")
                             }
                         }
                         .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                        .foregroundColor(showOfflineOnly ? .red : (isDarkMode ? .white : .black))
+                        .foregroundColor(isForcedOffline ? .white : (showOfflineOnly ? .red : (isDarkMode ? .white : .black)))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
+                        .background(Capsule().fill(isForcedOffline ? Color.red : (showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))))
                     }
                     .accessibilityLabel("Offline Only Filter")
+                    .disabled(isForcedOffline)
                     
                     // Sort Mode Menu
                     Menu {
@@ -198,8 +201,9 @@ struct LibraryView: View {
 
             ScrollView(showsIndicators: false) {
                 Group {
+                    let effectiveOffline = showOfflineOnly || forceOffline || !network.isConnected
                     switch category {
-                    case "playlists": PlaylistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline) { p in
+                    case "playlists": PlaylistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: effectiveOffline) { p in
                         selectedPlaylist = p
                         isLoadingPlaylist = true
                         client.fetchPlaylistTracks(playlistId: p.id) { t in
@@ -209,13 +213,13 @@ struct LibraryView: View {
                             }
                         }
                     }
-                    case "artists":   ArtistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline, onArtistClick: { id, name in
+                    case "artists":   ArtistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: effectiveOffline, onArtistClick: { id, name in
                         withAnimation {
                             onArtistClick?(id, name)
                         }
                     })
-                    case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
-                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: showOfflineOnly || forceOffline)
+                    case "albums":    AlbumGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: effectiveOffline)
+                    case "songs":     SongListView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: effectiveOffline)
                     default:          EmptyView()
                     }
                 }
@@ -251,6 +255,8 @@ private struct LibraryMenuView: View {
                         }
                         .padding(.vertical, isCompact ? 16 : 22)
                         .padding(.horizontal, hPad)
+                        .opacity(!NetworkMonitor.shared.isConnected ? 0.4 : 1.0)
+                        .disabled(!NetworkMonitor.shared.isConnected && false) // Allow entering menus to see downloaded items
                     }
                     Divider().padding(.horizontal, hPad).opacity(0.1)
                 }
@@ -353,6 +359,11 @@ private struct PlaylistGridView: View {
                         }
                         .onTapGesture { onPlaylistClick(p) }
                         .contextMenu {
+                            Button(action: {
+                                playback.downloadPlaylist(playlistId: p.id)
+                            }) {
+                                Label("Download Playlist", systemImage: "arrow.down.circle")
+                            }
                             Button(role: .destructive, action: {
                                 client.deletePlaylist(id: p.id) { _ in }
                             }) {
@@ -389,6 +400,11 @@ private struct PlaylistGridView: View {
                         .contentShape(Rectangle())
                         .onTapGesture { onPlaylistClick(p) }
                         .contextMenu {
+                            Button(action: {
+                                playback.downloadPlaylist(playlistId: p.id)
+                            }) {
+                                Label("Download Playlist", systemImage: "arrow.down.circle")
+                            }
                             Button(role: .destructive, action: {
                                 client.deletePlaylist(id: p.id) { _ in }
                             }) {
@@ -532,6 +548,12 @@ private struct AlbumGridView: View {
                             }) {
                                 Label("Remove Album Downloads", systemImage: "trash")
                             }
+                        } else {
+                            Button(action: {
+                                playback.downloadAlbum(albumId: a.id)
+                            }) {
+                                Label("Download Album", systemImage: "arrow.down.circle")
+                            }
                         }
                     }
                 }
@@ -573,6 +595,12 @@ private struct AlbumGridView: View {
                                 playback.deleteAlbumDownloads(albumId: a.id)
                             }) {
                                 Label("Remove Album Downloads", systemImage: "trash")
+                            }
+                        } else {
+                            Button(action: {
+                                playback.downloadAlbum(albumId: a.id)
+                            }) {
+                                Label("Download Album", systemImage: "arrow.down.circle")
                             }
                         }
                     }

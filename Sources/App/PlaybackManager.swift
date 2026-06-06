@@ -319,7 +319,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         self.currentArtworkTrackId = nil
         FanartManager.shared.currentBackdrop = nil
         
-        // Fetch lyrics
+        let isOnline = NetworkMonitor.shared.isConnected
+        
+        // Fetch lyrics — works offline too (returns disk-cached lyrics)
         client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
@@ -338,15 +340,18 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             }
         }
         
-        // Fetch Backdrop (Fanart/Discogs)
-        if let artistId = track.artistId {
-            client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                DispatchQueue.main.async {
-                    FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+        // Network-only side effects: skip when offline to avoid hanging requests
+        if isOnline {
+            // Fetch Backdrop (Fanart/Discogs)
+            if let artistId = track.artistId {
+                client.fetchArtistInfo(artistId: artistId) { _, mbid in
+                    DispatchQueue.main.async {
+                        FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+                    }
                 }
+            } else {
+                FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
             }
-        } else {
-            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
         }
         
         player?.play()
@@ -389,7 +394,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             guard let self = self else { return }
             if self.isCrossfading { return }
             
-            if let track = self.currentTrack {
+            if let track = self.currentTrack, isOnline {
                 self.client.scrobble(id: track.id, submission: true)
             }
             
@@ -408,16 +413,21 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             }
         }
         
-        // Mark as "Now Playing" on server
-        client.scrobble(id: track.id, submission: false)
+        // Mark as "Now Playing" on server (only when online)
+        if isOnline {
+            client.scrobble(id: track.id, submission: false)
+        }
         
         updateNowPlayingInfo()
-        prefetchNextTracks()
-        prewarmNextTrack()
         
-        // Prioritize downloads for the current playback context
-        boostCurrentContextDownloads()
+        if isOnline {
+            prefetchNextTracks()
+            prewarmNextTrack()
+            // Prioritize downloads for the current playback context
+            boostCurrentContextDownloads()
+        }
     }
+
     
     private func boostCurrentContextDownloads() {
         // Move tracks from the current playback queue to the front of the download queue
@@ -684,7 +694,14 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                     }
 
                     // Persist to the local CoverArt cache so subsequent plays load instantly
-                    let artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+                    var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+                    // Extract the real ID from a server URL (e.g., "https://...?id=al-123" → "al-123")
+                    if artId.contains("getCoverArt"),
+                       let artUrl = URL(string: artId),
+                       let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
+                       let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
+                        artId = idParam
+                    }
                     let coverArtDir = VeloraStorage.coverArt
                     let localUrl = coverArtDir.appendingPathComponent("\(artId).jpg")
                     if !FileManager.default.fileExists(atPath: coverArtDir.path) {
@@ -863,8 +880,31 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         return (downloaded, tracks.count)
     }
     
+    func downloadAlbum(albumId: String) {
+        let tracks = client.allSongs.filter { $0.albumId == albumId }
+        for track in tracks {
+            downloadTrack(track)
+        }
+    }
+    
+    func downloadPlaylist(playlistId: String) {
+        client.fetchPlaylistTracks(playlistId: playlistId) { tracks in
+            DispatchQueue.main.async {
+                for track in tracks {
+                    self.downloadTrack(track)
+                }
+            }
+        }
+    }
+    
     func downloadTrack(_ track: Track, priority: DownloadPriority = .normal) {
         AppLogger.shared.log("downloadTrack requested for \(track.id) - \(track.title)", level: .debug)
+        
+        // Can't download without network
+        guard NetworkMonitor.shared.isConnected else {
+            AppLogger.shared.log("downloadTrack skipped for \(track.id) — offline", level: .info)
+            return
+        }
         
         // 1. Check if already downloaded
         if checkFileSystemForTrack(track.id) {
@@ -933,9 +973,18 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         task.resume()
         
         // Trigger cover art download alongside the track
-        if let artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first {
-            client.downloadCoverArt(id: artId)
+        let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+        // Extract the real ID from a server URL if needed (e.g., "https://...?id=al-123" → "al-123")
+        let cleanArtId: String
+        if rawArtId.contains("getCoverArt"),
+           let url = URL(string: rawArtId),
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
+            cleanArtId = idParam
+        } else {
+            cleanArtId = rawArtId
         }
+        client.downloadCoverArt(id: cleanArtId)
     }
 
     
@@ -1308,6 +1357,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     }
     
     private func fetchMetadata(for track: Track) {
+        // Lyrics work offline (returns disk-cached lyrics)
         client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
@@ -1326,14 +1376,17 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             }
         }
         
-        if let artistId = track.artistId {
-            client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                DispatchQueue.main.async {
-                    FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+        // Network-only: skip backdrop fetch when offline
+        if NetworkMonitor.shared.isConnected {
+            if let artistId = track.artistId {
+                client.fetchArtistInfo(artistId: artistId) { _, mbid in
+                    DispatchQueue.main.async {
+                        FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
+                    }
                 }
+            } else {
+                FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
             }
-        } else {
-            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
         }
     }
     

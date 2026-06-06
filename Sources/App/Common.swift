@@ -3,8 +3,25 @@ import CryptoKit
 
 // MARK: - Offline Artwork Helper
 
+/// Extracts the actual cover art ID from a server URL string.
+/// Server URLs look like: https://server.com/rest/getCoverArt.view?id=al-123&u=user&...
+/// Returns just "al-123" for local file lookups.
+private func extractArtId(from serverUrlOrId: String) -> String {
+    // If it looks like a URL (contains "getCoverArt"), extract the 'id' query parameter
+    if serverUrlOrId.contains("getCoverArt"),
+       let url = URL(string: serverUrlOrId),
+       let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+       let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
+        return idParam
+    }
+    // Already a plain ID, or unrecognized format — return as-is
+    return serverUrlOrId
+}
+
 func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
-    let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(id).jpg")
+    // Try extracting the real ID from a server URL for local lookup
+    let resolvedId = extractArtId(from: id)
+    let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(resolvedId).jpg")
     if FileManager.default.fileExists(atPath: localUrl.path) {
         return localUrl
     }
