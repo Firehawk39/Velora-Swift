@@ -640,11 +640,18 @@ struct NowPlayingView: View {
         VStack(spacing: 8) {
             GeometryReader { barGeo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.2)).frame(height: 4)
-                    Capsule().fill(Color.white)
-                        .frame(width: barGeo.size.width * CGFloat(progressFraction), height: 4)
-                        .animation(isDragging ? nil : .linear(duration: 0.5), value: progressFraction)
+                    // Visual Bar (4pt height, centered vertically)
+                    ZStack(alignment: .leading) {
+                        Color.white.opacity(0.2)
+                        
+                        Color.white
+                            .scaleEffect(x: CGFloat(progressFraction), y: 1.0, anchor: .leading)
+                            .animation(isDragging ? nil : .linear(duration: 0.1), value: progressFraction)
+                    }
+                    .frame(height: 4)
+                    .clipShape(Capsule())
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
