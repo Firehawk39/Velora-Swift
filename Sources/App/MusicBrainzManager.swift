@@ -21,7 +21,7 @@ struct MBAlbumInfo {
 }
 
 @MainActor
-class MusicBrainzManager: ObservableObject {
+final class MusicBrainzManager: ObservableObject {
     static let shared = MusicBrainzManager()
     
     @Published var currentArtistInfo: MBArtistInfo? = nil

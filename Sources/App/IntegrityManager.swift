@@ -5,7 +5,7 @@ import SwiftUI
 /// This replaces expensive disk scanning with a lightning-fast JSON manifest,
 /// optimized for older hardware like the iPhone SE (1st Gen).
 @MainActor
-class IntegrityManager: ObservableObject {
+final class IntegrityManager: ObservableObject {
     static let shared = IntegrityManager()
     
     private let manifestName = "downloads_manifest.json"

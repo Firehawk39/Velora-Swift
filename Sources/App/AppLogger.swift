@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 @MainActor
-class AppLogger: ObservableObject {
+final class AppLogger: ObservableObject {
     static let shared = AppLogger()
     
     struct LogEntry: Identifiable {

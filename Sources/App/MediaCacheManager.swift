@@ -2,7 +2,7 @@ import SwiftUI
 import Foundation
 
 @MainActor
-class BackdropManager: ObservableObject {
+final class BackdropManager: ObservableObject {
     static let shared = BackdropManager()
     
     @Published var currentBackdrop: UIImage? = nil

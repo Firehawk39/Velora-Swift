@@ -2,7 +2,7 @@ import SwiftUI
 import Foundation
 
 @MainActor
-class FanartManager: ObservableObject {
+final class FanartManager: ObservableObject {
     static let shared = FanartManager()
     
     @Published var currentBackdrop: UIImage? = nil
