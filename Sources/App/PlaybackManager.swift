@@ -989,6 +989,9 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             cleanArtId = rawArtId
         }
         client.downloadCoverArt(id: cleanArtId)
+        
+        // Trigger lyrics fetch alongside the track for offline use
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { _ in }
     }
 
     
