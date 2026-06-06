@@ -369,10 +369,12 @@ struct AppSettingsView: View {
                                 Picker("Connection Mode", selection: Binding(
                                     get: { connectionMode },
                                     set: { newValue in
-                                        connectionMode = newValue
-                                        NetworkMonitor.shared.evaluateConnectionState()
-                                        if newValue != 2 {
-                                            reconnectWithCurrentMode()
+                                        Task { @MainActor in
+                                            connectionMode = newValue
+                                            NetworkMonitor.shared.evaluateConnectionState()
+                                            if newValue != 2 {
+                                                reconnectWithCurrentMode()
+                                            }
                                         }
                                     }
                                 )) {
