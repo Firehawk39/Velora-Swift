@@ -72,7 +72,7 @@ struct SearchView: View {
         // ── Step 3: Debounce — sleep 300 ms, cancel if another keystroke arrives
         searchTask = Task {
             do {
-                try await Task.sleep(for: .milliseconds(300))
+                try await Task.sleep(nanoseconds: 300_000_000)
             } catch {
                 // Task was cancelled (new keystroke arrived) — bail out silently
                 return

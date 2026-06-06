@@ -101,6 +101,8 @@ enum VeloraStorage {
         
         // Mark migration complete
         fm.createFile(atPath: migrationFlag.path, contents: nil)
-        AppLogger.shared.log("[Storage] Migration from Documents/ to Application Support/VeloraData/ complete.")
+        Task { @MainActor in
+            AppLogger.shared.log("[Storage] Migration from Documents/ to Application Support/VeloraData/ complete.")
+        }
     }
 }

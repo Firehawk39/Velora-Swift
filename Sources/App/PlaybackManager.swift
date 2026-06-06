@@ -391,24 +391,26 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             object: playerItem,
             queue: .main
         ) { [weak self] _ in
-            guard let self = self else { return }
-            if self.isCrossfading { return }
-            
-            if let track = self.currentTrack, isOnline {
-                self.client.scrobble(id: track.id, submission: true)
-            }
-            
-            switch self.repeatMode {
-            case .one:
-                self.loadAndPlay(track: self.queue[self.queueIndex])
-            case .all:
-                self.skipForward()
-            case .off:
-                if self.queueIndex < self.queue.count - 1 {
+            Task { @MainActor in
+                guard let self = self else { return }
+                if self.isCrossfading { return }
+                
+                if let track = self.currentTrack, self.isOnline {
+                    self.client.scrobble(id: track.id, submission: true)
+                }
+                
+                switch self.repeatMode {
+                case .one:
+                    self.loadAndPlay(track: self.queue[self.queueIndex])
+                case .all:
                     self.skipForward()
-                } else {
-                    self.isPlaying = false
-                    self.player?.pause()
+                case .off:
+                    if self.queueIndex < self.queue.count - 1 {
+                        self.skipForward()
+                    } else {
+                        self.isPlaying = false
+                        self.player?.pause()
+                    }
                 }
             }
         }
@@ -605,33 +607,32 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
+            Task { @MainActor in self?.togglePlayPause() }
             return .success
         }
         
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
+            Task { @MainActor in self?.togglePlayPause() }
             return .success
         }
         
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            self?.skipForward()
+            Task { @MainActor in self?.skipForward() }
             return .success
         }
         
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            self?.skipBackward()
+            Task { @MainActor in self?.skipBackward() }
             return .success
         }
         
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            if let event = event as? MPChangePlaybackPositionCommandEvent {
-                self?.seek(to: event.positionTime)
-            }
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            Task { @MainActor in self?.seek(to: event.positionTime) }
             return .success
         }
     }
@@ -1339,19 +1340,21 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             object: item,
             queue: .main
         ) { [weak self] _ in
-            guard let self = self else { return }
-            if self.isCrossfading { return }
-            
-            if let t = self.currentTrack {
-                self.client.scrobble(id: t.id, submission: true)
-            }
-            
-            switch self.repeatMode {
-            case .one:
-                self.player?.seek(to: .zero)
-                self.player?.play()
-            case .all, .off:
-                self.skipForward()
+            Task { @MainActor in
+                guard let self = self else { return }
+                if self.isCrossfading { return }
+                
+                if let t = self.currentTrack {
+                    self.client.scrobble(id: t.id, submission: true)
+                }
+                
+                switch self.repeatMode {
+                case .one:
+                    self.player?.seek(to: .zero)
+                    self.player?.play()
+                case .all, .off:
+                    self.skipForward()
+                }
             }
         }
     }
