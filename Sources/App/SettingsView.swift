@@ -753,7 +753,7 @@ struct AppSettingsView: View {
 
 // MARK: - Storage Monitor Component
 struct StorageInfoView: View {
-    @StateObject private var integrity = IntegrityManager.shared
+    @ObservedObject private var integrity = IntegrityManager.shared
     @State private var storage: IntegrityManager.StorageInfo?
     let isDark: Bool
     

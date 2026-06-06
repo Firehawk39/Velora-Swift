@@ -4,8 +4,8 @@ import Foundation
 @MainActor
 struct NowPlayingView: View {
     @EnvironmentObject var playback: PlaybackManager
-    @StateObject var fanart = FanartManager.shared
-    @StateObject private var mb = MusicBrainzManager.shared
+    @ObservedObject var fanart = FanartManager.shared
+    @ObservedObject private var mb = MusicBrainzManager.shared
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass)   var vSizeClass
     @Binding var isQueueOpen: Bool
