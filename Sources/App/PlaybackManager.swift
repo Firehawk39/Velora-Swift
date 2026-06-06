@@ -376,11 +376,14 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                 
                 // Crossfade check — also gate against short tracks shorter than 2x the fade window
                 let triggerTime = self.duration - self.crossfadeDuration
-                if self.isCrossfadeEnabled &&
-                   !self.isCrossfading &&
-                   self.duration > (self.crossfadeDuration * 2.0) &&
-                   time.seconds > triggerTime {
-                    self.startCrossfade()
+                if self.isCrossfadeEnabled {
+                    if !self.isCrossfading {
+                        if self.duration > (self.crossfadeDuration * 2.0) {
+                            if time.seconds > triggerTime {
+                                self.startCrossfade()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1315,23 +1318,28 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak capturedPlayer] time in
-            guard let self = self,
-                  let capturedPlayer = capturedPlayer,
-                  self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                  let currentItem = capturedPlayer.currentItem,
-                  currentItem.duration.isNumeric else { return }
+            Task { @MainActor in
+                guard let self = self,
+                      let capturedPlayer = capturedPlayer,
+                      self.player === capturedPlayer,  // Only the ACTIVE player may update progress
+                      let currentItem = capturedPlayer.currentItem,
+                      currentItem.duration.isNumeric else { return }
 
-            self.progress = time.seconds
-            self.duration = currentItem.duration.seconds
-            self.updateNowPlayingInfo()
+                self.progress = time.seconds
+                self.duration = currentItem.duration.seconds
+                self.updateNowPlayingInfo()
 
-            // Gate: only crossfade when the track is at least 2× the fade window long
-            let triggerTime = self.duration - self.crossfadeDuration
-            if self.isCrossfadeEnabled &&
-               !self.isCrossfading &&
-               self.duration > (self.crossfadeDuration * 2.0) &&
-               time.seconds > triggerTime {
-                self.startCrossfade()
+                // Gate: only crossfade when the track is at least 2× the fade window long
+                let triggerTime = self.duration - self.crossfadeDuration
+                if self.isCrossfadeEnabled {
+                    if !self.isCrossfading {
+                        if self.duration > (self.crossfadeDuration * 2.0) {
+                            if time.seconds > triggerTime {
+                                self.startCrossfade()
+                            }
+                        }
+                    }
+                }
             }
         }
         
