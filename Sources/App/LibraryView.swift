@@ -10,8 +10,17 @@ struct LibraryView: View {
 
     @Environment(\.horizontalSizeClass) var hSizeClass
     @State private var activeCategory: String? = nil
-    @AppStorage("library_viewMode") private var viewMode: ViewMode = .grid
-    @AppStorage("library_sortMode") private var sortMode: SortMode = .alphabetical
+    @AppStorage("library_viewMode") private var _viewModeRaw: String = ViewMode.grid.rawValue
+    @AppStorage("library_sortMode") private var _sortModeRaw: String = SortMode.alphabetical.rawValue
+    
+    private var viewMode: ViewMode {
+        get { ViewMode(rawValue: _viewModeRaw) ?? .grid }
+        nonmutating set { _viewModeRaw = newValue.rawValue }
+    }
+    private var sortMode: SortMode {
+        get { SortMode(rawValue: _sortModeRaw) ?? .alphabetical }
+        nonmutating set { _sortModeRaw = newValue.rawValue }
+    }
     @State private var showSortDropdown: Bool = false
     @State private var showOfflineOnly: Bool = false
     @State private var selectedPlaylist: Playlist? = nil
@@ -762,8 +771,18 @@ private struct PlaylistDetailView: View {
     let hPad: CGFloat
     var onBack: () -> Void
     
-    @AppStorage("playlist_viewMode") private var viewMode: LibraryView.ViewMode = .list
-    @AppStorage("playlist_sortMode") private var sortMode: LibraryView.SortMode = .alphabetical
+    @AppStorage("playlist_viewMode") private var _viewModeRaw: String = LibraryView.ViewMode.list.rawValue
+    
+    private var viewMode: LibraryView.ViewMode {
+        get { LibraryView.ViewMode(rawValue: _viewModeRaw) ?? .list }
+        nonmutating set { _viewModeRaw = newValue.rawValue }
+    }
+    @AppStorage("playlist_sortMode") private var _sortModeRaw: String = LibraryView.SortMode.alphabetical.rawValue
+    
+    private var sortMode: LibraryView.SortMode {
+        get { LibraryView.SortMode(rawValue: _sortModeRaw) ?? .alphabetical }
+        nonmutating set { _sortModeRaw = newValue.rawValue }
+    }
     @State private var showOfflineOnly: Bool = false
 
     var body: some View {
