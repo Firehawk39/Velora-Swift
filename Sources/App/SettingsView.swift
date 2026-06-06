@@ -366,23 +366,18 @@ struct AppSettingsView: View {
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(isDark ? .white : .black)
                                 
-                                Picker("Connection Mode", selection: Binding(
-                                    get: { connectionMode },
-                                    set: { newValue in
-                                        Task { @MainActor in
-                                            connectionMode = newValue
-                                            NetworkMonitor.shared.evaluateConnectionState()
-                                            if newValue != 2 {
-                                                reconnectWithCurrentMode()
-                                            }
-                                        }
-                                    }
-                                )) {
+                                Picker("Connection Mode", selection: $connectionMode) {
                                     Text("Local").tag(0)
                                     Text("Online").tag(1)
                                     Text("Offline").tag(2)
                                 }
                                 .pickerStyle(SegmentedPickerStyle())
+                                .onChange(of: connectionMode) { newValue in
+                                    NetworkMonitor.shared.evaluateConnectionState()
+                                    if newValue != 2 {
+                                        reconnectWithCurrentMode()
+                                    }
+                                }
                                 
                                 Text(connectionMode == 0 ? "Using local server URL" : (connectionMode == 1 ? "Using remote server (zrok.io)" : "Forcing offline mode (No network requests)"))
                                     .font(.system(size: 12))
