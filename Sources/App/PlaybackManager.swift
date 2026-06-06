@@ -398,7 +398,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                 guard let self = self else { return }
                 if self.isCrossfading { return }
                 
-                if let track = self.currentTrack, self.isOnline {
+                if let track = self.currentTrack, NetworkMonitor.shared.isConnected {
                     self.client.scrobble(id: track.id, submission: true)
                 }
                 
