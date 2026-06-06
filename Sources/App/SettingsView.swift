@@ -150,7 +150,8 @@ struct SettingsView: View {
                 isSecure: !showPassword,
                 contentType: .password,
                 trailingIcon: showPassword ? "eye.slash" : "eye",
-                onTrailingTap: { showPassword.toggle() }
+                onTrailingTap: { showPassword.toggle() },
+                onSubmit: handleConnect
             )
             .padding(.top, 20)
 
@@ -209,6 +210,10 @@ struct SettingsView: View {
 
     private func handleConnect() {
         guard !username.isEmpty, !password.isEmpty else { return }
+        
+        // Explicitly dismiss keyboard to trigger iOS Password AutoFill save prompt
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        
         status = .connecting
 
         // 1. Configure the client temporarily to test
@@ -258,6 +263,7 @@ struct FloatingLabelField: View {
     var contentType: UITextContentType? = nil
     var trailingIcon: String? = nil
     var onTrailingTap: (() -> Void)? = nil
+    var onSubmit: (() -> Void)? = nil
 
     @State private var isFocused = false
 
@@ -277,11 +283,14 @@ struct FloatingLabelField: View {
                 if isSecure {
                     SecureField(placeholder, text: $text)
                         .textContentType(.password)
+                        .submitLabel(.go)
+                        .onSubmit { onSubmit?() }
                 } else {
                     TextField(placeholder, text: $text)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
                         .textContentType(contentType)
+                        .submitLabel(.next)
                 }
 
                 if let icon = trailingIcon {

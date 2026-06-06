@@ -549,51 +549,100 @@ extension NavidromeClient {
         // If cached on disk, return immediately
         if FileManager.default.fileExists(atPath: cacheFile.path),
            let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8) {
-            print("\n==== NAVIDROME LYRICS DUMP (CACHED) ====\n\(cachedLyrics)\n==== END DUMP ====\n")
             completion(cachedLyrics)
             return
         }
         
         Task {
-            // Try LRCLIB (nonisolated background query)
-            if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title) {
+            // 1. Try Navidrome natively first (embedded ID3 lyrics)
+            if let subsonicLyrics = await fetchFromNavidrome(trackId: trackId), !subsonicLyrics.isEmpty {
                 try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
-                try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
-                completion(lrclibLyrics)
-            } else {
-                completion(nil)
+                try? subsonicLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
+                completion(subsonicLyrics)
+                return
             }
+            
+            // 2. Try Genius scraper (fallback for external lyrics)
+            if let geniusLyrics = await fetchFromGenius(artist: artist, title: title), !geniusLyrics.isEmpty {
+                try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
+                try? geniusLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
+                completion(geniusLyrics)
+                return
+            }
+            
+            completion(nil)
         }
     }
     
-    nonisolated private func fetchFromLRCLIB(artist: String, title: String) async -> String? {
-        guard let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
-            return nil
+    nonisolated private func fetchFromNavidrome(trackId: String) async -> String? {
+        guard let url = buildUrl(method: "getLyrics", params: ["id": trackId]) else { return nil }
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
+            
+            let decoder = JSONDecoder()
+            let wrapper = try decoder.decode(SubsonicResponseWrapper.self, from: data)
+            if let lyricsValue = wrapper.subsonicResponse.lyrics?.value, !lyricsValue.isEmpty {
+                return lyricsValue
+            }
+        } catch {
+            print("[Navidrome Lyrics] Fetch error: \(error.localizedDescription)")
         }
+        return nil
+    }
+    
+    nonisolated private func fetchFromGenius(artist: String, title: String) async -> String? {
+        // Strip non-alphanumeric and replace spaces with dashes
+        let cleanArtist = artist.components(separatedBy: .alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: "-").lowercased()
+        let cleanTitle = title.components(separatedBy: .alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: "-").lowercased()
+        
+        guard let url = URL(string: "https://genius.com/\(cleanArtist)-\(cleanTitle)-lyrics") else { return nil }
         
         var request = URLRequest(url: url)
-        request.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 8.0
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let html = String(data: data, encoding: .utf8) else {
                 return nil
             }
             
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let synced = json["syncedLyrics"] as? String, !synced.isEmpty {
-                    return synced
-                } else if let plain = json["plainLyrics"] as? String, !plain.isEmpty {
-                    return plain
-                }
+            // Very simple HTML extraction for Genius Lyrics__Container
+            var lyricsLines: [String] = []
+            
+            // Genius splits lyrics across multiple divs to insert ads. Find all blocks:
+            let containerRegex = try NSRegularExpression(pattern: "data-lyrics-container=\"true\"[^>]*>(.*?)</div>", options: [.dotMatchesLineSeparators])
+            let matches = containerRegex.matches(in: html, range: NSRange(html.startIndex..., in: html))
+            
+            for match in matches {
+                guard let range = Range(match.range(at: 1), in: html) else { continue }
+                var block = String(html[range])
+                
+                // Convert <br/> to newlines
+                block = block.replacingOccurrences(of: "<br/>", with: "\n")
+                block = block.replacingOccurrences(of: "<br>", with: "\n")
+                
+                // Strip all other HTML tags (like <a>, <i>, <b>)
+                block = block.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression, range: nil)
+                
+                // Decode common HTML entities
+                block = block.replacingOccurrences(of: "&#x27;", with: "'")
+                block = block.replacingOccurrences(of: "&quot;", with: "\"")
+                block = block.replacingOccurrences(of: "&amp;", with: "&")
+                
+                lyricsLines.append(block)
             }
+            
+            let fullLyrics = lyricsLines.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            return fullLyrics.isEmpty ? nil : fullLyrics
+            
         } catch {
-            print("[LRCLIB] Fetch error: \(error.localizedDescription)")
+            print("[Genius] Fetch error: \(error.localizedDescription)")
+            return nil
         }
-        return nil
     }
 
     // MARK: - Scrobbling
