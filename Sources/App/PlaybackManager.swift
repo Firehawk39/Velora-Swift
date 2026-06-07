@@ -999,16 +999,18 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         let trackId = String(desc[..<separatorIdx])
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
         
+        let now = Date()
+        
         Task { @MainActor in
             self.downloadProgress[trackId] = progress
-        if let start = downloadStartTimes[trackId] {
-            let elapsed = now.timeIntervalSince(start)
-            if elapsed > 1.0 && progress > 0.05 {
-                let speed = Double(totalBytesWritten) / elapsed // bytes/sec
-                let remainingBytes = Double(totalBytesExpectedToWrite - totalBytesWritten)
-                let remainingTime = remainingBytes / speed
-                
-                DispatchQueue.main.async {
+            
+            if let start = self.downloadStartTimes[trackId] {
+                let elapsed = now.timeIntervalSince(start)
+                if elapsed > 1.0 && progress > 0.05 {
+                    let speed = Double(totalBytesWritten) / elapsed // bytes/sec
+                    let remainingBytes = Double(totalBytesExpectedToWrite - totalBytesWritten)
+                    let remainingTime = remainingBytes / speed
+                    
                     if remainingTime > 3600 {
                         self.downloadETAs[trackId] = String(format: "%dh remaining", Int(remainingTime / 3600))
                     } else if remainingTime > 60 {
@@ -1018,11 +1020,6 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
                     }
                 }
             }
-        }
-
-            let speed = Double(bytesWritten) / timeElapsed
-            let bytesRemaining = Double(totalBytesExpectedToWrite - totalBytesWritten)
-            self.downloadETAs[trackId] = bytesRemaining / speed
         }
     }
     
