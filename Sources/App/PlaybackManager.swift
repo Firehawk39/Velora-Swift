@@ -967,6 +967,7 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
         
         AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
         let task = downloadSession.downloadTask(with: url)
+        task.taskDescription = "\(track.id)|\(track.suffix?.lowercased() ?? "mp3")"
         downloadTasks[task.taskIdentifier] = track.id
         activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
         downloadStartTimes[track.id] = Date()
@@ -993,11 +994,13 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
     
     // MARK: - URLSessionDownloadDelegate
     
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { return }
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
+        let trackId = String(desc[..<separatorIdx])
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
         
-        let now = Date()
+        Task { @MainActor in
+            self.downloadProgress[trackId] = progress
         if let start = downloadStartTimes[trackId] {
             let elapsed = now.timeIntervalSince(start)
             if elapsed > 1.0 && progress > 0.05 {
@@ -1017,28 +1020,16 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             }
         }
 
-        DispatchQueue.main.async {
-            self.downloadProgress[trackId] = progress
+            let speed = Double(bytesWritten) / timeElapsed
+            let bytesRemaining = Double(totalBytesExpectedToWrite - totalBytesWritten)
+            self.downloadETAs[trackId] = bytesRemaining / speed
         }
     }
     
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        AppLogger.shared.log("didFinishDownloadingTo called for task \(downloadTask.taskIdentifier)", level: .debug)
-        
-        guard let trackId = downloadTasks[downloadTask.taskIdentifier] else { 
-            AppLogger.shared.log("No trackId found for task \(downloadTask.taskIdentifier)", level: .warning)
-            return 
-        }
-        
-        // Use track's suffix if available, fallback to mp3
-        activeDownloadTasksByTrackId.removeValue(forKey: trackId)
-        
-        var suffix = "mp3"
-        if let track = client.allSongs.first(where: { $0.id == trackId }), let s = track.suffix {
-            suffix = s.lowercased()
-        } else if let track = queue.first(where: { $0.id == trackId }), let s = track.suffix {
-            suffix = s.lowercased()
-        }
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
+        let trackId = String(desc[..<separatorIdx])
+        let suffix = String(desc[desc.index(after: separatorIdx)...])
         
         let downloadsDir = VeloraStorage.tracks
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
@@ -1049,117 +1040,91 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             }
             try FileManager.default.moveItem(at: location, to: destinationUrl)
             
-            // Integrity Check: Verify that the downloaded file is valid (AFTER moving from temp background session location)
             let attributes = try FileManager.default.attributesOfItem(atPath: destinationUrl.path)
             let fileSize = attributes[.size] as? Int64 ?? 0
             
-            if fileSize < 1024 {
-                 AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is empty or corrupted (\(fileSize) bytes). Will retry.", level: .error)
-                 try FileManager.default.removeItem(at: destinationUrl)
-                 
-                 // Auto-retry with backoff
-                 let retries = downloadRetryCount[trackId, default: 0]
-                 if retries < maxRetries {
-                     downloadRetryCount[trackId] = retries + 1
-                     let delay = pow(2.0, Double(retries)) // 1s, 2s, 4s
-                     AppLogger.shared.log("Scheduling retry \(retries + 1)/\(maxRetries) for \(trackId) in \(delay)s", level: .info)
-                     
-                     // Re-queue the track for download after delay
-                     Task {
-                         try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                         if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
-                             DispatchQueue.main.async {
-                                 self.downloadProgress[trackId] = nil // Reset so downloadTrack accepts it
+            Task { @MainActor in
+                if fileSize < 1024 {
+                     AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is corrupted. Retrying.", level: .error)
+                     try? FileManager.default.removeItem(at: destinationUrl)
+                     let retries = self.downloadRetryCount[trackId, default: 0]
+                     if retries < self.maxRetries {
+                         self.downloadRetryCount[trackId] = retries + 1
+                         let delay = pow(2.0, Double(retries))
+                         Task {
+                             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                             if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
+                                 self.downloadProgress[trackId] = nil
                                  self.downloadTrack(track)
                              }
                          }
+                     } else {
+                         self.failedDownloadIds.insert(trackId)
+                         self.downloadProgress.removeValue(forKey: trackId)
+                         self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
                      }
-                     return // Don't mark as failed yet
-                 } else {
-                     AppLogger.shared.log("Track \(trackId) failed after \(maxRetries) retries. Giving up.", level: .error)
-                     downloadRetryCount.removeValue(forKey: trackId)
-                     throw NSError(domain: "com.velora.integrity", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty or corrupted file download"])
-                 }
+                } else {
+                     IntegrityManager.shared.registerDownload(trackId: trackId, fileName: destinationUrl.lastPathComponent, size: fileSize)
+                     self.downloadedTrackIds.insert(trackId)
+                     self.downloadProgress.removeValue(forKey: trackId)
+                     self.downloadETAs.removeValue(forKey: trackId)
+                     self.downloadStartTimes.removeValue(forKey: trackId)
+                     self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
+                     self.objectWillChange.send()
+                }
             }
-
-            // Register in the Lightning Index
-            integrityManager.registerDownload(trackId: trackId, fileName: destinationUrl.lastPathComponent, size: fileSize)
-            
-            DispatchQueue.main.async {
-                self.downloadedTrackIds.insert(trackId)
-                self.downloadProgress.removeValue(forKey: trackId)
-                self.downloadETAs.removeValue(forKey: trackId)
-                self.downloadStartTimes.removeValue(forKey: trackId)
-                self.objectWillChange.send()
-            }
-            AppLogger.shared.log("SUCCESS: Saved track \(trackId) to \(destinationUrl.path)", level: .info)
         } catch {
-            AppLogger.shared.log("Failed to save track \(trackId): \(error.localizedDescription)", level: .error)
-            DispatchQueue.main.async {
+            print("Failed to move downloaded file: \(error.localizedDescription)")
+            Task { @MainActor in
                 self.failedDownloadIds.insert(trackId)
                 self.downloadProgress.removeValue(forKey: trackId)
+                self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
             }
         }
         // Removed: downloadTasks.removeValue(forKey: downloadTask.taskIdentifier) 
         // We now only remove in didCompleteWithError to ensure the ID is available there.
     }
     
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        AppLogger.shared.log("didCompleteWithError called for task \(task.taskIdentifier)", level: .debug)
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let desc = task.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
+        let trackId = String(desc[..<separatorIdx])
         
-        if let trackId = downloadTasks[task.taskIdentifier] {
-            activeDownloadTasksByTrackId.removeValue(forKey: trackId)
-        }
-        
-        if let error = error {
-            let nsError = error as NSError
-            // Don't retry user-cancelled downloads
-            if nsError.code != NSURLErrorCancelled, let trackId = downloadTasks[task.taskIdentifier] {
-                let retries = downloadRetryCount[trackId, default: 0]
-                if retries < maxRetries {
-                    downloadRetryCount[trackId] = retries + 1
-                    let delay = pow(2.0, Double(retries))
-                    AppLogger.shared.log("Scheduling retry \(retries + 1)/\(maxRetries) for \(trackId) in \(delay)s after network error", level: .info)
-                    
-                    Task {
-                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                        if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
-                            DispatchQueue.main.async {
+        Task { @MainActor in
+            self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
+            
+            if let error = error {
+                let nsError = error as NSError
+                if nsError.code != NSURLErrorCancelled {
+                    let retries = self.downloadRetryCount[trackId, default: 0]
+                    if retries < self.maxRetries {
+                        self.downloadRetryCount[trackId] = retries + 1
+                        let delay = pow(2.0, Double(retries))
+                        Task {
+                            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                            if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
                                 self.downloadProgress[trackId] = nil
                                 self.downloadTrack(track)
                             }
                         }
+                    } else {
+                        self.failedDownloadIds.insert(trackId)
+                        self.downloadProgress.removeValue(forKey: trackId)
+                        self.downloadETAs.removeValue(forKey: trackId)
+                        self.downloadStartTimes.removeValue(forKey: trackId)
+                        self.downloadRetryCount.removeValue(forKey: trackId)
                     }
-                    downloadTasks.removeValue(forKey: task.taskIdentifier)
-                    activeDownloadCount -= 1
-                    processQueue()
-                    return
                 }
             }
-            
-            AppLogger.shared.log("Download task \(task.taskIdentifier) failed: \(error.localizedDescription)", level: .error)
-            if let trackId = downloadTasks[task.taskIdentifier] {
-                DispatchQueue.main.async {
-                    self.failedDownloadIds.insert(trackId)
-                    self.downloadProgress.removeValue(forKey: trackId)
-                    self.downloadETAs.removeValue(forKey: trackId)
-                    self.downloadStartTimes.removeValue(forKey: trackId)
-                    self.downloadRetryCount.removeValue(forKey: trackId)
-                }
-            }
-        } else {
-            AppLogger.shared.log("Download task \(task.taskIdentifier) completed without error.", level: .debug)
+            self.downloadTasks.removeValue(forKey: task.taskIdentifier)
+            self.activeDownloadCount -= 1
+            self.processQueue()
         }
-        downloadTasks.removeValue(forKey: task.taskIdentifier)
-        activeDownloadCount -= 1
-        processQueue()
     }
     
-    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-        DispatchQueue.main.async {
+    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        Task { @MainActor in
             PlaybackManager.sharedBackgroundCompletion?()
             PlaybackManager.sharedBackgroundCompletion = nil
-            // Ensure the manifest is persisted after a background sync completes
             IntegrityManager.shared.saveIndex()
         }
     }
