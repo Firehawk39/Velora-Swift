@@ -234,6 +234,17 @@ struct SettingsView: View {
                         KeychainHelper.shared.save(passData, service: "velora-password", account: username)
                     }
                     
+                    // 5. Save comprehensive settings to Keychain for AutoLogin
+                    var bundle = VeloraCredentialsBundle(serverUrl: self.serverAddress, onlineServerUrl: "", username: self.username, connectionMode: 0)
+                    if let existingData = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
+                       let existing = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: existingData) {
+                        bundle.onlineServerUrl = existing.onlineServerUrl
+                        bundle.connectionMode = existing.connectionMode
+                    }
+                    if let bundleData = try? JSONEncoder().encode(bundle) {
+                        KeychainHelper.shared.save(bundleData, service: "velora-credentials", account: "default")
+                    }
+                    
                     // 5. Trigger initial data sync
                     client.fetchEverything()
                     
@@ -339,6 +350,13 @@ struct AppSettingsView: View {
     let labelCol   = Color(hex: "#60a5fa")
 
     var isDark: Bool { colorScheme == .dark }
+    
+    private func syncSettingsToKeychain() {
+        let bundle = VeloraCredentialsBundle(serverUrl: serverUrl, onlineServerUrl: onlineServerUrl, username: username, connectionMode: connectionMode)
+        if let data = try? JSONEncoder().encode(bundle) {
+            KeychainHelper.shared.save(data, service: "velora-credentials", account: "default")
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -382,6 +400,7 @@ struct AppSettingsView: View {
                                 }
                                 .pickerStyle(SegmentedPickerStyle())
                                 .onChange(of: connectionMode) { newValue in
+                                    syncSettingsToKeychain()
                                     NetworkMonitor.shared.evaluateConnectionState()
                                     if newValue != 2 {
                                         reconnectWithCurrentMode()
@@ -408,6 +427,7 @@ struct AppSettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Online Server").font(.system(size: 12, weight: .medium)).foregroundColor(.gray)
                                     TextField("https://your-online-server.com", text: $onlineServerUrl, onCommit: {
+                                        syncSettingsToKeychain()
                                         if connectionMode == 1 { reconnectWithCurrentMode() }
                                     })
                                     .font(.system(size: 14))

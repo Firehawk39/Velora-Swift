@@ -217,10 +217,29 @@ struct ContentView: View {
     }
 
     private func autoLogin() {
-        let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
-        let savedOnlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url") ?? ""
-        let savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
-        let connMode = UserDefaults.standard.integer(forKey: "velora_connection_mode")
+        var savedUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
+        var savedOnlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url") ?? ""
+        var savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
+        var connMode = UserDefaults.standard.integer(forKey: "velora_connection_mode")
+        
+        // Keychain Fallback for app reinstalls (UserDefaults wiped, but Keychain survives)
+        if savedUrl.isEmpty || savedUser.isEmpty {
+            if let data = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
+               let bundle = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: data) {
+                
+                savedUrl = bundle.serverUrl
+                savedOnlineUrl = bundle.onlineServerUrl
+                savedUser = bundle.username
+                connMode = bundle.connectionMode
+                
+                // Restore to UserDefaults seamlessly
+                UserDefaults.standard.set(bundle.serverUrl, forKey: "velora_server_url")
+                UserDefaults.standard.set(bundle.onlineServerUrl, forKey: "velora_online_server_url")
+                UserDefaults.standard.set(bundle.username, forKey: "velora_username")
+                UserDefaults.standard.set(bundle.connectionMode, forKey: "velora_connection_mode")
+            }
+        }
+        
         let isOnline = (connMode == 1)
         
         // If there are no saved credentials, do not log in automatically.

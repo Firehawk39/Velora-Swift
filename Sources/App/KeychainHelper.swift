@@ -1,5 +1,13 @@
 import Foundation
 import Security
+import Security
+
+struct VeloraCredentialsBundle: Codable {
+    var serverUrl: String
+    var onlineServerUrl: String
+    var username: String
+    var connectionMode: Int
+}
 
 @MainActor
 final class KeychainHelper {
