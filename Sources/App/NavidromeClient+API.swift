@@ -554,15 +554,7 @@ extension NavidromeClient {
         }
         
         Task {
-            // 1. Try Navidrome natively first (embedded ID3 lyrics)
-            if let subsonicLyrics = await fetchFromNavidrome(trackId: trackId), !subsonicLyrics.isEmpty {
-                try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
-                try? subsonicLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
-                completion(subsonicLyrics)
-                return
-            }
-            
-            // 2. Try LRCLIB API (fallback for external time-synced lyrics)
+            // Only try LRCLIB API for lyrics (time-synced first, then plain)
             if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title), !lrclibLyrics.isEmpty {
                 try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
                 try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
@@ -572,24 +564,6 @@ extension NavidromeClient {
             
             completion(nil)
         }
-    }
-    
-    private func fetchFromNavidrome(trackId: String) async -> String? {
-        guard let url = buildUrl(method: "getLyrics", params: ["id": trackId]) else { return nil }
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
-            
-            let decoder = JSONDecoder()
-            let wrapper = try decoder.decode(SubsonicResponse.self, from: data)
-            if let lyricsValue = wrapper.subsonicResponse?.lyrics?.value, !lyricsValue.isEmpty {
-                return lyricsValue
-            }
-        } catch {
-            print("[Navidrome Lyrics] Fetch error: \(error.localizedDescription)")
-        }
-        return nil
     }
     
     nonisolated private func fetchFromLRCLIB(artist: String, title: String) async -> String? {
