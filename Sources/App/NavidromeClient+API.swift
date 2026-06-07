@@ -574,7 +574,7 @@ extension NavidromeClient {
         }
     }
     
-    nonisolated private func fetchFromNavidrome(trackId: String) async -> String? {
+    private func fetchFromNavidrome(trackId: String) async -> String? {
         guard let url = buildUrl(method: "getLyrics", params: ["id": trackId]) else { return nil }
         
         do {
@@ -582,8 +582,8 @@ extension NavidromeClient {
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return nil }
             
             let decoder = JSONDecoder()
-            let wrapper = try decoder.decode(SubsonicResponseWrapper.self, from: data)
-            if let lyricsValue = wrapper.subsonicResponse.lyrics?.value, !lyricsValue.isEmpty {
+            let wrapper = try decoder.decode(SubsonicResponse.self, from: data)
+            if let lyricsValue = wrapper.subsonicResponse?.lyrics?.value, !lyricsValue.isEmpty {
                 return lyricsValue
             }
         } catch {
