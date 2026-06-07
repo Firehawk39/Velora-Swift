@@ -567,34 +567,6 @@ extension NavidromeClient {
     }
     
     nonisolated private func fetchFromLRCLIB(artist: String, title: String) async -> String? {
-        // 1. Try exact match first
-        if let lyrics = await performLRCLIBRequest(artist: artist, title: title) {
-            return lyrics
-        }
-        
-        // 2. If exact match fails, clean the title (remove "Remastered", "Live", etc.) and try again
-        let cleanTitle = cleanTitleForLyrics(title)
-        if cleanTitle != title {
-            if let lyrics = await performLRCLIBRequest(artist: cleanTitle, title: title) {
-                return lyrics
-            }
-        }
-        
-        return nil
-    }
-    
-    nonisolated private func cleanTitleForLyrics(_ title: String) -> String {
-        var clean = title
-        // Remove text in parentheses/brackets e.g. " (Remastered)", "[Live]"
-        clean = clean.replacingOccurrences(of: "\\s*[\\(\\[].*?[\\)\\]]", with: "", options: .regularExpression)
-        // Remove anything after " - " like " - Remaster 2011"
-        if let range = clean.range(of: " - ") {
-            clean = String(clean[..<range.lowerBound])
-        }
-        return clean.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    
-    nonisolated private func performLRCLIBRequest(artist: String, title: String) async -> String? {
         guard let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
