@@ -119,13 +119,22 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
-        let configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
-        configuration.isDiscretionary = false
-        configuration.sessionSendsLaunchEvents = true
+        let serverUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
+        let isLocalNetwork = serverUrl.contains("192.168.") || serverUrl.contains("10.") || serverUrl.contains("172.") || serverUrl.contains(".local") || serverUrl.contains("localhost") || serverUrl.contains("127.0.0.1")
+        
+        let configuration: URLSessionConfiguration
+        if isLocalNetwork {
+            // iOS 15 Background Daemon is blocked from accessing Local Network IPs.
+            // Fall back to a standard foreground session to allow local downloads.
+            configuration = URLSessionConfiguration.default
+        } else {
+            configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
+        }
+        
         // Maximize connections to the same host for faster concurrent downloads
         configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
         return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
-    } ()
+    }()
     
     init(client: NavidromeClient) {
         self.client = client

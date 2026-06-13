@@ -453,20 +453,21 @@ private struct ArtistGridView: View {
     let showOfflineOnly: Bool
     var onArtistClick: ((String, String) -> Void)?
 
-    private var filteredArtists: [Artist] {
-        let base = client.artists
-        if showOfflineOnly {
-            var offlineArtistIds = Set<String>()
-            for song in client.allSongs where playback.isDownloaded(song.id) {
-                if let aid = song.artistId { offlineArtistIds.insert(aid) }
-            }
-            return base.filter { offlineArtistIds.contains($0.id) }
-        }
-        return base
-    }
-
     var body: some View {
-        let sorted = filteredArtists.sorted { a, b in
+        let base = client.artists
+        let filtered: [Artist] = {
+            if showOfflineOnly {
+                var offlineArtistIds = Set<String>()
+                for song in client.allSongs where playback.isDownloaded(song.id) {
+                    if let aid = song.artistId { offlineArtistIds.insert(aid) }
+                }
+                return base.filter { offlineArtistIds.contains($0.id) }
+            } else {
+                return base
+            }
+        }()
+        
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Artists don't have direct play counts in this model yet
             return (a.created ?? "") > (b.created ?? "")
@@ -515,20 +516,21 @@ private struct AlbumGridView: View {
     let isCompact: Bool
     let showOfflineOnly: Bool
 
-    private var filteredAlbums: [Album] {
-        let base = client.albums
-        if showOfflineOnly {
-            var offlineAlbumIds = Set<String>()
-            for song in client.allSongs where playback.isDownloaded(song.id) {
-                if let aid = song.albumId { offlineAlbumIds.insert(aid) }
-            }
-            return base.filter { offlineAlbumIds.contains($0.id) }
-        }
-        return base
-    }
-
     var body: some View {
-        let sorted = filteredAlbums.sorted { a, b in
+        let base = client.albums
+        let filtered: [Album] = {
+            if showOfflineOnly {
+                var offlineAlbumIds = Set<String>()
+                for song in client.allSongs where playback.isDownloaded(song.id) {
+                    if let aid = song.albumId { offlineAlbumIds.insert(aid) }
+                }
+                return base.filter { offlineAlbumIds.contains($0.id) }
+            } else {
+                return base
+            }
+        }()
+        
+        let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Albums don't have direct play counts in this model yet
             return (a.created ?? "") > (b.created ?? "")
