@@ -455,16 +455,17 @@ private struct ArtistGridView: View {
 
     var body: some View {
         let base = client.artists
-        let filtered: [Artist]
-        if showOfflineOnly {
-            var offlineArtistIds = Set<String>()
-            for song in client.allSongs where playback.isDownloaded(song.id) {
-                if let aid = song.artistId { offlineArtistIds.insert(aid) }
+        let filtered: [Artist] = {
+            if showOfflineOnly {
+                var offlineArtistIds = Set<String>()
+                for song in client.allSongs where playback.isDownloaded(song.id) {
+                    if let aid = song.artistId { offlineArtistIds.insert(aid) }
+                }
+                return base.filter { offlineArtistIds.contains($0.id) }
+            } else {
+                return base
             }
-            filtered = base.filter { offlineArtistIds.contains($0.id) }
-        } else {
-            filtered = base
-        }
+        }()
         
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
@@ -517,16 +518,17 @@ private struct AlbumGridView: View {
 
     var body: some View {
         let base = client.albums
-        let filtered: [Album]
-        if showOfflineOnly {
-            var offlineAlbumIds = Set<String>()
-            for song in client.allSongs where playback.isDownloaded(song.id) {
-                if let aid = song.albumId { offlineAlbumIds.insert(aid) }
+        let filtered: [Album] = {
+            if showOfflineOnly {
+                var offlineAlbumIds = Set<String>()
+                for song in client.allSongs where playback.isDownloaded(song.id) {
+                    if let aid = song.albumId { offlineAlbumIds.insert(aid) }
+                }
+                return base.filter { offlineAlbumIds.contains($0.id) }
+            } else {
+                return base
             }
-            filtered = base.filter { offlineAlbumIds.contains($0.id) }
-        } else {
-            filtered = base
-        }
+        }()
         
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }

@@ -15,7 +15,7 @@ struct LyricLine: Hashable {
 }
 
 @MainActor
-final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSessionDownloadDelegate {
+final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @MainActor static var shared: PlaybackManager?
     @MainActor static var sharedBackgroundCompletion: (() -> Void)?
     
