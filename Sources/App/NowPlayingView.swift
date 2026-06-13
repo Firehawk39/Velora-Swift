@@ -637,50 +637,7 @@ struct NowPlayingView: View {
 
 
     private var progressBar: some View {
-        VStack(spacing: 8) {
-            GeometryReader { barGeo in
-                ZStack(alignment: .leading) {
-                    // Visual Bar (4pt height, centered vertically)
-                    ZStack(alignment: .leading) {
-                        Color.white.opacity(0.2)
-                        
-                        Color.white
-                            .scaleEffect(x: CGFloat(progressFraction), y: 1.0, anchor: .leading)
-                            .animation(isDragging ? nil : .linear(duration: 0.1), value: progressFraction)
-                    }
-                    .frame(height: 4)
-                    .clipShape(Capsule())
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { v in
-                            isDragging = true
-                            dragProgress = max(0, min(1, v.location.x / barGeo.size.width)) * playback.duration
-                            resetIdleTimer()
-                        }
-                        .onEnded { v in
-                            isDragging = false
-                            let p = Double(v.location.x / barGeo.size.width) * playback.duration
-                            playback.seek(to: max(0, min(playback.duration, p)))
-                            resetIdleTimer()
-                        }
-                )
-            }
-            .frame(height: 12)
-
-            if !playback.isLyricsMode {
-                HStack {
-                    Text(formatTime(displayProgress))
-                    Spacer()
-                    Text(formatTime(playback.duration))
-                }
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundColor(.white.opacity(0.5))
-                .opacity(isIdle ? 0 : 1)
-            }
-        }
+        IsolatedProgressBarView(isIdle: $isIdle, resetIdleTimer: resetIdleTimer)
     }
     private var lyricsButton: some View {
         Button {
@@ -1008,6 +965,78 @@ struct DynamicFluidGradientView: View {
                 withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
                     animate = true
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Extracted Performance Views
+@MainActor
+struct IsolatedProgressBarView: View {
+    @EnvironmentObject var playback: PlaybackManager
+    @Binding var isIdle: Bool
+    var resetIdleTimer: () -> Void
+    
+    @State private var isDragging = false
+    @State private var dragProgress: Double = 0
+    
+    var displayProgress: Double {
+        isDragging ? dragProgress : playback.progress
+    }
+    
+    var progressFraction: Double {
+        guard playback.duration > 0 else { return 0 }
+        return displayProgress / playback.duration
+    }
+    
+    private func formatTime(_ t: Double) -> String {
+        guard !t.isNaN, !t.isInfinite else { return "0:00" }
+        return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            GeometryReader { barGeo in
+                ZStack(alignment: .leading) {
+                    // Visual Bar (4pt height, centered vertically)
+                    ZStack(alignment: .leading) {
+                        Color.white.opacity(0.2)
+                        
+                        Color.white
+                            .scaleEffect(x: CGFloat(progressFraction), y: 1.0, anchor: .leading)
+                            .animation(isDragging ? nil : .linear(duration: 0.1), value: progressFraction)
+                    }
+                    .frame(height: 4)
+                    .clipShape(Capsule())
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            isDragging = true
+                            dragProgress = max(0, min(1, v.location.x / barGeo.size.width)) * playback.duration
+                            resetIdleTimer()
+                        }
+                        .onEnded { v in
+                            isDragging = false
+                            let p = Double(v.location.x / barGeo.size.width) * playback.duration
+                            playback.seek(to: max(0, min(playback.duration, p)))
+                            resetIdleTimer()
+                        }
+                )
+            }
+            .frame(height: 12)
+
+            if !playback.isLyricsMode {
+                HStack {
+                    Text(formatTime(displayProgress))
+                    Spacer()
+                    Text(formatTime(playback.duration))
+                }
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundColor(.white.opacity(0.5))
+                .opacity(isIdle ? 0 : 1)
             }
         }
     }

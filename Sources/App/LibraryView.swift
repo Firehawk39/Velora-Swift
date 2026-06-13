@@ -455,9 +455,16 @@ private struct ArtistGridView: View {
 
     var body: some View {
         let base = client.artists
-        let filtered = showOfflineOnly ? base.filter { artist in
-            client.allSongs.contains(where: { $0.artistId == artist.id && playback.isDownloaded($0.id) })
-        } : base
+        let filtered: [Artist]
+        if showOfflineOnly {
+            var offlineArtistIds = Set<String>()
+            for song in client.allSongs where playback.isDownloaded(song.id) {
+                if let aid = song.artistId { offlineArtistIds.insert(aid) }
+            }
+            filtered = base.filter { offlineArtistIds.contains($0.id) }
+        } else {
+            filtered = base
+        }
         
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
@@ -510,10 +517,16 @@ private struct AlbumGridView: View {
 
     var body: some View {
         let base = client.albums
-        let filtered = showOfflineOnly ? base.filter { album in
-            // Album is offline if it has at least one downloaded track
-            client.allSongs.contains(where: { $0.albumId == album.id && playback.isDownloaded($0.id) })
-        } : base
+        let filtered: [Album]
+        if showOfflineOnly {
+            var offlineAlbumIds = Set<String>()
+            for song in client.allSongs where playback.isDownloaded(song.id) {
+                if let aid = song.albumId { offlineAlbumIds.insert(aid) }
+            }
+            filtered = base.filter { offlineAlbumIds.contains($0.id) }
+        } else {
+            filtered = base
+        }
         
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }

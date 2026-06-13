@@ -2,6 +2,11 @@
 
 We've pivoted the architecture to focus on the absolute easiest, most frictionless developer experience without sacrificing the AI's core capabilities. Instead of a massive distributed enterprise stack, this blueprint utilizes ultra-lean 2026 local-first technologies.
 
+## Target Deployment Environment
+* **Platform:** Remote/Dedicated Ubuntu Server.
+* **Target GPU:** NVIDIA GeForce RTX 3060 (12GB VRAM).
+* **Local Machine Exception:** The development Windows machine contains an NVIDIA GeForce RTX 3070 (8GB VRAM). All Docker services and ML environments must be deployed and run on the target **Ubuntu Server**, not locally on the WDDM Windows machine.
+
 ---
 
 ## 1. AI Logic & Boundaries (Locked Decisions)
@@ -24,7 +29,7 @@ By leveraging embedded databases, we can drastically reduce the number of Docker
 ### B. Core Infrastructure & Machine Learning Stack
 *   **Containers Required:** Only **Two** (FastAPI Backend + Ollama).
 *   **FastAPI (Python):** The orchestrator API that also runs the embedded `sqlite-vec` database directly in memory.
-*   **Conversational DJ:** `Llama-3-8B-Instruct` via Ollama.
+*   **Conversational DJ:** `gemma-4-12b-it-qat-q4_0` via Ollama.
 *   **Audio Embedding:** `CLAP` (Contrastive Language-Audio Pretraining).
 *   **Acoustic Analysis:** `Essentia` for full-track emotional arcs.
 
@@ -66,3 +71,45 @@ When you chat with the AI in Velora:
 ### Phase 4: Swift App Integration
 1.  Connect the Velora iOS app's playback engine to the Telemetry API.
 2.  Build the Conversational AI UI in SwiftUI.
+
+---
+
+## 5. System Communication Flow
+
+To function as a local orchestrator, the system utilizes three distinct communication layers:
+
+```mermaid
+graph TD
+    VeloraApp[Velora App Client] <-->|HTTP REST & WebSockets| FastAPI[FastAPI AI Engine Backend]
+    FastAPI <-->|Localhost HTTP:11434| Ollama[Ollama LLM Engine]
+    FastAPI <-->|Subsonic API / HTTP| Navidrome[Navidrome Server]
+```
+
+1.  **Velora App <-> FastAPI (AI Engine):**
+    *   **Transport:** Standard HTTP REST API for static requests (sync, telemetry events) and WebSockets for real-time conversational streaming.
+    *   **Security:** Token-based API keys to prevent unauthorized client requests.
+2.  **FastAPI <-> Navidrome:**
+    *   **Transport:** Subsonic API over HTTP.
+    *   **Ingestion:** FastAPI queries Navidrome to fetch catalog indexes (artists, albums, songs) and listening statistics. For audio processing, it downloads streams or reads files from a shared network volume.
+3.  **FastAPI <-> Ollama:**
+    *   **Transport:** HTTP requests to Ollama's local port (`11434`). FastAPI queries `/api/generate` or `/api/chat` with structured prompts and system context.
+
+---
+
+## 6. LLM Model Selection & Unsloth Fine-Tuning
+
+### Recommended Base Models (8B–12B)
+To run efficiently on the RTX 3060 (12GB VRAM) along with our acoustic analytics, we target models that maximize reasoning capacity while keeping memory footprints small:
+1.  **Gemma 4 12B IT QAT (google/gemma-4-12b-it-qat-q4_0):** *(Highly Recommended)* This Quantization-Aware Trained model by Google integrates 4-bit quantization directly into the training phase. It yields the VRAM footprint of a 3B/4B model (~7GB VRAM) while retaining the full reasoning performance, 256K context support, and multimodal capabilities of the uncompressed 12B parameter model.
+2.  **Qwen 2.5 / 3 (8B/14B):** Exceptional logical reasoning, structured output constraint adherence (e.g. JSON/XML), and native context support.
+3.  **Llama 3 / 3.1 (8B):** Broadest community support and standard baseline for instruction tuning.
+
+### Fine-Tuning Strategy via Unsloth
+We can train a highly specialized "Music DJ / Recommendation Reasoning" model using **Unsloth** on the RTX 3060:
+*   **Reinforcement Learning via GRPO (Group Relative Policy Optimization):** Instead of standard SFT, we train the model using RL to search, reason, and justify recommendations.
+*   **Reward Criteria:** We implement custom reward functions during GRPO training:
+    1.  **Format Reward:** Checks if the model reasons step-by-step inside `<reasoning>` tags before generating the list.
+    2.  **Relevance Reward:** Rewards the model if the recommended songs align closely with the vector search coordinates returned by `sqlite-vec` / CLAP.
+    3.  **DJ Explanatory Reward:** Rewards descriptions that explain acoustic traits (e.g. "Chosen for its melancholic minor key and slow BPM of 72").
+*   **VRAM Efficiency:** Using Unsloth's QLoRA, we can comfortably run this training loop on the Ubuntu server using less than 9GB VRAM.
+

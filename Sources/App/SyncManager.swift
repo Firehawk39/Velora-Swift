@@ -318,7 +318,15 @@ final class SyncManager: ObservableObject {
             
             AppLogger.shared.log("Total tracks in library: \(tracks.count). Checking which need download.", level: .debug)
             
-            let tracksToDownload = tracks.filter { !(playback?.checkFileSystemForTrack($0.id) ?? false) }
+            var tracksToDownload: [Track] = []
+            for (index, track) in tracks.enumerated() {
+                if !(playback?.checkFileSystemForTrack(track.id) ?? false) {
+                    tracksToDownload.append(track)
+                }
+                // Yield the main thread every 100 tracks to keep the UI perfectly responsive
+                if index % 100 == 0 { await Task.yield() }
+            }
+            
             let totalTracks = Double(tracks.count)
             let totalToDownload = tracksToDownload.count
             let alreadyDownloadedCount = Int(totalTracks) - totalToDownload

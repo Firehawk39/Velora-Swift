@@ -48,9 +48,12 @@ final class MusicBrainzManager: ObservableObject {
     
     private func saveCache() {
         let copy = nameToMBIDCache
+        let file = cacheFile
         
-        if let data = try? JSONEncoder().encode(copy) {
-            try? data.write(to: cacheFile)
+        Task.detached(priority: .background) {
+            if let data = try? JSONEncoder().encode(copy) {
+                try? data.write(to: file)
+            }
         }
     }
     

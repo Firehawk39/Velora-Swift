@@ -1035,7 +1035,16 @@ final class PlaybackManager: NSObject, ObservableObject, @preconcurrency URLSess
             if FileManager.default.fileExists(atPath: destinationUrl.path) {
                 try FileManager.default.removeItem(at: destinationUrl)
             }
-            try FileManager.default.moveItem(at: location, to: destinationUrl)
+            
+            // iOS 15 Sandbox Fix: Copy the file instead of moving it to avoid "Operation not permitted" 
+            // when modifying the system-owned temporary directory.
+            do {
+                try FileManager.default.copyItem(at: location, to: destinationUrl)
+            } catch {
+                // Absolute fallback: Read into memory and write to disk
+                let data = try Data(contentsOf: location)
+                try data.write(to: destinationUrl)
+            }
             
             let attributes = try FileManager.default.attributesOfItem(atPath: destinationUrl.path)
             let fileSize = attributes[.size] as? Int64 ?? 0
