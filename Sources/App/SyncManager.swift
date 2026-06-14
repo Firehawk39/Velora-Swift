@@ -126,11 +126,8 @@ final class SyncManager: ObservableObject {
                 await withTaskGroup(of: Void.self) { group in
                     for (index, artist) in batch.enumerated() {
                         group.addTask {
-                            try? await Task.sleep(nanoseconds: UInt64(index) * 250_000_000)
-                            
                             let mb = await MusicBrainzManager.shared
                             let fa = await FanartManager.shared
-                            
                             let localPortraitUrl = VeloraStorage.coverArt.appendingPathComponent("\(artist.id).jpg")
                             let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
                             
@@ -139,6 +136,7 @@ final class SyncManager: ObservableObject {
                             let hasAll = hasArtist && hasBackdrop && hasLocalPortrait
                             
                             if !hasAll {
+                                try? await Task.sleep(nanoseconds: UInt64(index) * 250_000_000)
                                 let mbid: String? = await withCheckedContinuation { continuation in
                                     Task { @MainActor in
                                         client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
@@ -170,14 +168,15 @@ final class SyncManager: ObservableObject {
                 await withTaskGroup(of: Void.self) { group in
                     for (index, album) in batch.enumerated() {
                         group.addTask {
-                            try? await Task.sleep(nanoseconds: UInt64(index) * 250_000_000)
-                            
                             let artistName = album.artist ?? "Unknown Artist"
                             let mb = await MusicBrainzManager.shared
                             
-                            let hasMeta = await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)
+                            let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(album.id).jpg")
+                            let hasMetadata = await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)
+                            let hasLocalCover = FileManager.default.fileExists(atPath: localCoverUrl.path)
                             
-                            if !hasMeta {
+                            if !hasMetadata || !hasLocalCover {
+                                try? await Task.sleep(nanoseconds: UInt64(index) * 250_000_000)
                                 await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
                             }
                         }
