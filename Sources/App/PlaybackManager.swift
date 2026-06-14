@@ -353,7 +353,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        // Network-only side effects: skip when offline to avoid hanging requests
         if isOnline {
             // Fetch Backdrop (Fanart/Discogs)
             if let artistId = track.artistId {
@@ -365,6 +364,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             } else {
                 FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
             }
+        } else {
+            // Offline: still trigger fetchBackdrop so it can load from the local cache
+            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
         }
         
         player?.play()
