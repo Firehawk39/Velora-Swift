@@ -669,13 +669,21 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 return
             }
             
-            guard NetworkMonitor.shared.isConnected else { return }
+            let artworkUrl = track.coverArtUrl
+            
+            if let url = artworkUrl {
+                if !url.isFileURL && !NetworkMonitor.shared.isConnected {
+                    return
+                }
+            } else if !NetworkMonitor.shared.isConnected {
+                return
+            }
 
             // Cancel the previous download task if it is still in flight
             artworkDownloadTask?.cancel()
             artworkDownloadTask = nil
 
-            if let artworkUrl = track.coverArtUrl {
+            if let artworkUrl = artworkUrl {
                 downloadingArtworkTrackId = track.id
 
                 let task = URLSession.shared.dataTask(with: artworkUrl) { [weak self] data, _, error in
