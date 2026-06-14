@@ -124,7 +124,7 @@ final class FanartManager: ObservableObject {
         queryFanart(validMBID)
     }
     
-    func downloadBackdropSilently(for artist: String, mbid: String? = nil) {
+    func downloadBackdropSilently(for artist: String, mbid: String? = nil) async {
         let sanitized = sanitizeFileName(artist)
         let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
         
@@ -141,27 +141,32 @@ final class FanartManager: ObservableObject {
             return
         }
         
-        let query: @MainActor @Sendable (String) -> Void = { resolvedMBID in
-            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
-            self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist, priority: URLSessionTask.lowPriority) { url in
-                if let url = url {
-                    self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.lowPriority) { _ in
+        await withCheckedContinuation { continuation in
+            let query: @MainActor @Sendable (String) -> Void = { resolvedMBID in
+                let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
+                self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist, priority: URLSessionTask.lowPriority) { url in
+                    if let url = url {
+                        self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.lowPriority) { _ in
+                            self.activeBackdropFetches.remove(sanitized)
+                            continuation.resume()
+                        }
+                    } else {
                         self.activeBackdropFetches.remove(sanitized)
+                        continuation.resume()
                     }
-                } else {
-                    self.activeBackdropFetches.remove(sanitized)
                 }
             }
-        }
-        
-        if let mbid = mbid, !mbid.isEmpty {
-            query(mbid)
-        } else {
-            getMBID(for: artist, priority: URLSessionTask.lowPriority) { resolved in
-                if let resolved = resolved {
-                    query(resolved)
-                } else {
-                    self.activeBackdropFetches.remove(sanitized)
+            
+            if let mbid = mbid, !mbid.isEmpty {
+                Task { @MainActor in query(mbid) }
+            } else {
+                getMBID(for: artist, priority: URLSessionTask.lowPriority) { resolved in
+                    if let resolved = resolved {
+                        Task { @MainActor in query(resolved) }
+                    } else {
+                        self.activeBackdropFetches.remove(sanitized)
+                        continuation.resume()
+                    }
                 }
             }
         }

@@ -542,7 +542,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 
                 // 1. Prefetch Backdrop Silently
-                FanartManager.shared.downloadBackdropSilently(for: artist)
+                await FanartManager.shared.downloadBackdropSilently(for: artist)
                 
                 // 2. Prefetch Metadata Silently
                 await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
