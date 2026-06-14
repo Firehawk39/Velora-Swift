@@ -573,9 +573,9 @@ extension NavidromeClient {
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
         
         // If cached on disk, return immediately
-        if FileManager.default.fileExists(atPath: cacheFile.path),
-           let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8) {
-            completion(cachedLyrics)
+        if FileManager.default.fileExists(atPath: cacheFile.path) {
+            let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8)
+            completion(cachedLyrics?.isEmpty == true ? nil : cachedLyrics)
             return
         }
         
@@ -588,6 +588,9 @@ extension NavidromeClient {
                 return
             }
             
+            // Save empty file so we don't retry forever
+            try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
+            try? "".write(to: cacheFile, atomically: true, encoding: .utf8)
             completion(nil)
         }
     }

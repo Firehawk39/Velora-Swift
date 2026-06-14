@@ -359,23 +359,27 @@ final class MusicBrainzManager: ObservableObject {
 
     // MARK: - Silent Bulk Fetchers
 
-    func downloadMetadataSilently(for artistName: String) async {
-        let resolved = await resolveMBIDAsync(for: artistName)
-        guard let mbid = resolved else { 
+    func downloadMetadataSilently(for artistName: String, mbid: String? = nil) async {
+        let finalMbid: String
+        if let providedMbid = mbid, !providedMbid.isEmpty {
+            finalMbid = providedMbid
+        } else if let resolved = await resolveMBIDAsync(for: artistName) {
+            finalMbid = resolved
+        } else {
             AppLogger.shared.log("[Metadata] Silent prefetch: Failed to resolve MBID for \(artistName)")
-            return 
+            return
         }
         
-        AppLogger.shared.log("[Metadata] Silent prefetch: Resolved \(artistName) to \(mbid)")
-        self.nameToMBIDCache[artistName] = mbid
+        AppLogger.shared.log("[Metadata] Silent prefetch: Resolved \(artistName) to \(finalMbid)")
+        self.nameToMBIDCache[artistName] = finalMbid
         self.saveCache()
         
-        let fileName = "artist_" + (mbid) + ".json"
+        let fileName = "artist_" + (finalMbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
         
         if self.fileManager.fileExists(atPath: fileUrl.path) { return }
 
-        let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
+        let urlString = "https://musicbrainz.org/ws/2/artist/\(finalMbid)?fmt=json&inc=aliases+tags"
         guard let url = URL(string: urlString) else { return }
         
         guard NetworkMonitor.shared.isConnected else { return }
@@ -387,7 +391,7 @@ final class MusicBrainzManager: ObservableObject {
             let (data, _) = try await URLSession.shared.data(for: request)
             guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
             
-            let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+            let annotation = await fetchAnnotationAsync(entityMBID: finalMbid)
             json["annotation"] = annotation
             if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                 try? savedData.write(to: fileUrl)
