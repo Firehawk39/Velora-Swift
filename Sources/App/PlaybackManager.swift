@@ -666,6 +666,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if let retryTime = nextArtworkRetryTime, Date() < retryTime {
                 return
             }
+            
+            guard NetworkMonitor.shared.isConnected else { return }
 
             // Cancel the previous download task if it is still in flight
             artworkDownloadTask?.cancel()
@@ -1425,7 +1427,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        // Network-only: skip backdrop fetch when offline
         if NetworkMonitor.shared.isConnected {
             if let artistId = track.artistId {
                 client.fetchArtistInfo(artistId: artistId) { _, mbid in
@@ -1436,6 +1437,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             } else {
                 FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
             }
+        } else {
+            // Offline: still trigger fetchBackdrop so it can load from the local cache
+            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
         }
     }
     

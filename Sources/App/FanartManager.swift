@@ -86,6 +86,10 @@ final class FanartManager: ObservableObject {
         
         if alreadyFetching { return }
         
+        guard NetworkMonitor.shared.isConnected else {
+            return
+        }
+        
         activeBackdropFetches.insert(sanitized)
         
         let queryFanart: @MainActor @Sendable (String) -> Void = { resolvedMBID in
@@ -132,6 +136,11 @@ final class FanartManager: ObservableObject {
         }
         if alreadyFetching { return }
         
+        guard NetworkMonitor.shared.isConnected else {
+            self.activeBackdropFetches.remove(sanitized)
+            return
+        }
+        
         let query: @MainActor @Sendable (String) -> Void = { resolvedMBID in
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist, priority: URLSessionTask.lowPriority) { url in
@@ -169,6 +178,11 @@ final class FanartManager: ObservableObject {
            let data = try? Data(contentsOf: fileUrl),
            let image = UIImage(data: data) {
             completion(image)
+            return
+        }
+        
+        guard NetworkMonitor.shared.isConnected else {
+            completion(nil)
             return
         }
         

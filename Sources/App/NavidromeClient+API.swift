@@ -5,6 +5,9 @@ extension NavidromeClient {
     // MARK: - Ping
 
     func ping(completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
+        guard NetworkMonitor.shared.isConnected else {
+            completion(false, "Offline mode is active."); return
+        }
         guard let url = buildUrl(method: "ping.view") else {
             completion(false, "Invalid URL configuration."); return
         }
@@ -38,6 +41,7 @@ extension NavidromeClient {
     // MARK: - Fetch Recently Played
 
     func fetchRecentlyPlayed() {
+        guard NetworkMonitor.shared.isConnected else { return }
         guard let url = buildUrl(method: "getRecentlyPlayed.view", params: ["size": "15"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
@@ -104,6 +108,7 @@ extension NavidromeClient {
     // MARK: - Fetch Albums
 
     func fetchAlbums() {
+        guard NetworkMonitor.shared.isConnected else { return }
         guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "alphabeticalByArtist", "size": "20"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
@@ -130,6 +135,10 @@ extension NavidromeClient {
     // MARK: - Fetch Artists
 
     func fetchArtists(completion: (@MainActor @Sendable ([Artist]) -> Void)? = nil) {
+        guard NetworkMonitor.shared.isConnected else { 
+            completion?([])
+            return 
+        }
         guard let url = buildUrl(method: "getArtists.view") else { 
             completion?([])
             return 
@@ -172,6 +181,7 @@ extension NavidromeClient {
     // MARK: - Album Tracks
 
     func fetchAlbumTracks(albumId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion([]); return }
         guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
@@ -203,6 +213,7 @@ extension NavidromeClient {
     }
 
     func fetchArtistData(artistId: String, completion: @escaping @MainActor @Sendable ([Track], [Album], String?, String?) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion([], [], nil, nil); return }
         guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
@@ -264,6 +275,7 @@ extension NavidromeClient {
     }
 
     func fetchArtistInfo(artistId: String, completion: @escaping @MainActor @Sendable (String?, String?) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion(nil, nil); return }
         guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
@@ -285,6 +297,9 @@ extension NavidromeClient {
     // MARK: - Search
 
     func search(query: String, completion: @escaping @MainActor @Sendable ([Track], [Album], [Artist]) -> Void) {
+        guard NetworkMonitor.shared.isConnected else {
+            completion([], [], []); return
+        }
         guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
             completion([], [], []); return
         }
@@ -342,6 +357,7 @@ extension NavidromeClient {
     // MARK: - Playlists
 
     func fetchPlaylists() {
+        guard NetworkMonitor.shared.isConnected else { return }
         guard let url = buildUrl(method: "getPlaylists.view") else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
@@ -361,6 +377,7 @@ extension NavidromeClient {
     }
 
     func fetchPlaylistTracks(playlistId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion([]); return }
         guard let url = buildUrl(method: "getPlaylist.view", params: ["id": playlistId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
@@ -394,6 +411,7 @@ extension NavidromeClient {
     // MARK: - Playlist Management
 
     func createPlaylist(name: String, songIds: [String], completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion(false); return }
         let extra = songIds.map { URLQueryItem(name: "songId", value: $0) }
         guard let url = buildUrl(method: "createPlaylist.view", params: ["name": name], extraItems: extra) else {
             completion(false); return
@@ -409,6 +427,7 @@ extension NavidromeClient {
     }
 
     func deletePlaylist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion(false); return }
         guard let url = buildUrl(method: "deletePlaylist.view", params: ["id": id]) else {
             completion(false); return
         }
@@ -423,6 +442,7 @@ extension NavidromeClient {
     }
 
     func updatePlaylist(id: String, songIdsToAdd: [String] = [], songIndicesToRemove: [Int] = [], completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion(false); return }
         var extra: [URLQueryItem] = []
         songIdsToAdd.forEach { extra.append(URLQueryItem(name: "songIdToAdd", value: $0)) }
         songIndicesToRemove.forEach { extra.append(URLQueryItem(name: "songIndexToRemove", value: String($0))) }
@@ -470,6 +490,10 @@ extension NavidromeClient {
     }
     
     private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { 
+            completion(allSongsSoFar)
+            return 
+        }
         guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "\(batchSize)", "songOffset": "\(offset)"]) else { 
             completion(allSongsSoFar)
             return 
@@ -522,6 +546,8 @@ extension NavidromeClient {
             return // Already cached
         }
         
+        guard NetworkMonitor.shared.isConnected else { return }
+        
         guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
         
         URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
@@ -567,6 +593,7 @@ extension NavidromeClient {
     }
     
     nonisolated private func fetchFromLRCLIB(artist: String, title: String) async -> String? {
+        guard await NetworkMonitor.shared.isConnected else { return nil }
         guard let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
@@ -600,6 +627,7 @@ extension NavidromeClient {
     // MARK: - Scrobbling
 
     func scrobble(id: String, submission: Bool) {
+        guard NetworkMonitor.shared.isConnected else { return }
         guard let url = buildUrl(method: "scrobble.view", params: [
             "id": id,
             "time": "\(Int(Date().timeIntervalSince1970 * 1000))",

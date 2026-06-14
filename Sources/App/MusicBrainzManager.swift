@@ -127,6 +127,11 @@ final class MusicBrainzManager: ObservableObject {
             let urlString = "https://musicbrainz.org/ws/2/artist/\(resolvedMBID)?fmt=json&inc=aliases+tags+annotation"
             guard let url = URL(string: urlString) else { return }
             
+            guard NetworkMonitor.shared.isConnected else { 
+                DispatchQueue.main.async { self.isLoading = false }
+                return 
+            }
+            
             var request = URLRequest(url: url)
             request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
             
@@ -166,6 +171,10 @@ final class MusicBrainzManager: ObservableObject {
         if let mbid = mbid, !mbid.isEmpty {
             fetchDetails(mbid)
         } else {
+            guard NetworkMonitor.shared.isConnected else {
+                self.isLoading = false
+                return
+            }
             resolveMBID(for: artistName) { resolved in
                 if let resolved = resolved {
                     fetchDetails(resolved)
@@ -204,6 +213,11 @@ final class MusicBrainzManager: ObservableObject {
 
             let urlString = "https://musicbrainz.org/ws/2/release/\(resolvedMBID)?fmt=json&inc=labels+recordings"
             guard let url = URL(string: urlString) else { return }
+            
+            guard NetworkMonitor.shared.isConnected else {
+                DispatchQueue.main.async { self.isLoading = false }
+                return
+            }
             
             var request = URLRequest(url: url)
             request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
@@ -244,6 +258,10 @@ final class MusicBrainzManager: ObservableObject {
         if let mbid = mbid, !mbid.isEmpty {
             fetchDetails(mbid)
         } else {
+            guard NetworkMonitor.shared.isConnected else {
+                self.isLoading = false
+                return
+            }
             resolveAlbumMBID(album: albumName, artist: artistName) { resolved in
                 if let resolved = resolved {
                     fetchDetails(resolved)
@@ -359,6 +377,9 @@ final class MusicBrainzManager: ObservableObject {
 
         let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
         guard let url = URL(string: urlString) else { return }
+        
+        guard await NetworkMonitor.shared.isConnected else { return }
+        
         var request = URLRequest(url: url)
         request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
         
@@ -388,6 +409,9 @@ final class MusicBrainzManager: ObservableObject {
 
         let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=labels+recordings"
         guard let url = URL(string: urlString) else { return }
+        
+        guard await NetworkMonitor.shared.isConnected else { return }
+        
         var request = URLRequest(url: url)
         request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
         
