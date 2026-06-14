@@ -138,8 +138,10 @@ final class SyncManager: ObservableObject {
                             
                             if !hasAll {
                                 let mbid: String? = await withCheckedContinuation { continuation in
-                                    client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
-                                        continuation.resume(returning: fetchedMbid)
+                                    Task { @MainActor in
+                                        client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
+                                            continuation.resume(returning: fetchedMbid)
+                                        }
                                     }
                                 }
                                 await fa.downloadBackdropSilently(for: artist.name, mbid: mbid)

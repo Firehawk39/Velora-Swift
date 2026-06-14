@@ -378,7 +378,7 @@ final class MusicBrainzManager: ObservableObject {
         let urlString = "https://musicbrainz.org/ws/2/artist/\(mbid)?fmt=json&inc=aliases+tags"
         guard let url = URL(string: urlString) else { return }
         
-        guard await NetworkMonitor.shared.isConnected else { return }
+        guard NetworkMonitor.shared.isConnected else { return }
         
         var request = URLRequest(url: url)
         request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
@@ -410,7 +410,7 @@ final class MusicBrainzManager: ObservableObject {
         let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=labels+recordings"
         guard let url = URL(string: urlString) else { return }
         
-        guard await NetworkMonitor.shared.isConnected else { return }
+        guard NetworkMonitor.shared.isConnected else { return }
         
         var request = URLRequest(url: url)
         request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
