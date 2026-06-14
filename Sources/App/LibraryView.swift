@@ -264,7 +264,6 @@ private struct LibraryMenuView: View {
                         }
                         .padding(.vertical, isCompact ? 16 : 22)
                         .padding(.horizontal, hPad)
-                        .opacity(!NetworkMonitor.shared.isConnected ? 0.4 : 1.0)
                         .disabled(!NetworkMonitor.shared.isConnected && false) // Allow entering menus to see downloaded items
                     }
                     Divider().padding(.horizontal, hPad).opacity(0.1)
