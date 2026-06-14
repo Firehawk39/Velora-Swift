@@ -137,7 +137,12 @@ final class SyncManager: ObservableObject {
                             let hasAll = hasArtist && hasBackdrop && hasLocalPortrait
                             
                             if !hasAll {
-                                await fa.downloadBackdropSilently(for: artist.name)
+                                let mbid: String? = await withCheckedContinuation { continuation in
+                                    client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
+                                        continuation.resume(returning: fetchedMbid)
+                                    }
+                                }
+                                await fa.downloadBackdropSilently(for: artist.name, mbid: mbid)
                                 await client.downloadCoverArt(id: artist.id)
                                 await mb.downloadMetadataSilently(for: artist.name)
                             }
