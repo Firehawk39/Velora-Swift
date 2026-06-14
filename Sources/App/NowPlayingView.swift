@@ -10,6 +10,7 @@ struct NowPlayingView: View {
     @Environment(\.verticalSizeClass)   var vSizeClass
     @Binding var isQueueOpen: Bool
     @Binding var isIdle:      Bool
+    var onArtistClick: ((String, String) -> Void)? = nil
 
     @State private var isDragging   = false
     @State private var artistBiography: String? = nil
@@ -535,16 +536,23 @@ struct NowPlayingView: View {
                 
                 VStack(alignment: .leading, spacing: 20) {
                     if let bio = artistBiography {
-                        HStack(spacing: 24) {
-                            artistImage
-                                .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                    .font(.system(size: isSE ? 20 : 28, weight: .bold))
-                                    .foregroundColor(.white)
+                        Button {
+                            if let id = playback.currentTrack?.artistId, let name = playback.currentTrack?.artist {
+                                onArtistClick?(id, name)
+                            }
+                        } label: {
+                            HStack(spacing: 24) {
+                                artistImage
+                                    .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                        .font(.system(size: isSE ? 20 : 28, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
                             }
                         }
+                        .buttonStyle(PlainButtonStyle())
                         
                         Text(bio)
                             .font(.system(size: isSE ? 14 : 16))
@@ -560,16 +568,23 @@ struct NowPlayingView: View {
                         }
                         .padding(.vertical, 40)
                     } else {
-                        HStack(spacing: 24) {
-                            artistImage
-                                .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                    .font(.system(size: isSE ? 20 : 28, weight: .bold))
-                                    .foregroundColor(.white)
+                        Button {
+                            if let id = playback.currentTrack?.artistId, let name = playback.currentTrack?.artist {
+                                onArtistClick?(id, name)
+                            }
+                        } label: {
+                            HStack(spacing: 24) {
+                                artistImage
+                                    .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
+                                
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                        .font(.system(size: isSE ? 20 : 28, weight: .bold))
+                                        .foregroundColor(.white)
+                                }
                             }
                         }
+                        .buttonStyle(PlainButtonStyle())
                         
                         Text("No further information found.")
                             .font(.system(size: isSE ? 14 : 16))

@@ -177,7 +177,12 @@ struct ContentView: View {
                     }
                 })
             case "now-playing":
-                NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle)
+                NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle) { id, name in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedArtistId = id
+                        selectedArtistName = name
+                    }
+                }
             default:
                 HomeView()
             }
