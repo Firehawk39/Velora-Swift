@@ -553,15 +553,21 @@ extension NavidromeClient {
         URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
             guard let tempLocation = tempLocation, error == nil else {
                 print("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
+                try? Data().write(to: destinationUrl)
                 return
             }
             do {
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                    try? Data().write(to: destinationUrl)
+                    return
+                }
                 if FileManager.default.fileExists(atPath: destinationUrl.path) {
                     try FileManager.default.removeItem(at: destinationUrl)
                 }
                 try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
             } catch {
                 print("Failed to save cover art for \(id): \(error)")
+                try? Data().write(to: destinationUrl)
             }
         }.resume()
     }

@@ -389,14 +389,21 @@ final class MusicBrainzManager: ObservableObject {
         
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
-            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { 
+                try? Data().write(to: fileUrl)
+                return 
+            }
             
             let annotation = await fetchAnnotationAsync(entityMBID: finalMbid)
             json["annotation"] = annotation
             if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                 try? savedData.write(to: fileUrl)
+            } else {
+                try? Data().write(to: fileUrl)
             }
-        } catch { }
+        } catch { 
+            try? Data().write(to: fileUrl)
+        }
     }
 
     func downloadAlbumMetadataSilently(albumName: String, artistName: String) async {
@@ -421,14 +428,21 @@ final class MusicBrainzManager: ObservableObject {
         
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
-            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                try? Data().write(to: fileUrl)
+                return 
+            }
             
             let annotation = await fetchAnnotationAsync(entityMBID: mbid)
             json["annotation"] = annotation
             if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                 try? savedData.write(to: fileUrl)
+            } else {
+                try? Data().write(to: fileUrl)
             }
-        } catch { }
+        } catch { 
+            try? Data().write(to: fileUrl)
+        }
     }
     
     private func resolveMBIDAsync(for artist: String) async -> String? {
