@@ -151,6 +151,7 @@ final class FanartManager: ObservableObject {
                             continuation.resume()
                         }
                     } else {
+                        try? Data().write(to: fileUrl)
                         self.activeBackdropFetches.remove(sanitized)
                         continuation.resume()
                     }
@@ -164,6 +165,7 @@ final class FanartManager: ObservableObject {
                     if let resolved = resolved {
                         Task { @MainActor in query(resolved) }
                     } else {
+                        try? Data().write(to: fileUrl)
                         self.activeBackdropFetches.remove(sanitized)
                         continuation.resume()
                     }
