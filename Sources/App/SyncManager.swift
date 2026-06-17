@@ -249,13 +249,15 @@ final class SyncManager: ObservableObject {
                     let processed = tasksCompleted - Double(skippedCount)
                     lyricsStatus = "Syncing Lyrics: \(Int(processed))/\(missingSongs.count) songs"
                     
-                    // Download this batch in parallel
+                    // Download this batch in parallel with a slight stagger
                     await withTaskGroup(of: Void.self) { group in
-                        for song in batch {
+                        for (index, song) in batch.enumerated() {
                             group.addTask {
+                                // 100ms stagger between concurrent lyric requests
+                                try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
                                 await withCheckedContinuation { continuation in
                                     Task { @MainActor in
-                                        client.fetchLyrics(trackId: song.id, artist: song.artist ?? "", title: song.title) { _ in
+                                        client.fetchLyrics(trackId: song.id, artist: song.primaryArtist, title: song.title) { _ in
                                             continuation.resume()
                                         }
                                     }
