@@ -353,21 +353,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        if isOnline {
-            // Fetch Backdrop (Fanart/Discogs)
-            if let artistId = track.artistId {
-                client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                    DispatchQueue.main.async {
-                        FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
-                    }
-                }
-            } else {
-                FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
-            }
-        } else {
-            // Offline: still trigger fetchBackdrop so it can load from the local cache
-            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
-        }
+        FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
         
         player?.play()
         self.isPlaying = true
@@ -1437,20 +1423,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        if NetworkMonitor.shared.isConnected {
-            if let artistId = track.artistId {
-                client.fetchArtistInfo(artistId: artistId) { _, mbid in
-                    DispatchQueue.main.async {
-                        FanartManager.shared.fetchBackdrop(for: track.artist ?? "", mbid: mbid)
-                    }
-                }
-            } else {
-                FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
-            }
-        } else {
-            // Offline: still trigger fetchBackdrop so it can load from the local cache
-            FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
-        }
+        FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
     }
     
 }
