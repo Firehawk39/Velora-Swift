@@ -39,6 +39,17 @@ struct Artist: Identifiable, Codable, Sendable {
     
     // Convenience computed URL
     var coverArtUrl: URL? { resolveCoverArtUrl(id: id, serverUrl: coverArt) }
+    
+    var primaryName: String {
+        let delimiters = [" feat.", " ft.", " featuring ", " & ", ", "]
+        var primary = name
+        for delimiter in delimiters {
+            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
+                primary = String(primary[..<range.lowerBound])
+            }
+        }
+        return primary.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 struct Album: Identifiable, Codable, Sendable {
@@ -78,6 +89,18 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
         let minutes = duration / 60
         let seconds = duration % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+    
+    var primaryArtist: String {
+        guard let artist = artist else { return "Unknown Artist" }
+        let delimiters = [" feat.", " ft.", " featuring ", " & ", ", "]
+        var primary = artist
+        for delimiter in delimiters {
+            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
+                primary = String(primary[..<range.lowerBound])
+            }
+        }
+        return primary.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

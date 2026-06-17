@@ -134,8 +134,8 @@ final class SyncManager: ObservableObject {
                             let localPortraitUrl = VeloraStorage.coverArt.appendingPathComponent("\(artist.id).jpg")
                             let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
                             
-                            let hasArtist = await mb.hasArtistMetadata(for: artist.name)
-                            let hasBackdrop = await fa.hasBackdrop(for: artist.name)
+                            let hasArtist = await mb.hasArtistMetadata(for: artist.primaryName)
+                            let hasBackdrop = await fa.hasBackdrop(for: artist.primaryName)
                             let hasAll = hasArtist && hasBackdrop && hasLocalPortrait
                             
                             if !hasAll {
@@ -146,9 +146,9 @@ final class SyncManager: ObservableObject {
                                         }
                                     }
                                 }
-                                await fa.downloadBackdropSilently(for: artist.name, mbid: mbid)
+                                await fa.downloadBackdropSilently(for: artist.primaryName, mbid: mbid)
                                 await client.downloadCoverArt(id: artist.id)
-                                await mb.downloadMetadataSilently(for: artist.name, mbid: mbid)
+                                await mb.downloadMetadataSilently(for: artist.primaryName, mbid: mbid)
                             }
                         }
                     }

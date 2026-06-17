@@ -353,7 +353,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
+        FanartManager.shared.fetchBackdrop(for: track.primaryArtist)
         
         player?.play()
         self.isPlaying = true
@@ -1423,7 +1423,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        FanartManager.shared.fetchBackdrop(for: track.artist ?? "")
+        FanartManager.shared.fetchBackdrop(for: track.primaryArtist)
     }
     
 }
