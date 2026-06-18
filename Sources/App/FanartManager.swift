@@ -191,9 +191,7 @@ final class FanartManager: ObservableObject {
                         if let resolved = resolved {
                             Task { @MainActor in query(resolved) }
                         } else {
-                            if isEmpty {
-                                try? Data().write(to: fileUrl)
-                            }
+                            try? Data().write(to: fileUrl)
                             self.activeBackdropFetches.remove(sanitized)
                             continuation.resume(returning: false)
                         }
@@ -345,7 +343,7 @@ final class FanartManager: ObservableObject {
     
     nonisolated private func downloadAndCache(from urlString: String, to localUrl: URL, primaryArtistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else {
-            DispatchQueue.main.async { completion(nil, false) }
+            DispatchQueue.main.async { completion(nil) }
             return
         }
         
