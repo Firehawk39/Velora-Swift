@@ -40,15 +40,18 @@ struct Artist: Identifiable, Codable, Sendable {
     // Convenience computed URL
     var coverArtUrl: URL? { resolveCoverArtUrl(id: id, serverUrl: coverArt) }
     
-    var primaryName: String {
-        let delimiters = [" feat.", " ft.", " featuring ", " & ", ", "]
-        var primary = name
-        for delimiter in delimiters {
-            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
-                primary = String(primary[..<range.lowerBound])
-            }
+    var allNames: [String] {
+        var temp = name
+        let textDelimiters = [" feat.", " ft.", " featuring "]
+        for delim in textDelimiters {
+            temp = temp.replacingOccurrences(of: delim, with: " & ", options: .caseInsensitive)
         }
-        return primary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let list = temp.components(separatedBy: CharacterSet(charactersIn: "&,")).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return list.isEmpty ? [name] : list
+    }
+    
+    var primaryName: String {
+        return allNames.first ?? name
     }
 }
 
@@ -91,16 +94,19 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
         return String(format: "%d:%02d", minutes, seconds)
     }
     
-    var primaryArtist: String {
-        guard let artist = artist else { return "Unknown Artist" }
-        let delimiters = [" feat.", " ft.", " featuring ", " & ", ", "]
-        var primary = artist
-        for delimiter in delimiters {
-            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
-                primary = String(primary[..<range.lowerBound])
-            }
+    var allArtists: [String] {
+        guard let artist = artist else { return ["Unknown Artist"] }
+        var temp = artist
+        let textDelimiters = [" feat.", " ft.", " featuring "]
+        for delim in textDelimiters {
+            temp = temp.replacingOccurrences(of: delim, with: " & ", options: .caseInsensitive)
         }
-        return primary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let list = temp.components(separatedBy: CharacterSet(charactersIn: "&,")).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return list.isEmpty ? [artist] : list
+    }
+    
+    var primaryArtist: String {
+        return allArtists.first ?? artist ?? "Unknown Artist"
     }
 }
 

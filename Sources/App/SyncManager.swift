@@ -146,7 +146,7 @@ final class SyncManager: ObservableObject {
                                         }
                                     }
                                 }
-                                await fa.downloadBackdropSilently(for: artist.primaryName, mbid: mbid)
+                                await fa.downloadBackdropSilently(for: artist.allNames, mbid: mbid)
                                 await client.downloadCoverArt(id: artist.id)
                                 await mb.downloadMetadataSilently(for: artist.primaryName, mbid: mbid)
                             }
