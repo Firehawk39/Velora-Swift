@@ -846,7 +846,7 @@ struct NowPlayingView: View {
         
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker
-        fanart.fetchBackdrop(for: artistName, mbid: nil)
+        fanart.fetchBackdrop(for: [artistName], mbid: nil)
         
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
@@ -858,7 +858,7 @@ struct NowPlayingView: View {
                     
                     // If we got a fresh MBID, update fanart too (though usually it's already there)
                     if let mbid = mbid {
-                        fanart.fetchBackdrop(for: artistName, mbid: mbid)
+                        fanart.fetchBackdrop(for: [artistName], mbid: mbid)
                     }
                 }
             }

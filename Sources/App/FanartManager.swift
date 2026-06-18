@@ -222,7 +222,7 @@ final class FanartManager: ObservableObject {
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
             self.fetchFromFanart(urlString: urlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { url in
                 if let url = url {
-                    self.downloadAndCache(from: url, to: fileUrl, artistName: artist, completion: completion)
+                    self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, completion: completion)
                 } else {
                     completion(nil)
                 }
@@ -245,7 +245,7 @@ final class FanartManager: ObservableObject {
         self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url in
             guard let self = self else { completion(nil); return }
             if let url = url {
-                self.downloadAndCache(from: url, to: fileUrl, artistName: artist, priority: URLSessionTask.highPriority, completion: completion)
+                self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, priority: URLSessionTask.highPriority, completion: completion)
             } else {
                 self.getMBID(for: artist, priority: URLSessionTask.highPriority) { resolved in
                     if let resolved = resolved, resolved != validMBID {
