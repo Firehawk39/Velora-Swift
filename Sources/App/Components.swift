@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Foundation
 
 // MARK: - Thread Safe UI Properties
@@ -16,7 +17,7 @@ enum UIProps {
         MainActor.assumeIsolated { UIScreen.screens.count }
     }
     static var connectedScenes: Set<UIScene> {
-        MainActor.assumeIsolated { UIProps.connectedScenes }
+        MainActor.assumeIsolated { UIApplication.shared.connectedScenes }
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // 3-step wizard matching the web app exactly:
 // Step 1: Server URL  →  Step 2: Username + Password  →  (Optional) Step 3: Display name
