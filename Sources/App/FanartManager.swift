@@ -367,7 +367,7 @@ final class FanartManager: ObservableObject {
                     completion(image)
                 }
             } else {
-                DispatchQueue.main.async { completion(nil, false) }
+                DispatchQueue.main.async { completion(nil) }
             }
         }
         task.priority = priority
@@ -397,7 +397,7 @@ final class FanartManager: ObservableObject {
         // Use exact name query to improve accuracy
         let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encodedName)\"&fmt=json"
         guard let url = URL(string: urlString) else {
-            DispatchQueue.main.async { completion(nil, false) }
+            DispatchQueue.main.async { completion(nil) }
             return
         }
         
@@ -412,7 +412,7 @@ final class FanartManager: ObservableObject {
                let id = firstArtist["id"] as? String {
                 DispatchQueue.main.async { completion(id) }
             } else {
-                DispatchQueue.main.async { completion(nil, false) }
+                DispatchQueue.main.async { completion(nil) }
             }
         }
         task.priority = priority
