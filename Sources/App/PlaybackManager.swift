@@ -89,13 +89,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0 
             ? 5 : UserDefaults.standard.integer(forKey: "velora_download_concurrency")
     }
-    private var isCrossfadeEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "velora_crossfade_enabled")
-    }
-    private var crossfadeDuration: Double {
-        let val = UserDefaults.standard.double(forKey: "velora_crossfade_duration")
-        return val == 0 ? 5.0 : val
-    }
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
@@ -103,19 +96,15 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     
     private var player: AVPlayer?
     private var secondaryPlayer: AVPlayer?
-    private var isCrossfading = false
+    private var artworkRetryCount = 0
+    private var nextArtworkRetryTime: Date? = nil
+    
     private var timeObserver: Any?
     private var playerItemObserver: Any?
     @Published var currentArtworkTrackId: String? = nil
-    // Artwork download race-proofing
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil
-    private var artworkRetryCount = 0
-    private var nextArtworkRetryTime: Date? = nil
-    // Pre-warmed next-track item for zero-wait crossfading
-    private var prewarmedItem: AVPlayerItem? = nil
-    private var prewarmedTrackId: String? = nil
-    private var prewarmPlayer: AVPlayer? = nil
+    
     var client: NavidromeClient
     
     private lazy var downloadSession: URLSession = {
@@ -283,14 +272,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     private func loadAndPlay(track: Track) {
-        // Cancel crossfade if active
-        if isCrossfading {
-            isCrossfading = false
-            secondaryPlayer?.pause()
-            secondaryPlayer = nil
-            player?.volume = 1.0
-        }
-
         // Invalidate any pre-warmed item — it was for the old next track
         prewarmedItem = nil
         prewarmedTrackId = nil
@@ -477,14 +458,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             item.preferredForwardBufferDuration = 30.0
             prewarmedItem    = item
             prewarmedTrackId = nextTrack.id
-
-        } else if isCrossfadeEnabled {
-            // ── Stream path: only pre-warm when crossfade is turned on ─────────────
-            // We use 8 s of forward buffer — enough to guarantee readiness by the
-            // time the crossfade trigger fires, without wasting mobile data on a
-            // full pre-download of the entire next track.
-            guard let streamUrl = client.getStreamUrl(id: nextTrack.id) else { return }
-            let item = AVPlayerItem(url: streamUrl)
             item.preferredForwardBufferDuration = 8.0
             prewarmedItem    = item
             prewarmedTrackId = nextTrack.id
@@ -1228,123 +1201,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         return scoredTracks.sorted { $0.score < $1.score }.map { $0.track }
     }
 
-    private func startCrossfade() {
-        guard !isCrossfading, currentTrack != nil, queue.count > 0 else { return }
 
-        let nextIndex = (queueIndex + 1) % queue.count
-        if nextIndex == queueIndex && repeatMode == .off { return }
-
-        let nextTrack = queue[nextIndex]
-        isCrossfading = true
-
-        // ── Resolve the AVPlayerItem ───────────────────────────────────────────────
-        // Prefer the pre-warmed item that has been buffering since track start.
-        // If it matches the next track, reuse it directly → Phase 1 wait is ~0 ms.
-        // If there's no pre-warmed item (e.g. crossfade was toggled on mid-track),
-        // fall back to creating a fresh item with a conservative buffer hint.
-        let playerItem: AVPlayerItem
-        if let warmed = prewarmedItem, prewarmedTrackId == nextTrack.id {
-            playerItem = warmed
-            prewarmedItem    = nil
-            prewarmedTrackId = nil
-        } else {
-            // Cold fallback path
-            let urlToPlay: URL
-            if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
-                urlToPlay = localUrl
-            } else {
-                urlToPlay = client.getStreamUrl(id: nextTrack.id) ?? URL(string: "about:blank")!
-            }
-            playerItem = AVPlayerItem(url: urlToPlay)
-            playerItem.preferredForwardBufferDuration = 6.0
-        }
-
-        let secPlayer = AVPlayer(playerItem: playerItem)
-        secPlayer.volume = 0.0      // Silent until buffered
-        secPlayer.play()            // Ensure playback is running
-        secondaryPlayer = secPlayer
-
-        Task { @MainActor in
-            // ── Phase 1: Wait for readyToPlay (max 10 s) ──────────────────────────
-            // With a pre-warmed item this resolves instantly (0–1 poll iterations).
-            // With a cold item this may take 2–4 s on a slow network; the primary
-            // player stays at 1.0 volume the whole time — zero audible gap.
-            var waitSteps = 100     // 100 × 100 ms = 10 s timeout
-            while self.secondaryPlayer?.currentItem?.status != .readyToPlay && waitSteps > 0 {
-                guard self.isCrossfading else { return }
-                try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1 s
-                waitSteps -= 1
-            }
-
-            guard self.isCrossfading else { return }
-
-            // ── Phase 2: Override the audio-graph volume reset ─────────────────────
-            // AVPlayer resets volume to 1.0 when its audio nodes connect on
-            // readyToPlay. Pin it back to 0 before starting the fade loop.
-            self.secondaryPlayer?.volume = 0.0
-
-            // ── Phase 3: Equal-power crossfade ─────────────────────────────────────
-            let fadeDuration = self.crossfadeDuration
-            let steps = 60
-            let interval = fadeDuration / Double(steps)
-
-            for step in 1...steps {
-                guard self.isCrossfading else { break }
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                guard self.isCrossfading else { break }
-
-                let t = Double(step) / Double(steps)
-                let angle = t * (.pi / 2.0)
-                self.player?.volume = Float(cos(angle))
-                self.secondaryPlayer?.volume = Float(sin(angle))
-            }
-
-            if self.isCrossfading {
-                if let nextItem = self.secondaryPlayer?.currentItem {
-                    self.completeCrossfade(nextTrack: nextTrack, nextItem: nextItem)
-                }
-            }
-        }
-    }
-
-    private func completeCrossfade(nextTrack: Track, nextItem: AVPlayerItem) {
-        // Scrobble previous track
-        if let track = self.currentTrack {
-            self.client.scrobble(id: track.id, submission: true)
-        }
-
-        // Cleanly tear down the old player's observers BEFORE swapping references
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-            timeObserver = nil
-        }
-        if let itemObserver = playerItemObserver {
-            NotificationCenter.default.removeObserver(itemObserver)
-            playerItemObserver = nil
-        }
-        player?.pause()
-
-        // Swap primary ← secondary
-        player = secondaryPlayer
-        secondaryPlayer = nil
-        currentTrack = nextTrack
-        queueIndex = (queueIndex + 1) % queue.count
-        isCrossfading = false
-        player?.volume = 1.0
-
-        // Clear stale visual & artwork state so the new track loads fresh assets
-        self.progress = 0
-        self.duration = 0
-        self.currentArtworkTrackId = nil
-        self.downloadingArtworkTrackId = nil
-        self.artworkDownloadTask?.cancel()
-        self.artworkDownloadTask = nil
-        FanartManager.shared.currentBackdrop = nil
-
-        // Wire up observers and fetch metadata for the new track
-        setupObservers(for: nextItem, track: nextTrack)
-        fetchMetadata(for: nextTrack)
-    }
     
     private func setupObservers(for item: AVPlayerItem, track: Track) {
         // Capture the player instance so stale observers from a previous item
@@ -1365,17 +1222,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 self.duration = currentItem.duration.seconds
                 self.updateNowPlayingInfo()
 
-                // Gate: only crossfade when the track is at least 2× the fade window long
-                let triggerTime = self.duration - self.crossfadeDuration
-                if self.isCrossfadeEnabled {
-                    if !self.isCrossfading {
-                        if self.duration > (self.crossfadeDuration * 2.0) {
-                            if time.seconds > triggerTime {
-                                self.startCrossfade()
-                            }
-                        }
-                    }
-                }
             }
         }
         

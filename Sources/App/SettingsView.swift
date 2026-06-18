@@ -340,8 +340,6 @@ struct AppSettingsView: View {
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
-    @AppStorage("velora_crossfade_enabled") private var isCrossfadeEnabled: Bool = false
-    @AppStorage("velora_crossfade_duration") private var crossfadeDuration: Double = 5.0
     @State private var showLogs: Bool = false
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")
@@ -664,52 +662,6 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
-                        }
-                        
-                        // Audio Engine
-                        VStack(alignment: .leading, spacing: 20) {
-                            Text("Audio Engine")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(labelCol)
-                                .textCase(.uppercase)
-                                .padding(.leading, 4)
-                            
-                            VStack(spacing: 0) {
-                                Toggle(isOn: $isCrossfadeEnabled) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("Gapless Crossfade")
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(isDark ? .white : .black)
-                                        Text("Smoothly transition between tracks")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                .tint(accentBg)
-                                .padding()
-                                
-                                if isCrossfadeEnabled {
-                                    Divider().background(borderCol.opacity(0.3)).padding(.horizontal)
-                                    
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        HStack {
-                                            Text("Crossfade Duration")
-                                                .font(.system(size: 14))
-                                                .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
-                                            Spacer()
-                                            Text("\(Int(crossfadeDuration))s")
-                                                .font(.system(size: 14, weight: .bold))
-                                                .foregroundColor(accentBg)
-                                        }
-                                        Slider(value: $crossfadeDuration, in: 2...12, step: 1)
-                                            .accentColor(accentBg)
-                                    }
-                                    .padding()
-                                }
-                            }
-                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
-                            .cornerRadius(16)
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }
                         
                         // Download Concurrency
