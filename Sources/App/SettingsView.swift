@@ -459,17 +459,22 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
-                            Button(action: {
-                                if sync.isSyncingMetadata {
-                                    sync.stopMetadataSync()
-                                } else {
-                                    sync.startMetadataSync()
-                                }
+                            SwipeableSyncRow(deleteText: "Clear Metadata", action: {
+                                client.clearMetadataCache()
+                                sync.metadataStatus = "Metadata Cleared!"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.metadataStatus = "" }
                             }) {
-                                HStack {
-                                    Image(systemName: "info.circle.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
+                                Button(action: {
+                                    if sync.isSyncingMetadata {
+                                        sync.stopMetadataSync()
+                                    } else {
+                                        sync.startMetadataSync()
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: "info.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isSyncingMetadata ? "Syncing Info..." : "Download Library Metadata")
@@ -503,26 +508,31 @@ struct AppSettingsView: View {
                                 .padding()
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                    }
+                                    .padding()
+                                    .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                    .cornerRadius(16)
+                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                }
                             }
-                            .simultaneousGesture(LongPressGesture().onEnded { _ in
-                                client.clearMetadataCache()
-                                sync.metadataStatus = "Metadata Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.metadataStatus = "" }
-                            })
 
                             // Lyrics Sync Button
-                            Button(action: {
-                                if sync.isSyncingLyrics {
-                                    sync.stopLyricsSync()
-                                } else {
-                                    sync.startLyricsSync()
-                                }
+                            SwipeableSyncRow(deleteText: "Clear Lyrics", action: {
+                                client.clearLyricsCache()
+                                sync.lyricsStatus = "Lyrics Cleared!"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.lyricsStatus = "" }
                             }) {
-                                HStack {
-                                    Image(systemName: "text.quote")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncingLyrics ? .purple : labelCol)
+                                Button(action: {
+                                    if sync.isSyncingLyrics {
+                                        sync.stopLyricsSync()
+                                    } else {
+                                        sync.startLyricsSync()
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: "text.quote")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(sync.isSyncingLyrics ? .purple : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isSyncingLyrics ? "Downloading Lyrics..." : "Download All Lyrics")
@@ -556,26 +566,31 @@ struct AppSettingsView: View {
                                 .padding()
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                    }
+                                    .padding()
+                                    .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                    .cornerRadius(16)
+                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                }
                             }
-                            .simultaneousGesture(LongPressGesture().onEnded { _ in
-                                client.clearLyricsCache()
-                                sync.lyricsStatus = "Lyrics Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.lyricsStatus = "" }
-                            })
 
                             // Media Sync Button
-                            Button(action: {
-                                if sync.isSyncingMedia {
-                                    sync.stopMediaSync()
-                                } else {
-                                    sync.startMediaSync()
-                                }
+                            SwipeableSyncRow(deleteText: "Clear Music", action: {
+                                client.clearMediaCache()
+                                sync.mediaStatus = "Music Cleared!"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.mediaStatus = "" }
                             }) {
-                                HStack {
-                                    Image(systemName: "icloud.and.arrow.down.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(sync.isSyncingMedia ? .red : labelCol)
+                                Button(action: {
+                                    if sync.isSyncingMedia {
+                                        sync.stopMediaSync()
+                                    } else {
+                                        sync.startMediaSync()
+                                    }
+                                }) {
+                                    HStack {
+                                        Image(systemName: "icloud.and.arrow.down.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(sync.isSyncingMedia ? .red : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isSyncingMedia ? "Downloading..." : "Download All Music")
@@ -609,13 +624,13 @@ struct AppSettingsView: View {
                                 .padding()
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                    }
+                                    .padding()
+                                    .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                    .cornerRadius(16)
+                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                }
                             }
-                            .simultaneousGesture(LongPressGesture().onEnded { _ in
-                                client.clearMediaCache()
-                                sync.mediaStatus = "Music Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.mediaStatus = "" }
-                            })
                             
                             Button(action: {
                                 client.clearCache()
@@ -856,6 +871,83 @@ struct StorageInfoView: View {
         }
         .onAppear {
             storage = integrity.getStorageInfo()
+        }
+    }
+}
+}
+
+// MARK: - Custom Swipeable Row
+struct SwipeableSyncRow<Content: View>: View {
+    let deleteText: String
+    let action: () -> Void
+    let content: Content
+    
+    @State private var offset: CGFloat = 0
+    @State private var isSwiped: Bool = false
+    
+    init(deleteText: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.deleteText = deleteText
+        self.action = action
+        self.content = content()
+    }
+    
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            // Delete Background Layer
+            HStack {
+                Spacer()
+                Button(action: {
+                    withAnimation(.spring()) {
+                        offset = 0
+                        isSwiped = false
+                    }
+                    action()
+                }) {
+                    VStack(spacing: 4) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 16))
+                        Text(deleteText)
+                            .font(.system(size: 10, weight: .bold))
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundColor(.white)
+                    .frame(width: 80)
+                    .frame(maxHeight: .infinity)
+                    .background(Color.red)
+                    .cornerRadius(16)
+                }
+            }
+            
+            // Foreground Content Layer
+            content
+                .background(Color.clear)
+                .offset(x: offset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            if value.translation.width < 0 {
+                                // Swiping left
+                                offset = isSwiped ? value.translation.width - 80 : value.translation.width
+                                // Cap the swipe to -80
+                                if offset < -100 { offset = -100 }
+                            } else if isSwiped && value.translation.width > 0 {
+                                // Swiping right from open state
+                                offset = value.translation.width - 80
+                                if offset > 0 { offset = 0 }
+                            }
+                        }
+                        .onEnded { value in
+                            withAnimation(.spring()) {
+                                if value.translation.width < -40 {
+                                    offset = -80
+                                    isSwiped = true
+                                } else {
+                                    offset = 0
+                                    isSwiped = false
+                                }
+                            }
+                        }
+                )
         }
     }
 }
