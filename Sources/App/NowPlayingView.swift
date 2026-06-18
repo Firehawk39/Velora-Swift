@@ -23,8 +23,8 @@ struct NowPlayingView: View {
 
     // Header height to avoid overlap
     var headerHeight: CGFloat { 
-        if isSmallDevice && !isLandscape { return 64 }
-        return UIScreen.main.bounds.width < 768 ? 72 : 96 
+        if isSmallDevice && !isLandscape { return 96 }
+        return UIScreen.main.bounds.width < 768 ? 104 : 96 
     }
 
     var isCompact:     Bool { hSizeClass == .compact }
@@ -436,7 +436,7 @@ struct NowPlayingView: View {
 
         // Previous
         Button { playback.skipBackward(); resetIdleTimer() } label: {
-            Image(systemName: "backward.fill").font(.system(size: 28)).foregroundColor(.white)
+            Image(systemName: "backward.fill").font(.system(size: isSE ? 22 : 28)).foregroundColor(.white)
         }
         .accessibilityLabel("Previous Track")
         .hoverEffect()
@@ -444,9 +444,9 @@ struct NowPlayingView: View {
         // Play/Pause
         Button { playback.togglePlayPause(); resetIdleTimer() } label: {
             ZStack {
-                Circle().fill(Color.white).frame(width: 58, height: 58)
+                Circle().fill(Color.white).frame(width: isSE ? 48 : 58, height: isSE ? 48 : 58)
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 24)).foregroundColor(.black)
+                    .font(.system(size: isSE ? 20 : 24)).foregroundColor(.black)
             }
         }
         .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
@@ -454,7 +454,7 @@ struct NowPlayingView: View {
 
         // Next
         Button { playback.skipForward(); resetIdleTimer() } label: {
-            Image(systemName: "forward.fill").font(.system(size: 28)).foregroundColor(.white)
+            Image(systemName: "forward.fill").font(.system(size: isSE ? 22 : 28)).foregroundColor(.white)
         }
         .accessibilityLabel("Next Track")
         .hoverEffect()

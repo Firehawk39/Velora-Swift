@@ -187,10 +187,17 @@ struct AppHeader: View {
 
     var body: some View {
         Group {
-        ZStack {
-            mainHeaderContent
-            navigationPill
-        }
+            if isCompact {
+                VStack(spacing: ScreenTier.isSE ? 8 : 12) {
+                    mainHeaderContent
+                    navigationPill
+                }
+            } else {
+                ZStack {
+                    mainHeaderContent
+                    navigationPill
+                }
+            }
         }
         .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
     }
@@ -371,7 +378,9 @@ struct TabButton: View {
                 return 16
             }
         } else {
-            if ScreenTier.isSmall {
+            if ScreenTier.isSE {
+                return 11
+            } else if ScreenTier.isSmall {
                 return 13
             } else {
                 return 16
@@ -389,7 +398,9 @@ struct TabButton: View {
                 return 16
             }
         } else {
-            if ScreenTier.isSmall {
+            if ScreenTier.isSE {
+                return isActive ? 12 : 8
+            } else if ScreenTier.isSmall {
                 return isActive ? 16 : 12
             } else {
                 return 16
