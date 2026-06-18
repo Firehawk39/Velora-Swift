@@ -25,7 +25,7 @@ let package = Package(
                 .landscapeRight,
                 .landscapeLeft,
                 .portraitUpsideDown
-            ],
+            ]
         )
     ],
     targets: [
