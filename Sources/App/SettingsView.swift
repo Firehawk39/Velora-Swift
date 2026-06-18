@@ -343,7 +343,6 @@ struct AppSettingsView: View {
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @AppStorage("velora_crossfade_enabled") private var isCrossfadeEnabled: Bool = false
     @AppStorage("velora_crossfade_duration") private var crossfadeDuration: Double = 5.0
-    @AppStorage("velora_fanart_api_key") private var customFanartApiKey: String = ""
     @State private var showLogs: Bool = false
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")

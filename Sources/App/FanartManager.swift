@@ -13,10 +13,7 @@ final class FanartManager: ObservableObject {
     private let portraitDir: URL
     
     // Fanart.tv API Key - Provided by user
-    private var fanartApiKey: String {
-        let customKey = UserDefaults.standard.string(forKey: "velora_fanart_api_key") ?? ""
-        return customKey.isEmpty ? "faceb56eac838d3e1c2a3ed15bf65a80" : customKey
-    } 
+    private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80" 
     
     init() {
         self.backdropDir = VeloraStorage.backdrops
