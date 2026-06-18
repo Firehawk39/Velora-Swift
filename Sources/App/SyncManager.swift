@@ -110,18 +110,58 @@ final class SyncManager: ObservableObject {
                 return
             }
             
-            let totalTasks = Double(artists.count + albums.count + songs.count)
+            metadataStatus = "Analyzing library..."
+            await Task.yield()
+            
+            var missingArtists = [SubsonicModels.Artist]()
+            let fa = await FanartManager.shared
+            let mb = await MusicBrainzManager.shared
+            
+            for (index, artist) in artists.enumerated() {
+                let localPortraitUrl = VeloraStorage.coverArt.appendingPathComponent("\(artist.id).jpg")
+                let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
+                let hasArtist = mb.hasArtistMetadata(for: artist.primaryName)
+                let hasBackdrop = fa.hasBackdrop(for: artist.primaryName)
+                
+                if hasLocalPortrait && hasArtist && hasBackdrop {
+                    // skipped
+                } else {
+                    missingArtists.append(artist)
+                }
+                if index % 100 == 0 { await Task.yield() }
+            }
+            
+            var missingAlbums = [SubsonicModels.Album]()
+            for (index, album) in albums.enumerated() {
+                let artistName = album.artist ?? "Unknown Artist"
+                if mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+                    // skipped
+                } else {
+                    missingAlbums.append(album)
+                }
+                if index % 100 == 0 { await Task.yield() }
+            }
+            
+            let skippedCount = (artists.count - missingArtists.count) + (albums.count - missingAlbums.count)
+            let totalTasks = Double(missingArtists.count + missingAlbums.count)
             var tasksCompleted = 0.0
+            
+            if totalTasks == 0 {
+                finalizeMetadataSync("All metadata already synced.")
+                return
+            }
             
             // Phase 1: Artist Metadata & Images
             let maxConcurrentMetadata = 8
             var artistStartIndex = 0
+            let startTime = Date()
             
-            while artistStartIndex < artists.count && isSyncingMetadata {
-                let endIndex = min(artistStartIndex + maxConcurrentMetadata, artists.count)
-                let batch = Array(artists[artistStartIndex..<endIndex])
+            while artistStartIndex < missingArtists.count && isSyncingMetadata {
+                let endIndex = min(artistStartIndex + maxConcurrentMetadata, missingArtists.count)
+                let batch = Array(missingArtists[artistStartIndex..<endIndex])
                 
-                metadataStatus = "Syncing Artists: \(artistStartIndex)/\(artists.count)"
+                let processed = tasksCompleted
+                metadataStatus = "Syncing Artists: \(Int(processed))/\(Int(totalTasks))"
                 
                 await withTaskGroup(of: Void.self) { group in
                     for (index, artist) in batch.enumerated() {
@@ -157,15 +197,32 @@ final class SyncManager: ObservableObject {
                 tasksCompleted += Double(batch.count)
                 artistStartIndex += maxConcurrentMetadata
                 metadataProgress = tasksCompleted / totalTasks
+                
+                // ETA
+                if tasksCompleted > 0 {
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    let tracksPerSecond = tasksCompleted / elapsed
+                    let remaining = totalTasks - tasksCompleted
+                    let remainingSeconds = Int(remaining / tracksPerSecond)
+                    
+                    if remainingSeconds > 3600 {
+                        self.metadataEta = "\(remainingSeconds / 3600)h remaining"
+                    } else if remainingSeconds > 60 {
+                        self.metadataEta = "\(remainingSeconds / 60)m remaining"
+                    } else {
+                        self.metadataEta = "\(remainingSeconds)s remaining"
+                    }
+                }
             }
             
             // Phase 2: Album Metadata
             var albumStartIndex = 0
-            while albumStartIndex < albums.count && isSyncingMetadata {
-                let endIndex = min(albumStartIndex + maxConcurrentMetadata, albums.count)
-                let batch = Array(albums[albumStartIndex..<endIndex])
+            while albumStartIndex < missingAlbums.count && isSyncingMetadata {
+                let endIndex = min(albumStartIndex + maxConcurrentMetadata, missingAlbums.count)
+                let batch = Array(missingAlbums[albumStartIndex..<endIndex])
                 
-                metadataStatus = "Syncing Albums: \(albumStartIndex)/\(albums.count)"
+                let processed = tasksCompleted
+                metadataStatus = "Syncing Albums: \(Int(processed))/\(Int(totalTasks))"
                 
                 await withTaskGroup(of: Void.self) { group in
                     for (index, album) in batch.enumerated() {
@@ -187,9 +244,25 @@ final class SyncManager: ObservableObject {
                 tasksCompleted += Double(batch.count)
                 albumStartIndex += maxConcurrentMetadata
                 metadataProgress = tasksCompleted / totalTasks
+                
+                // ETA
+                if tasksCompleted > 0 {
+                    let elapsed = Date().timeIntervalSince(startTime)
+                    let tracksPerSecond = tasksCompleted / elapsed
+                    let remaining = totalTasks - tasksCompleted
+                    let remainingSeconds = Int(remaining / tracksPerSecond)
+                    
+                    if remainingSeconds > 3600 {
+                        self.metadataEta = "\(remainingSeconds / 3600)h remaining"
+                    } else if remainingSeconds > 60 {
+                        self.metadataEta = "\(remainingSeconds / 60)m remaining"
+                    } else {
+                        self.metadataEta = "\(remainingSeconds)s remaining"
+                    }
+                }
             }
             
-            finalizeMetadataSync("Metadata Sync Complete")
+            finalizeMetadataSync("Metadata Sync Complete (\(skippedCount) items skipped)")
         }
     }
     
@@ -237,6 +310,11 @@ final class SyncManager: ObservableObject {
             }
             
             lyricsProgress = tasksCompleted / totalTasks
+            
+            if missingSongs.isEmpty {
+                finalizeLyricsSync("All \(Int(totalTasks)) tracks already have lyrics.")
+                return
+            }
             
             if !missingSongs.isEmpty {
                 var startIndex = 0
