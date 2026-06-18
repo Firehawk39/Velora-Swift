@@ -506,14 +506,10 @@ struct AppSettingsView: View {
                                 .padding()
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                    }
-                                    .padding()
-                                    .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                    .cornerRadius(16)
-                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                                }
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
 
+                        }
                             // Lyrics Sync Button
                             SwipeableSyncRow(deleteText: "Clear Lyrics", action: {
                                 client.clearLyricsCache()
@@ -564,14 +560,10 @@ struct AppSettingsView: View {
                                 .padding()
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                    }
-                                    .padding()
-                                    .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                    .cornerRadius(16)
-                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                                }
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
 
+                        }
                             // Media Sync Button
                             SwipeableSyncRow(deleteText: "Clear Music", action: {
                                 client.clearMediaCache()
@@ -622,14 +614,10 @@ struct AppSettingsView: View {
                                 .padding()
                                 .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .cornerRadius(16)
-                                    }
-                                    .padding()
-                                    .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                    .cornerRadius(16)
-                                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                                }
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
-                            
+                        }
+                        
                             Button(action: {
                                 client.clearCache()
                                 cacheCleared = true
@@ -825,7 +813,6 @@ struct StorageInfoView: View {
             storage = integrity.getStorageInfo()
         }
     }
-}
 }
 
 // MARK: - Custom Swipeable Row
