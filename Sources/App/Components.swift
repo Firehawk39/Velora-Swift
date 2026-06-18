@@ -1,12 +1,31 @@
 import SwiftUI
 import Foundation
 
+// MARK: - Thread Safe UI Properties
+enum UIProps {
+    static var bounds: CGRect {
+        MainActor.assumeIsolated { UIScreen.main.bounds }
+    }
+    static var idiom: UIUserInterfaceIdiom {
+        MainActor.assumeIsolated { UIDevice.current.userInterfaceIdiom }
+    }
+    static var nativeBounds: CGRect {
+        MainActor.assumeIsolated { UIScreen.main.nativeBounds }
+    }
+    static var screensCount: Int {
+        MainActor.assumeIsolated { UIScreen.screens.count }
+    }
+    static var connectedScenes: Set<UIScene> {
+        MainActor.assumeIsolated { UIProps.connectedScenes }
+    }
+}
+
 // MARK: - Screen Tier
 public enum ScreenTier {
     case tiny, compact, regular, large, huge
-    @MainActor public static var current: ScreenTier {
-        let w = UIScreen.main.bounds.width
-        let h = UIScreen.main.bounds.height
+    public static var current: ScreenTier {
+        let w = UIProps.bounds.width
+        let h = UIProps.bounds.height
         let minDim = min(w, h)
         let maxDim = max(w, h)
         
@@ -16,21 +35,21 @@ public enum ScreenTier {
         if maxDim < 1024 { return .large } // Standard iPads
         return .huge // iPad Pro 12.9"
     }
-    @MainActor public static var isSE: Bool { current == .tiny }
-    @MainActor public static var isSmall: Bool { min(UIScreen.main.bounds.width, UIScreen.main.bounds.height) <= 375 }
-    @MainActor public static var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
-    @MainActor public static var isHuge: Bool { current == .huge }
-    @MainActor public static var isCarDisplay: Bool {
-        if UIDevice.current.userInterfaceIdiom == .carPlay { return true }
-        if UIScreen.screens.count > 1 { return true }
+    public static var isSE: Bool { current == .tiny }
+    public static var isSmall: Bool { min(UIProps.bounds.width, UIProps.bounds.height) <= 375 }
+    public static var isPhone: Bool { UIProps.idiom == .phone }
+    public static var isHuge: Bool { current == .huge }
+    public static var isCarDisplay: Bool {
+        if UIProps.idiom == .carPlay { return true }
+        if UIProps.screensCount > 1 { return true }
         
-        let w = UIScreen.main.bounds.width
-        let h = UIScreen.main.bounds.height
+        let w = UIProps.bounds.width
+        let h = UIProps.bounds.height
         let minDim = min(w, h)
         let maxDim = max(w, h)
         
-        let nativeW = UIScreen.main.nativeBounds.width
-        let nativeH = UIScreen.main.nativeBounds.height
+        let nativeW = UIProps.nativeBounds.width
+        let nativeH = UIProps.nativeBounds.height
         let minNative = min(nativeW, nativeH)
         let maxNative = max(nativeW, nativeH)
         
@@ -53,13 +72,13 @@ public enum ScreenTier {
         let aspect = Double(maxNative) / Double(minNative)
         if aspect >= 1.55 && aspect <= 2.7 && minNative >= 480 && minNative <= 900 {
             // Exclude standard phones to avoid false positives on standard devices, but keep CarPlay/AI boxes
-            if UIDevice.current.userInterfaceIdiom != .phone {
+            if UIProps.idiom != .phone {
                 return true
             }
         }
         
         // Also keep standard iPhone landscape when it is large enough
-        if UIDevice.current.userInterfaceIdiom == .phone && w > h && minDim > 375 { return true }
+        if UIProps.idiom == .phone && w > h && minDim > 375 { return true }
         
         return false
     }
@@ -72,19 +91,19 @@ public struct UIScaler {
     static let baselineHeight: CGFloat = 844.0
     
     public static func scaleW(_ value: CGFloat) -> CGFloat {
-        let screenW = UIScreen.main.bounds.width
+        let screenW = UIProps.bounds.width
         let factor = max(0.8, min(screenW / baselineWidth, 1.2))
         return value * factor
     }
     
     public static func scaleH(_ value: CGFloat) -> CGFloat {
-        let screenH = UIScreen.main.bounds.height
+        let screenH = UIProps.bounds.height
         let factor = max(0.65, min(screenH / baselineHeight, 1.1))
         return value * factor
     }
     
     public static func scaleFont(_ value: CGFloat) -> CGFloat {
-        let screenW = UIScreen.main.bounds.width
+        let screenW = UIProps.bounds.width
         let factor = max(0.85, min(screenW / baselineWidth, 1.1))
         return value * factor
     }
@@ -145,10 +164,10 @@ struct AppHeader: View {
     @Environment(\.verticalSizeClass) var vSizeClass
     var isCompact: Bool { hSizeClass == .compact }
     var isLandscape: Bool {
-        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+        if let windowScene = UIProps.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
             return windowScene.coordinateSpace.bounds.width > windowScene.coordinateSpace.bounds.height
         }
-        return UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        return UIProps.bounds.width > UIProps.bounds.height
     }
 
     var isPlayingTab: Bool { activeTab == "now-playing" }
@@ -372,7 +391,7 @@ struct TabButton: View {
 
     var isActive: Bool { activeTab == id }
     var isLandscape: Bool {
-        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        UIProps.bounds.width > UIProps.bounds.height
     }
     
     private var iconName: String {

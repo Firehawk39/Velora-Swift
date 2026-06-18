@@ -16,11 +16,11 @@ struct ContentView: View {
     @Environment(\.verticalSizeClass) var vSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
-    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
-    var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
+    var isLargeCanvas: Bool { UIProps.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
+    var isSmallDevice: Bool { UIProps.bounds.width <= 375 } // iPhone SE, Mini, etc.
     var isLandscape: Bool { 
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            return UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        if UIProps.idiom == .pad {
+            return UIProps.bounds.width > UIProps.bounds.height
         }
         return vSizeClass == .compact 
     }
@@ -29,7 +29,7 @@ struct ContentView: View {
         if ScreenTier.isSmall && !isLandscape {
             return 70
         }
-        return UIScreen.main.bounds.width < 768 ? 72 : 80 
+        return UIProps.bounds.width < 768 ? 72 : 80 
     }
 
     @AppStorage("velora_username") var username: String = ""

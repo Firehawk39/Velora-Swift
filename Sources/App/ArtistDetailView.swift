@@ -20,7 +20,7 @@ struct ArtistDetailView: View {
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
     
-    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
+    var isLargeCanvas: Bool { UIProps.bounds.width >= 1150 }
     var isCompact: Bool { hSizeClass == .compact }
     
     var body: some View {

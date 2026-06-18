@@ -24,16 +24,16 @@ struct NowPlayingView: View {
     // Header height to avoid overlap
     var headerHeight: CGFloat { 
         if isSmallDevice && !isLandscape { return 64 }
-        return UIScreen.main.bounds.width < 768 ? 72 : 96 
+        return UIProps.bounds.width < 768 ? 72 : 96 
     }
 
     var isCompact:     Bool { hSizeClass == .compact }
     var isLandscape: Bool {
-        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        UIProps.bounds.width > UIProps.bounds.height
     }
-    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1000 }
-    var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
-    var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
+    var isLargeCanvas: Bool { UIProps.bounds.width >= 1000 }
+    var isShortCanvas: Bool { UIProps.bounds.height < 800 }
+    var isSmallDevice: Bool { UIProps.bounds.width <= 375 } 
     var isSE:          Bool { ScreenTier.isSE }
     
     // Layout Constants
