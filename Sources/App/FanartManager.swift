@@ -259,15 +259,11 @@ final class FanartManager: ObservableObject {
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if type == .background {
-                        var allBgs: [[String: Any]] = []
-                        if let bgs = json["artistbackground"] as? [[String: Any]] { allBgs.append(contentsOf: bgs) }
-                        if let bgs4k = json["artist4kbackground"] as? [[String: Any]] { allBgs.append(contentsOf: bgs4k) }
-                        
-                        if !allBgs.isEmpty {
+                        if let bgs = json["artistbackground"] as? [[String: Any]], !bgs.isEmpty {
                             // Stable Deterministic Selection: FNV-1a hash ensures consistency across app launches
                             let hashValue = self.stableHash(artistName.lowercased())
-                            let index = abs(hashValue) % allBgs.count
-                            let selected = allBgs[index]["url"] as? String
+                            let index = abs(hashValue) % bgs.count
+                            let selected = bgs[index]["url"] as? String
                             DispatchQueue.main.async { completion(selected) }
                             return
                         }
