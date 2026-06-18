@@ -65,6 +65,31 @@ public enum ScreenTier {
     }
 }
 
+// MARK: - Universal Dynamic Scaler
+@MainActor
+public struct UIScaler {
+    static let baselineWidth: CGFloat = 390.0
+    static let baselineHeight: CGFloat = 844.0
+    
+    public static func scaleW(_ value: CGFloat) -> CGFloat {
+        let screenW = UIScreen.main.bounds.width
+        let factor = max(0.8, min(screenW / baselineWidth, 1.2))
+        return value * factor
+    }
+    
+    public static func scaleH(_ value: CGFloat) -> CGFloat {
+        let screenH = UIScreen.main.bounds.height
+        let factor = max(0.65, min(screenH / baselineHeight, 1.1))
+        return value * factor
+    }
+    
+    public static func scaleFont(_ value: CGFloat) -> CGFloat {
+        let screenW = UIScreen.main.bounds.width
+        let factor = max(0.85, min(screenW / baselineWidth, 1.1))
+        return value * factor
+    }
+}
+
 // MARK: - Self-Healing Async Image
 public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
     public let url: URL?
@@ -187,17 +212,10 @@ struct AppHeader: View {
 
     var body: some View {
         Group {
-            if isCompact {
-                VStack(spacing: ScreenTier.isSE ? 8 : 12) {
-                    mainHeaderContent
-                    navigationPill
-                }
-            } else {
-                ZStack {
-                    mainHeaderContent
-                    navigationPill
-                }
-            }
+        ZStack {
+            mainHeaderContent
+            navigationPill
+        }
         }
         .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
     }
@@ -378,9 +396,7 @@ struct TabButton: View {
                 return 16
             }
         } else {
-            if ScreenTier.isSE {
-                return 11
-            } else if ScreenTier.isSmall {
+            if ScreenTier.isSmall {
                 return 13
             } else {
                 return 16
@@ -398,9 +414,7 @@ struct TabButton: View {
                 return 16
             }
         } else {
-            if ScreenTier.isSE {
-                return isActive ? 12 : 8
-            } else if ScreenTier.isSmall {
+            if ScreenTier.isSmall {
                 return isActive ? 16 : 12
             } else {
                 return 16

@@ -23,8 +23,8 @@ struct NowPlayingView: View {
 
     // Header height to avoid overlap
     var headerHeight: CGFloat { 
-        if isSmallDevice && !isLandscape { return 96 }
-        return UIScreen.main.bounds.width < 768 ? 104 : 96 
+        if isSmallDevice && !isLandscape { return 64 }
+        return UIScreen.main.bounds.width < 768 ? 72 : 96 
     }
 
     var isCompact:     Bool { hSizeClass == .compact }
@@ -38,11 +38,11 @@ struct NowPlayingView: View {
     
     // Layout Constants
     private var tabletArtworkSize: CGFloat { 
-        let base: CGFloat = isLargeCanvas ? 220 : (!isCompact ? 160 : (isSE ? 130.0 : 120.0))
+        let base: CGFloat = isLargeCanvas ? 220 : (!isCompact ? 160 : UIScaler.scaleW(120))
         return isLandscape ? base * 1.25 : base // 25% increase in landscape
     }
     private var tabletTitleSize: CGFloat { 
-        let base: CGFloat = isLargeCanvas ? 32 : (!isCompact ? 26 : (isSE ? 18.0 : 20.0))
+        let base: CGFloat = isLargeCanvas ? 32 : (!isCompact ? 26 : UIScaler.scaleFont(20))
         return isLandscape ? base * 1.2 : base // 20% increase in landscape
     }
     private var tabletArtistSize: CGFloat { 
@@ -263,29 +263,31 @@ struct NowPlayingView: View {
                 Spacer()
             }
             
-            VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 32)) {
+            VStack(spacing: UIScaler.scaleH(24)) {
                 if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
-                        .frame(height: proxy.size.height - headerHeight - (isSE ? 100 : 120))
+                        .frame(height: proxy.size.height - headerHeight - UIScaler.scaleH(110))
                         .padding(.horizontal, 24)
                 } else {
                     // Album Art
-                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.42 : (isSmallDevice ? 0.55 : 0.7)), 280) : tabletArtworkSize)
-                        .padding(.bottom, isSE ? 0 : (isSmallDevice ? 6 : 12))
+                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * 0.75, UIScaler.scaleW(320)) : tabletArtworkSize)
+                        .padding(.bottom, UIScaler.scaleH(8))
                     
                     // Centered Metadata
-                    VStack(alignment: .center, spacing: isSE ? 2 : 6) {
+                    VStack(alignment: .center, spacing: UIScaler.scaleH(4)) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
-                            .font(.system(size: isSE ? 17 : (isSmallDevice ? 20 : 26), weight: .black))
+                            .font(.system(size: UIScaler.scaleFont(24), weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(2)
+                            .minimumScaleFactor(0.6)
                             .multilineTextAlignment(.center)
                         
                         Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                            .font(.system(size: isSE ? 12 : (isSmallDevice ? 14 : 16), weight: .bold))
+                            .font(.system(size: UIScaler.scaleFont(16), weight: .bold))
                             .foregroundColor(.white.opacity(0.6))
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                             .multilineTextAlignment(.center)
                     }
                     .padding(.horizontal, 24)
@@ -297,12 +299,12 @@ struct NowPlayingView: View {
                 
                 if !isIdle && !playback.isLyricsMode {
                     // Controls Section for Portrait
-                    VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 24)) {
-                        HStack(spacing: isSE ? 20 : (isSmallDevice ? 28 : 36)) {
+                    VStack(spacing: UIScaler.scaleH(20)) {
+                        HStack(spacing: UIScaler.scaleW(32)) {
                             playbackControls
                         }
-                        .padding(.horizontal, isSE ? 16 : (isSmallDevice ? 24 : 32))
-                        .padding(.vertical, isSE ? 8 : (isSmallDevice ? 12 : 16))
+                        .padding(.horizontal, UIScaler.scaleW(28))
+                        .padding(.vertical, UIScaler.scaleH(14))
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
@@ -312,7 +314,7 @@ struct NowPlayingView: View {
                             queueButton
                             downloadButton
                         }
-                        .scaleEffect(isSE ? 0.75 : (isSmallDevice ? 0.85 : 0.9))
+                        .scaleEffect(ScreenTier.isPhone ? 0.9 : 1.0)
                     }
                     // Stagger layer 1 of 3: controls exit FIRST (no delay) and are the LAST
                     // to reappear on wake (0.2s delay) — mirrors Apple Music's cinematic mode.
@@ -324,7 +326,7 @@ struct NowPlayingView: View {
                     ))
                 }
             }
-            .padding(.bottom, isSE ? 12 : (isIdle ? 60 : 32))
+            .padding(.bottom, UIScaler.scaleH(isIdle ? 60 : 32))
         }
         // isLyricsMode still gets its own local animation — it's a separate interaction,
         // not part of the idle transition context.
@@ -436,7 +438,7 @@ struct NowPlayingView: View {
 
         // Previous
         Button { playback.skipBackward(); resetIdleTimer() } label: {
-            Image(systemName: "backward.fill").font(.system(size: isSE ? 22 : 28)).foregroundColor(.white)
+            Image(systemName: "backward.fill").font(.system(size: 28)).foregroundColor(.white)
         }
         .accessibilityLabel("Previous Track")
         .hoverEffect()
@@ -444,9 +446,9 @@ struct NowPlayingView: View {
         // Play/Pause
         Button { playback.togglePlayPause(); resetIdleTimer() } label: {
             ZStack {
-                Circle().fill(Color.white).frame(width: isSE ? 48 : 58, height: isSE ? 48 : 58)
+                Circle().fill(Color.white).frame(width: 58, height: 58)
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: isSE ? 20 : 24)).foregroundColor(.black)
+                    .font(.system(size: 24)).foregroundColor(.black)
             }
         }
         .accessibilityLabel(playback.isPlaying ? "Pause" : "Play")
@@ -454,7 +456,7 @@ struct NowPlayingView: View {
 
         // Next
         Button { playback.skipForward(); resetIdleTimer() } label: {
-            Image(systemName: "forward.fill").font(.system(size: isSE ? 22 : 28)).foregroundColor(.white)
+            Image(systemName: "forward.fill").font(.system(size: 28)).foregroundColor(.white)
         }
         .accessibilityLabel("Next Track")
         .hoverEffect()
@@ -529,9 +531,9 @@ struct NowPlayingView: View {
     private var metadataCards: some View {
         VStack(alignment: .leading, spacing: 40) {
             // About Artist
-            VStack(alignment: .leading, spacing: isSE ? 16 : 24) {
+            VStack(alignment: .leading, spacing: UIScaler.scaleH(24)) {
                 Text("About the Artist")
-                    .font(.system(size: isSE ? 28 : 32, weight: .bold))
+                    .font(.system(size: UIScaler.scaleFont(32), weight: .bold))
                     .foregroundColor(.white)
                 
                 VStack(alignment: .leading, spacing: 20) {
@@ -543,11 +545,11 @@ struct NowPlayingView: View {
                         } label: {
                             HStack(spacing: 24) {
                                 artistImage
-                                    .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
+                                    .frame(width: UIScaler.scaleW(120), height: UIScaler.scaleW(120))
                                 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                        .font(.system(size: isSE ? 20 : 28, weight: .bold))
+                                        .font(.system(size: UIScaler.scaleFont(28), weight: .bold))
                                         .foregroundColor(.white)
                                 }
                             }
@@ -555,7 +557,7 @@ struct NowPlayingView: View {
                         .buttonStyle(PlainButtonStyle())
                         
                         Text(bio)
-                            .font(.system(size: isSE ? 14 : 16))
+                            .font(.system(size: UIScaler.scaleFont(16)))
                             .foregroundColor(.white.opacity(0.8))
                             .lineLimit(10)
                     } else if isFetchingArtistInfo {
@@ -575,11 +577,11 @@ struct NowPlayingView: View {
                         } label: {
                             HStack(spacing: 24) {
                                 artistImage
-                                    .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
+                                    .frame(width: UIScaler.scaleW(120), height: UIScaler.scaleW(120))
                                 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                        .font(.system(size: isSE ? 20 : 28, weight: .bold))
+                                        .font(.system(size: UIScaler.scaleFont(28), weight: .bold))
                                         .foregroundColor(.white)
                                 }
                             }
@@ -587,7 +589,7 @@ struct NowPlayingView: View {
                         .buttonStyle(PlainButtonStyle())
                         
                         Text("No further information found.")
-                            .font(.system(size: isSE ? 14 : 16))
+                            .font(.system(size: UIScaler.scaleFont(16)))
                             .foregroundColor(.white.opacity(0.4))
                             .italic()
                     }
@@ -598,21 +600,21 @@ struct NowPlayingView: View {
             }
             
             // Album Info
-            VStack(alignment: .leading, spacing: isSE ? 16 : 24) {
+            VStack(alignment: .leading, spacing: UIScaler.scaleH(24)) {
                 Text("From the Album")
-                    .font(.system(size: isSE ? 28 : 32, weight: .bold))
+                    .font(.system(size: UIScaler.scaleFont(32), weight: .bold))
                     .foregroundColor(.white)
                 
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(playback.currentTrack?.album ?? "Unknown Album")
-                                .font(.system(size: isSE ? 22 : 26, weight: .bold))
+                                .font(.system(size: UIScaler.scaleFont(26), weight: .bold))
                                 .foregroundColor(.white)
                             
                             if let info = mb.currentAlbumInfo {
                                 Text([info.label, info.firstReleaseDate].compactMap { $0 }.joined(separator: " • "))
-                                    .font(.system(size: isSE ? 14 : 16))
+                                    .font(.system(size: UIScaler.scaleFont(16)))
                                     .foregroundColor(.white.opacity(0.5))
                             }
                         }
@@ -621,7 +623,7 @@ struct NowPlayingView: View {
                     
                     if let annotation = mb.currentAlbumInfo?.annotation {
                         Text(annotation)
-                            .font(.system(size: isSE ? 14 : 16))
+                            .font(.system(size: UIScaler.scaleFont(16)))
                             .foregroundColor(.white.opacity(0.8))
                             .lineLimit(6)
                     }

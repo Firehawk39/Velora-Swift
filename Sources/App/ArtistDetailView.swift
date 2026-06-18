@@ -107,19 +107,19 @@ struct ArtistDetailView: View {
     
     private var heroNameSize: CGFloat { 
         if isLargeCanvas { return 20.0 }
-        if ScreenTier.isPhone { return ScreenTier.isSE ? 18 : 24 }
+        if ScreenTier.isPhone { return UIScaler.scaleFont(24) }
         return 16.0
     }
     
     private var heroSection: some View {
         Group {
             if isCompact {
-                VStack(spacing: ScreenTier.isSE ? 16 : 24) {
-                    artistLogo(size: ScreenTier.isSE ? 120 : 140)
+                VStack(spacing: UIScaler.scaleH(24)) {
+                    artistLogo(size: UIScaler.scaleW(140))
                     
                     VStack(spacing: 6) {
                         artistLabel
-                        artistNameText(size: ScreenTier.isSE ? 24 : 28)
+                        artistNameText(size: UIScaler.scaleFont(28))
                     }
                     
                     playAllButton
