@@ -343,6 +343,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @AppStorage("velora_crossfade_enabled") private var isCrossfadeEnabled: Bool = false
     @AppStorage("velora_crossfade_duration") private var crossfadeDuration: Double = 5.0
+    @AppStorage("velora_fanart_api_key") private var customFanartApiKey: String = ""
     @State private var showLogs: Bool = false
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")
@@ -723,6 +724,40 @@ struct AppSettingsView: View {
                         .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
                         .cornerRadius(16)
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                        
+                        // VIP Developer Settings
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("VIP Developer Settings")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+                            
+                            VStack(spacing: 0) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Custom Fanart.tv API Key")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(isDark ? .white : .black)
+                                    Text("Bypass global rate limits by providing your own API key. Leave blank to use the default key.")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.gray)
+                                    
+                                    TextField("Enter your API Key", text: $customFanartApiKey)
+                                        .padding()
+                                        .background(isDark ? Color.black.opacity(0.5) : Color.white)
+                                        .cornerRadius(10)
+                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(borderCol.opacity(0.5), lineWidth: 1))
+                                        .foregroundColor(isDark ? .white : .black)
+                                        .autocapitalization(.none)
+                                        .disableAutocorrection(true)
+                                        .padding(.top, 8)
+                                }
+                                .padding()
+                            }
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                        }
 
                         // Danger Zone
                         VStack(alignment: .leading, spacing: 20) {

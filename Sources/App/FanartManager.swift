@@ -13,7 +13,10 @@ final class FanartManager: ObservableObject {
     private let portraitDir: URL
     
     // Fanart.tv API Key - Provided by user
-    private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80" 
+    private var fanartApiKey: String {
+        let customKey = UserDefaults.standard.string(forKey: "velora_fanart_api_key") ?? ""
+        return customKey.isEmpty ? "faceb56eac838d3e1c2a3ed15bf65a80" : customKey
+    } 
     
     init() {
         self.backdropDir = VeloraStorage.backdrops
@@ -105,15 +108,19 @@ final class FanartManager: ObservableObject {
         let queryFanart: @MainActor @Sendable (String) -> Void = { resolvedMBID in
             AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
-            self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url in
+            self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url, isEmpty in
                 if let url = url {
                     AppLogger.shared.log("[Fanart] Found backdrop URL for \(artist)")
                     self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, priority: URLSessionTask.highPriority) { image in
                         self.activeBackdropFetches.remove(sanitized)
                     }
                 } else {
-                    AppLogger.shared.log("[Fanart] No backdrop found for \(artist)")
-                    try? Data().write(to: fileUrl)
+                    if isEmpty {
+                        AppLogger.shared.log("[Fanart] No backdrop found for \(artist)")
+                        try? Data().write(to: fileUrl)
+                    } else {
+                        AppLogger.shared.log("[Fanart] Fetch failed/rate-limited for \(artist)")
+                    }
                     self.activeBackdropFetches.remove(sanitized)
                     self.fetchBackdropRecursive(artists: artists, index: index + 1, providedMbid: nil)
                 }
@@ -164,14 +171,16 @@ final class FanartManager: ObservableObject {
             let success: Bool = await withCheckedContinuation { continuation in
                 let query: @MainActor @Sendable (String) -> Void = { resolvedMBID in
                     let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
-                    self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist, priority: URLSessionTask.lowPriority) { url in
+                    self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist, priority: URLSessionTask.lowPriority) { url, isEmpty in
                         if let url = url {
                             self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, priority: URLSessionTask.lowPriority) { _ in
                                 self.activeBackdropFetches.remove(sanitized)
                                 continuation.resume(returning: true)
                             }
                         } else {
-                            try? Data().write(to: fileUrl)
+                            if isEmpty {
+                                try? Data().write(to: fileUrl)
+                            }
                             self.activeBackdropFetches.remove(sanitized)
                             continuation.resume(returning: false)
                         }
@@ -185,7 +194,9 @@ final class FanartManager: ObservableObject {
                         if let resolved = resolved {
                             Task { @MainActor in query(resolved) }
                         } else {
-                            try? Data().write(to: fileUrl)
+                            if isEmpty {
+                                try? Data().write(to: fileUrl)
+                            }
                             self.activeBackdropFetches.remove(sanitized)
                             continuation.resume(returning: false)
                         }
@@ -220,7 +231,7 @@ final class FanartManager: ObservableObject {
         let queryFanartPortrait: @Sendable @MainActor (String) -> Void = { [weak self] resolvedMBID in
             guard let self = self else { completion(nil); return }
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
-            self.fetchFromFanart(urlString: urlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { url in
+            self.fetchFromFanart(urlString: urlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { url, isEmpty in
                 if let url = url {
                     self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, completion: completion)
                 } else {
@@ -242,7 +253,7 @@ final class FanartManager: ObservableObject {
         }
         
         let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
-        self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url in
+        self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url, isEmpty in
             guard let self = self else { completion(nil); return }
             if let url = url {
                 self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, priority: URLSessionTask.highPriority, completion: completion)
@@ -262,9 +273,9 @@ final class FanartManager: ObservableObject {
     
     private enum FanartType { case background, portrait }
     
-    nonisolated private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?) -> Void) {
+    nonisolated private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?, Bool) -> Void) {
         guard let url = URL(string: urlString) else {
-            DispatchQueue.main.async { completion(nil) }
+            DispatchQueue.main.async { completion(nil, false) }
             return
         }
         
@@ -276,30 +287,49 @@ final class FanartManager: ObservableObject {
                 }
             }
             guard let data = data else {
-                DispatchQueue.main.async { completion(nil) }
+                DispatchQueue.main.async { completion(nil, false) }
                 return
             }
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode == 404 {
+                    // Artist genuinely not found on Fanart.tv, this is a true empty result
+                    DispatchQueue.main.async { completion(nil, true) }
+                    return
+                } else if httpResponse.statusCode == 403 || httpResponse.statusCode == 429 {
+                    // Rate limit exceeded, DO NOT negative cache!
+                    DispatchQueue.main.async { completion(nil, false) }
+                    return
+                }
+            }
+            
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if type == .background {
                         if let bgs = json["artistbackground"] as? [[String: Any]], !bgs.isEmpty {
-                            // Stable Deterministic Selection: FNV-1a hash ensures consistency across app launches
                             let hashValue = self.stableHash(artistName.lowercased())
                             let index = abs(hashValue) % bgs.count
                             let selected = bgs[index]["url"] as? String
-                            DispatchQueue.main.async { completion(selected) }
+                            DispatchQueue.main.async { completion(selected, false) }
+                            return
+                        } else {
+                            // Valid JSON but no background
+                            DispatchQueue.main.async { completion(nil, true) }
                             return
                         }
                     } else {
                         if let thumbs = json["artistthumb"] as? [[String: Any]], 
                            let first = thumbs.first?["url"] as? String {
-                            DispatchQueue.main.async { completion(first) }
+                            DispatchQueue.main.async { completion(first, false) }
+                            return
+                        } else {
+                            // Valid JSON but no thumbs
+                            DispatchQueue.main.async { completion(nil, true) }
                             return
                         }
                     }
                 }
             } catch { print("Fanart JSON error: \(error)") }
-            DispatchQueue.main.async { completion(nil) }
+            DispatchQueue.main.async { completion(nil, false) }
         }
         task.priority = priority
         task.resume()
@@ -318,7 +348,7 @@ final class FanartManager: ObservableObject {
     
     nonisolated private func downloadAndCache(from urlString: String, to localUrl: URL, primaryArtistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else {
-            DispatchQueue.main.async { completion(nil) }
+            DispatchQueue.main.async { completion(nil, false) }
             return
         }
         
@@ -340,7 +370,7 @@ final class FanartManager: ObservableObject {
                     completion(image)
                 }
             } else {
-                DispatchQueue.main.async { completion(nil) }
+                DispatchQueue.main.async { completion(nil, false) }
             }
         }
         task.priority = priority
@@ -370,7 +400,7 @@ final class FanartManager: ObservableObject {
         // Use exact name query to improve accuracy
         let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encodedName)\"&fmt=json"
         guard let url = URL(string: urlString) else {
-            DispatchQueue.main.async { completion(nil) }
+            DispatchQueue.main.async { completion(nil, false) }
             return
         }
         
@@ -385,7 +415,7 @@ final class FanartManager: ObservableObject {
                let id = firstArtist["id"] as? String {
                 DispatchQueue.main.async { completion(id) }
             } else {
-                DispatchQueue.main.async { completion(nil) }
+                DispatchQueue.main.async { completion(nil, false) }
             }
         }
         task.priority = priority
