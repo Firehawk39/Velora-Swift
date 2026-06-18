@@ -505,6 +505,11 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
+                            .simultaneousGesture(LongPressGesture().onEnded { _ in
+                                client.clearMetadataCache()
+                                sync.metadataStatus = "Metadata Cleared!"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.metadataStatus = "" }
+                            })
 
                             // Lyrics Sync Button
                             Button(action: {
@@ -553,6 +558,11 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
+                            .simultaneousGesture(LongPressGesture().onEnded { _ in
+                                client.clearLyricsCache()
+                                sync.lyricsStatus = "Lyrics Cleared!"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.lyricsStatus = "" }
+                            })
 
                             // Media Sync Button
                             Button(action: {
@@ -601,6 +611,11 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
+                            .simultaneousGesture(LongPressGesture().onEnded { _ in
+                                client.clearMediaCache()
+                                sync.mediaStatus = "Music Cleared!"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.mediaStatus = "" }
+                            })
                             
                             Button(action: {
                                 client.clearCache()

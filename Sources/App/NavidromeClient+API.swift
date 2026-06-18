@@ -667,6 +667,30 @@ extension NavidromeClient {
 
     // MARK: - Cache Management
 
+    func clearMetadataCache() {
+        let dirsToClean = [VeloraStorage.backdrops, VeloraStorage.artistPortraits, VeloraStorage.metadata, VeloraStorage.coverArt]
+        let fileManager = FileManager.default
+        dirsToClean.forEach { dir in
+            if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
+                contents.forEach { try? fileManager.removeItem(at: $0) }
+            }
+        }
+    }
+    
+    func clearLyricsCache() {
+        let fileManager = FileManager.default
+        if let contents = try? fileManager.contentsOfDirectory(at: VeloraStorage.lyrics, includingPropertiesForKeys: nil) {
+            contents.forEach { try? fileManager.removeItem(at: $0) }
+        }
+    }
+    
+    func clearMediaCache() {
+        let fileManager = FileManager.default
+        if let contents = try? fileManager.contentsOfDirectory(at: VeloraStorage.tracks, includingPropertiesForKeys: nil) {
+            contents.forEach { try? fileManager.removeItem(at: $0) }
+        }
+    }
+
     func clearCache() {
         DispatchQueue.main.async {
             self.artists.removeAll()
