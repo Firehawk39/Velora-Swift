@@ -20,7 +20,7 @@ struct ArtistDetailView: View {
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
     
-    var isLargeCanvas: Bool { UIProps.bounds.width >= 1150 }
+    var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isCompact: Bool { hSizeClass == .compact }
     
     var body: some View {
@@ -107,19 +107,19 @@ struct ArtistDetailView: View {
     
     private var heroNameSize: CGFloat { 
         if isLargeCanvas { return 20.0 }
-        if ScreenTier.isPhone { return UIScaler.scaleFont(24) }
+        if ScreenTier.isPhone { return ScreenTier.isSE ? 18 : 24 }
         return 16.0
     }
     
     private var heroSection: some View {
         Group {
             if isCompact {
-                VStack(spacing: UIScaler.scaleH(24)) {
-                    artistLogo(size: UIScaler.scaleW(140))
+                VStack(spacing: ScreenTier.isSE ? 16 : 24) {
+                    artistLogo(size: ScreenTier.isSE ? 120 : 140)
                     
                     VStack(spacing: 6) {
                         artistLabel
-                        artistNameText(size: UIScaler.scaleFont(28))
+                        artistNameText(size: ScreenTier.isSE ? 24 : 28)
                     }
                     
                     playAllButton

@@ -33,7 +33,7 @@ struct HomeView: View {
 
                 // ── Greeting ─────────────────────────────────────────
                 Text(greeting)
-                    .font(.system(size: UIScaler.scaleFont(isCompact ? 26.0 : 28.0), weight: .bold))
+                    .font(.system(size: ScreenTier.isPhone ? (ScreenTier.isSmall ? 22 : 28) : 28, weight: .bold))
                     .foregroundColor(isDark ? .white : Color(hex: "#111827"))
                     .padding(.horizontal, hPad)
                     .padding(.bottom, ScreenTier.isPhone ? 24 : 32)
@@ -44,15 +44,15 @@ struct HomeView: View {
                     SectionHeader(title: "Recent tracks", isDark: isDark, hPad: hPad)
 
                     if client.recentTracks.isEmpty {
-                        SkeletonRow(count: 4, cardWidth: UIScaler.scaleW(isCompact ? 140.0 : 160.0), cardHeight: UIScaler.scaleW(isCompact ? 140.0 : 160.0), isDark: isDark)
+                        SkeletonRow(count: 4, cardWidth: ScreenTier.isPhone ? 140 : 150, cardHeight: ScreenTier.isPhone ? 140 : 150, isDark: isDark)
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: UIScaler.scaleW(isCompact ? 16.0 : 24.0)) {
+                            HStack(spacing: ScreenTier.isPhone ? 16 : 32) {
                                 ForEach(offlineRecent.prefix(isCompact ? 4 : 6)) { track in
                                     TrackCard(
                                         track: track,
                                         isDark: isDark,
-                                        size: UIScaler.scaleW(isCompact ? 140.0 : 160.0),
+                                        size: ScreenTier.isPhone ? 140 : 150,
                                         onPlay: { playback.playTrack(track, context: Array(offlineRecent)) }
                                     )
                                 }
@@ -74,12 +74,12 @@ struct HomeView: View {
                     SectionHeader(title: "Artists", isDark: isDark, hPad: hPad)
 
                     if client.artists.isEmpty {
-                        SkeletonRow(count: 5, cardWidth: UIScaler.scaleW(isCompact ? 75.0 : 90.0), cardHeight: UIScaler.scaleW(isCompact ? 75.0 : 90.0), isDark: isDark, circular: true)
+                        SkeletonRow(count: 5, cardWidth: isCompact ? 75 : 90, cardHeight: isCompact ? 75 : 90, isDark: isDark, circular: true)
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: UIScaler.scaleW(isCompact ? 16.0 : 24.0)) {
+                            HStack(spacing: isCompact ? 16 : 24) {
                                 ForEach(offlineArtists.prefix(isCompact ? 8 : 12)) { artist in
-                                    ArtistCircle(artist: artist, isDark: isDark, size: UIScaler.scaleW(isCompact ? 75.0 : 90.0))
+                                    ArtistCircle(artist: artist, isDark: isDark, size: isCompact ? 75 : 90)
                                         .onTapGesture {
                                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                                 onArtistClick?(artist.id, artist.name)
@@ -104,12 +104,12 @@ struct HomeView: View {
                     SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad)
 
                     if client.albums.isEmpty {
-                        SkeletonRow(count: 3, cardWidth: UIScaler.scaleW(isCompact ? 160.0 : 200.0), cardHeight: UIScaler.scaleH(isCompact ? 100.0 : 130.0), isDark: isDark, rounded: 24)
+                        SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 160 : 200, cardHeight: ScreenTier.isPhone ? 100 : 130, isDark: isDark, rounded: 24)
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: UIScaler.scaleW(isCompact ? 12.0 : 24.0)) {
+                            HStack(spacing: ScreenTier.isPhone ? 12 : 24) {
                                 ForEach(offlineAlbums.prefix(isCompact ? 6 : 8)) { album in
-                                    AlbumCard(album: album, isDark: isDark, cardW: UIScaler.scaleW(isCompact ? 160.0 : 200.0), cardH: UIScaler.scaleH(isCompact ? 100.0 : 130.0))
+                                    AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 180, cardH: ScreenTier.isPhone ? 100 : 120)
                                         .onTapGesture {
                                             let pManager = playback
                                             client.fetchAlbumTracks(albumId: album.id) { tracks in
