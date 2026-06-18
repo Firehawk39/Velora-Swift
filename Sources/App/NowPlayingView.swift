@@ -326,7 +326,7 @@ struct NowPlayingView: View {
                     ))
                 }
             }
-            .padding(.bottom, UIScaler.scaleH(isIdle ? 60 : 32))
+            .padding(.bottom, UIScaler.scaleH(isIdle ? 60.0 : 32.0))
         }
         // isLyricsMode still gets its own local animation — it's a separate interaction,
         // not part of the idle transition context.
