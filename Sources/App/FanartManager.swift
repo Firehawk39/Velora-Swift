@@ -28,12 +28,20 @@ final class FanartManager: ObservableObject {
     /// Synchronously checks if a backdrop exists in cache and returns it
     func getCachedBackdrop(for artist: String) -> UIImage? {
         let sanitized = sanitizeFileName(artist)
+        if let memoryCached = cachedArtistImages[sanitized] {
+            return memoryCached
+        }
+        
         let fileName = sanitized + ".jpg"
         let fileUrl = self.backdropDir.appendingPathComponent(fileName)
         
         if FileManager.default.fileExists(atPath: fileUrl.path),
-           let data = try? Data(contentsOf: fileUrl) {
-            return UIImage(data: data)
+           let data = try? Data(contentsOf: fileUrl),
+           let image = UIImage(data: data) {
+            DispatchQueue.main.async {
+                self.cachedArtistImages[sanitized] = image
+            }
+            return image
         }
         return nil
     }
@@ -357,6 +365,7 @@ final class FanartManager: ObservableObject {
                 // CRITICAL: Even if this was a "silent" or background fetch, 
                 // if the artist is the one we are currently viewing, update the UI!
                 DispatchQueue.main.async {
+                    self.cachedArtistImages[self.sanitizeFileName(primaryArtistName)] = image
                     if self.currentArtistName == primaryArtistName {
                         withAnimation(.easeInOut(duration: 0.8)) {
                             self.currentBackdrop = image
