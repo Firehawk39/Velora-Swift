@@ -104,6 +104,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     @Published var currentArtworkTrackId: String? = nil
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil
+    private var seekTimer: Timer?
     
     var client: NavidromeClient
     
@@ -508,6 +509,24 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         player?.seek(to: cmTime)
     }
     
+    private func startContinuousSeek(forward: Bool) {
+        stopContinuousSeek()
+        // Immediate seek
+        seek(to: progress + (forward ? 10 : -10))
+        // Set up continuous seek every 0.8s
+        seekTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.seek(to: self.progress + (forward ? 10 : -10))
+            }
+        }
+    }
+    
+    private func stopContinuousSeek() {
+        seekTimer?.invalidate()
+        seekTimer = nil
+    }
+    
     // MARK: - Remote Control Center
     
     func setupRemoteCommandCenter() {
@@ -534,6 +553,48 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.skipBackward() }
+            return .success
+        }
+        
+        commandCenter.seekForwardCommand.isEnabled = true
+        commandCenter.seekForwardCommand.addTarget { [weak self] event in
+            guard let self = self, let seekEvent = event as? MPSeekCommandEvent else { return .commandFailed }
+            Task { @MainActor in
+                if seekEvent.type == .beginSeek {
+                    self.startContinuousSeek(forward: true)
+                } else if seekEvent.type == .endSeek {
+                    self.stopContinuousSeek()
+                }
+            }
+            return .success
+        }
+        
+        commandCenter.seekBackwardCommand.isEnabled = true
+        commandCenter.seekBackwardCommand.addTarget { [weak self] event in
+            guard let self = self, let seekEvent = event as? MPSeekCommandEvent else { return .commandFailed }
+            Task { @MainActor in
+                if seekEvent.type == .beginSeek {
+                    self.startContinuousSeek(forward: false)
+                } else if seekEvent.type == .endSeek {
+                    self.stopContinuousSeek()
+                }
+            }
+            return .success
+        }
+        
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.preferredIntervals = [10.0]
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self = self, let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            Task { @MainActor in self.seek(to: self.progress + event.interval) }
+            return .success
+        }
+        
+        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.preferredIntervals = [10.0]
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self = self, let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            Task { @MainActor in self.seek(to: self.progress - event.interval) }
             return .success
         }
         
