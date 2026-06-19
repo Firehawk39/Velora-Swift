@@ -22,9 +22,21 @@ func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
     // Try extracting the real ID from a server URL for local lookup
     let resolvedId = extractArtId(from: id)
     let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(resolvedId).jpg")
+    
     if FileManager.default.fileExists(atPath: localUrl.path) {
-        return localUrl
+        if let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
+           let size = attr[.size] as? Int64, size > 0 {
+            return localUrl // Valid local image
+        } else {
+            // It's a corrupted 0-byte marker
+            if NetworkMonitor.shared.isConnected {
+                try? FileManager.default.removeItem(at: localUrl) // Self-heal by deleting it
+            } else {
+                return nil // Return nil so UI shows a placeholder instead of a black square
+            }
+        }
     }
+    
     return serverUrl.flatMap { URL(string: $0) }
 }
 
