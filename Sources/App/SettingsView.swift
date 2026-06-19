@@ -473,7 +473,7 @@ struct AppSettingsView: View {
                                         Text(sync.isSyncingMetadata ? "Syncing Info..." : "Download Library Metadata")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text((sync.isSyncingMetadata || sync.metadataStatus.lowercased().contains("complete")) ? sync.metadataStatus : "Artist bios, portraits, and album details")
+                                        Text((sync.isSyncingMetadata || sync.metadataStatus.lowercased().contains("complete") || sync.metadataStatus.lowercased().contains("already") || sync.metadataStatus.lowercased().contains("all")) ? sync.metadataStatus : "Artist bios, portraits, and album details")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -490,7 +490,7 @@ struct AppSettingsView: View {
                                             }
                                             CircularProgressView(progress: sync.metadataProgress, size: 24, strokeWidth: 3, accentColor: .blue)
                                         }
-                                    } else if sync.metadataStatus.lowercased().contains("complete") {
+                                    } else if sync.metadataStatus.lowercased().contains("complete") || sync.metadataStatus.lowercased().contains("already") || sync.metadataStatus.lowercased().contains("all") {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 20))
                                             .foregroundColor(.green)
@@ -521,7 +521,7 @@ struct AppSettingsView: View {
                                         Text(sync.isSyncingLyrics ? "Downloading Lyrics..." : "Download All Lyrics")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text((sync.isSyncingLyrics || sync.lyricsStatus.lowercased().contains("complete")) ? sync.lyricsStatus : "Cache time-synced lyrics for offline use")
+                                        Text((sync.isSyncingLyrics || sync.lyricsStatus.lowercased().contains("complete") || sync.lyricsStatus.lowercased().contains("already") || sync.lyricsStatus.lowercased().contains("all")) ? sync.lyricsStatus : "Cache time-synced lyrics for offline use")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -538,7 +538,7 @@ struct AppSettingsView: View {
                                             }
                                             CircularProgressView(progress: sync.lyricsProgress, size: 24, strokeWidth: 3, accentColor: .purple)
                                         }
-                                    } else if sync.lyricsStatus.lowercased().contains("complete") {
+                                    } else if sync.lyricsStatus.lowercased().contains("complete") || sync.lyricsStatus.lowercased().contains("already") || sync.lyricsStatus.lowercased().contains("all") {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 20))
                                             .foregroundColor(.green)
@@ -569,7 +569,7 @@ struct AppSettingsView: View {
                                         Text(sync.isSyncingMedia ? "Downloading..." : "Download All Music")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text((sync.isSyncingMedia || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("all")) ? sync.mediaStatus : "Save all tracks for offline listening")
+                                        Text((sync.isSyncingMedia || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("already") || sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("all")) ? sync.mediaStatus : "Save all tracks for offline listening")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -586,7 +586,7 @@ struct AppSettingsView: View {
                                             }
                                             CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 3, accentColor: .red)
                                         }
-                                    } else if sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("all") {
+                                    } else if sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("already") || sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("all") {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 20))
                                             .foregroundColor(.green)
