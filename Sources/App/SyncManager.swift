@@ -560,7 +560,7 @@ final class SyncManager: ObservableObject {
             }
             
             // Only care about tracks we actually have downloaded
-            let downloadedTrackIds = await IntegrityManager.shared.downloadedIds
+            let downloadedTrackIds = IntegrityManager.shared.downloadedIds
             let localTracks = client.allSongs.filter { downloadedTrackIds.contains($0.id) }
             
             if localTracks.isEmpty {
@@ -571,7 +571,6 @@ final class SyncManager: ObservableObject {
             var missingCoverArtIds: Set<String> = []
             var missingArtistPortraitIds: Set<String> = []
             var missingLyricsIds: [(id: String, artist: String, title: String, duration: Double)] = []
-            var missingAudioTracks: [Track] = []
             
             repairStatus = "Scanning \(localTracks.count) local tracks..."
             
@@ -612,28 +611,10 @@ final class SyncManager: ObservableObject {
                     missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
                 }
                 
-                // 4. Check Audio File
-                if let fileName = await IntegrityManager.shared.getFileName(for: track.id) {
-                    let audioPath = VeloraStorage.tracks.appendingPathComponent(fileName).path
-                    if fileManager.fileExists(atPath: audioPath) {
-                        if let size = (try? fileManager.attributesOfItem(atPath: audioPath)[.size]) as? Int64, size <= 1024 {
-                            // Ghost audio file
-                            try? fileManager.removeItem(atPath: audioPath)
-                            await IntegrityManager.shared.unregisterDownload(trackId: track.id)
-                            missingAudioTracks.append(track)
-                        }
-                    } else {
-                        await IntegrityManager.shared.unregisterDownload(trackId: track.id)
-                        missingAudioTracks.append(track)
-                    }
-                } else {
-                    missingAudioTracks.append(track)
-                }
-                
                 if index % 50 == 0 { await Task.yield() }
             }
             
-            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count + missingAudioTracks.count
+            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count
             if totalTasks == 0 {
                 finalizeRepairSync("Library is perfectly healthy. No repairs needed.")
                 return
@@ -694,27 +675,6 @@ final class SyncManager: ObservableObject {
                 }
                 tasksCompleted += Double(missingLyricsIds.count)
                 repairedCount += missingLyricsIds.count
-                repairProgress = tasksCompleted / Double(totalTasks)
-            }
-            
-            // Repair Audio Tracks
-            if !missingAudioTracks.isEmpty && isRepairing {
-                await withTaskGroup(of: Void.self) { group in
-                    for (index, track) in missingAudioTracks.enumerated() {
-                        group.addTask {
-                            try? await Task.sleep(nanoseconds: UInt64(index) * 500_000_000) // Slower stagger for audio
-                            await withCheckedContinuation { cont in
-                                Task { @MainActor in
-                                    self.playback?.downloadTrack(track)
-                                    // downloadTrack is asynchronous, but we just trigger it and move on
-                                    cont.resume()
-                                }
-                            }
-                        }
-                    }
-                }
-                tasksCompleted += Double(missingAudioTracks.count)
-                repairedCount += missingAudioTracks.count
                 repairProgress = tasksCompleted / Double(totalTasks)
             }
             
