@@ -554,34 +554,33 @@ extension NavidromeClient {
 
     func downloadCoverArt(id: String) {
         let coverArtDir = VeloraStorage.coverArt
-        
         let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
+        
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
-            return // Already cached
+            if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
+               let size = attr[.size] as? Int64, size > 0 {
+                return // Valid cache exists
+            } else {
+                // Delete 0-byte corrupted marker
+                try? FileManager.default.removeItem(at: destinationUrl)
+            }
         }
         
         guard NetworkMonitor.shared.isConnected else { return }
-        
         guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
         
         URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
             guard let tempLocation = tempLocation, error == nil else {
                 print("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
-                try? Data().write(to: destinationUrl)
                 return
             }
             do {
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                    try? Data().write(to: destinationUrl)
                     return
-                }
-                if FileManager.default.fileExists(atPath: destinationUrl.path) {
-                    try FileManager.default.removeItem(at: destinationUrl)
                 }
                 try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
             } catch {
                 print("Failed to save cover art for \(id): \(error)")
-                try? Data().write(to: destinationUrl)
             }
         }.resume()
     }

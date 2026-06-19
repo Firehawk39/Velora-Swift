@@ -83,7 +83,13 @@ final class FanartManager: ObservableObject {
             if FileManager.default.fileExists(atPath: fileUrl.path),
                let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
                let size = attr[.size] as? Int64, size == 0 {
-                continue // Marker found, skip to next artist
+                
+                if NetworkMonitor.shared.isConnected {
+                    // SELF-HEAL: Delete the marker and try fetching again since we are online.
+                    try? FileManager.default.removeItem(at: fileUrl)
+                } else {
+                    continue // Offline, so trust the marker and skip
+                }
             }
         }
         
@@ -183,7 +189,7 @@ final class FanartManager: ObservableObject {
                                 continuation.resume(returning: true)
                             }
                         } else {
-                            if isEmpty {
+                            if isEmpty && NetworkMonitor.shared.isConnected {
                                 try? Data().write(to: fileUrl)
                             }
                             self.activeBackdropFetches.remove(sanitized)
@@ -199,7 +205,7 @@ final class FanartManager: ObservableObject {
                         if let resolved = resolved {
                             Task { @MainActor in query(resolved) }
                         } else {
-                            try? Data().write(to: fileUrl)
+                            if NetworkMonitor.shared.isConnected { try? Data().write(to: fileUrl) }
                             self.activeBackdropFetches.remove(sanitized)
                             continuation.resume(returning: false)
                         }
