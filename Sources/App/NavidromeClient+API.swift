@@ -213,7 +213,21 @@ extension NavidromeClient {
     }
 
     func fetchArtistData(artistId: String, completion: @escaping @MainActor @Sendable ([Track], [Album], String?, String?) -> Void) {
-        guard NetworkMonitor.shared.isConnected else { completion([], [], nil, nil); return }
+        guard NetworkMonitor.shared.isConnected else {
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let artistName = self.artists.first(where: { $0.id == artistId })?.name ?? ""
+                let offlineAlbums = self.albums.filter { $0.artistId == artistId }
+                let albumIds = Set(offlineAlbums.map { $0.id })
+                let offlineTracks = self.allSongs.filter {
+                    $0.artistId == artistId || (albumIds.contains($0.albumId ?? "")) || ($0.artist == artistName && !artistName.isEmpty)
+                }
+                // Filter to only downloaded tracks
+                let downloadedTracks = PlaybackManager.shared?.filterOffline(offlineTracks) ?? offlineTracks
+                completion(downloadedTracks, offlineAlbums, nil, nil)
+            }
+            return
+        }
         guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
