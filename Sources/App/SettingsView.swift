@@ -600,6 +600,50 @@ struct AppSettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
                             
+                            // Repair Sync Issues Button
+                            Button(action: {
+                                if sync.isRepairing {
+                                    sync.stopRepairSync()
+                                } else {
+                                    sync.startRepairSync()
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "wrench.and.screwdriver.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isRepairing ? .orange : labelCol)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(sync.isRepairing ? "Repairing..." : "Repair Sync Issues")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text((sync.isRepairing || sync.repairStatus.lowercased().contains("complete") || sync.repairStatus.lowercased().contains("healthy")) ? sync.repairStatus : "Scan and fix missing or corrupted artwork and lyrics")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if sync.isRepairing {
+                                        HStack(spacing: 8) {
+                                            CircularProgressView(progress: sync.repairProgress, size: 24, strokeWidth: 3, accentColor: .orange)
+                                        }
+                                    } else if sync.repairStatus.lowercased().contains("complete") || sync.repairStatus.lowercased().contains("healthy") {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(.green)
+                                    } else {
+                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                    }
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            }
+                            
+
                             Button(action: {
                                 client.clearCache()
                                 cacheCleared = true

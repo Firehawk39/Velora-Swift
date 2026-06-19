@@ -23,6 +23,11 @@ final class SyncManager: ObservableObject {
     @Published var mediaStatus: String = ""
     @Published var mediaEta: String = ""
     
+    // Repair Sync State
+    @Published var isRepairing: Bool = false
+    @Published var repairProgress: Double = 0.0
+    @Published var repairStatus: String = ""
+    
     enum SyncType {
         case none
         case metadata
@@ -527,6 +532,160 @@ final class SyncManager: ObservableObject {
         stopMetadataSync()
         stopLyricsSync()
         stopMediaSync()
+        stopRepairSync()
+    }
+    
+    func stopRepairSync() {
+        isRepairing = false
+        repairStatus = "Repair Stopped"
+    }
+    
+    // MARK: - Repair Tools
+    
+    func startRepairSync() {
+        guard let client = client, !isRepairing else { return }
+        isRepairing = true
+        repairProgress = 0.0
+        repairStatus = "Scanning library for missing assets..."
+        
+        Task {
+            let fileManager = FileManager.default
+            
+            // Wait for client to have songs loaded
+            if client.allSongs.isEmpty {
+                repairStatus = "Fetching track list..."
+                await withCheckedContinuation { continuation in
+                    client.fetchAllSongs { _ in continuation.resume() }
+                }
+            }
+            
+            // Only care about tracks we actually have downloaded
+            let downloadedTrackIds = await IntegrityManager.shared.downloadedIds
+            let localTracks = client.allSongs.filter { downloadedTrackIds.contains($0.id) }
+            
+            if localTracks.isEmpty {
+                finalizeRepairSync("No offline tracks found. Nothing to repair.")
+                return
+            }
+            
+            var missingCoverArtIds: Set<String> = []
+            var missingArtistPortraitIds: Set<String> = []
+            var missingLyricsIds: [(id: String, artist: String, title: String, duration: Double)] = []
+            
+            repairStatus = "Scanning \(localTracks.count) local tracks..."
+            
+            for (index, track) in localTracks.enumerated() {
+                // 1. Check Cover Art
+                let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+                let artId = extractArtId(from: rawArtId)
+                let artPath = VeloraStorage.coverArt.appendingPathComponent("\(artId).jpg").path
+                if fileManager.fileExists(atPath: artPath) {
+                    if let size = (try? fileManager.attributesOfItem(atPath: artPath)[.size]) as? Int64, size == 0 {
+                        try? fileManager.removeItem(atPath: artPath)
+                        missingCoverArtIds.insert(artId)
+                    }
+                } else {
+                    missingCoverArtIds.insert(artId)
+                }
+                
+                // 2. Check Artist Portrait
+                let artistId = track.artistId ?? track.primaryArtist
+                let portraitPath = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg").path
+                if fileManager.fileExists(atPath: portraitPath) {
+                    if let size = (try? fileManager.attributesOfItem(atPath: portraitPath)[.size]) as? Int64, size == 0 {
+                        try? fileManager.removeItem(atPath: portraitPath)
+                        missingArtistPortraitIds.insert(artistId)
+                    }
+                } else {
+                    missingArtistPortraitIds.insert(artistId)
+                }
+                
+                // 3. Check Lyrics
+                let lyricsPath = VeloraStorage.lyrics.appendingPathComponent("\(track.id).json").path
+                if fileManager.fileExists(atPath: lyricsPath) {
+                    if let size = (try? fileManager.attributesOfItem(atPath: lyricsPath)[.size]) as? Int64, size == 0 {
+                        try? fileManager.removeItem(atPath: lyricsPath)
+                        missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
+                    }
+                } else {
+                    missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
+                }
+                
+                if index % 50 == 0 { await Task.yield() }
+            }
+            
+            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count
+            if totalTasks == 0 {
+                finalizeRepairSync("Library is perfectly healthy. No repairs needed.")
+                return
+            }
+            
+            var tasksCompleted = 0.0
+            var repairedCount = 0
+            
+            repairStatus = "Found \(totalTasks) missing items. Repairing..."
+            
+            // Repair Cover Arts
+            if !missingCoverArtIds.isEmpty && isRepairing {
+                await withTaskGroup(of: Void.self) { group in
+                    for (index, id) in Array(missingCoverArtIds).enumerated() {
+                        group.addTask {
+                            try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
+                            await withCheckedContinuation { cont in
+                                client.fetchCoverArt(id: id, size: 500) { _ in cont.resume() }
+                            }
+                        }
+                    }
+                }
+                tasksCompleted += Double(missingCoverArtIds.count)
+                repairedCount += missingCoverArtIds.count
+                repairProgress = tasksCompleted / Double(totalTasks)
+            }
+            
+            // Repair Artist Portraits
+            if !missingArtistPortraitIds.isEmpty && isRepairing {
+                await withTaskGroup(of: Void.self) { group in
+                    for (index, id) in Array(missingArtistPortraitIds).enumerated() {
+                        group.addTask {
+                            try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
+                            await withCheckedContinuation { cont in
+                                client.fetchArtist(id: id) { _ in cont.resume() }
+                            }
+                        }
+                    }
+                }
+                tasksCompleted += Double(missingArtistPortraitIds.count)
+                repairedCount += missingArtistPortraitIds.count
+                repairProgress = tasksCompleted / Double(totalTasks)
+            }
+            
+            // Repair Lyrics
+            if !missingLyricsIds.isEmpty && isRepairing {
+                await withTaskGroup(of: Void.self) { group in
+                    for (index, lyricReq) in missingLyricsIds.enumerated() {
+                        group.addTask {
+                            try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
+                            await withCheckedContinuation { cont in
+                                Task { @MainActor in
+                                    client.fetchLyrics(trackId: lyricReq.id, artist: lyricReq.artist, title: lyricReq.title, duration: lyricReq.duration) { _ in cont.resume() }
+                                }
+                            }
+                        }
+                    }
+                }
+                tasksCompleted += Double(missingLyricsIds.count)
+                repairedCount += missingLyricsIds.count
+                repairProgress = tasksCompleted / Double(totalTasks)
+            }
+            
+            finalizeRepairSync("Repair complete. Fixed \(repairedCount) items.")
+        }
+    }
+    
+    private func finalizeRepairSync(_ status: String) {
+        self.isRepairing = false
+        self.repairStatus = status
+        self.repairProgress = 1.0
     }
     
     private func finalizeMetadataSync(_ status: String) {

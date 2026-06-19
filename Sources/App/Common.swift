@@ -6,7 +6,7 @@ import CryptoKit
 /// Extracts the actual cover art ID from a server URL string.
 /// Server URLs look like: https://server.com/rest/getCoverArt.view?id=al-123&u=user&...
 /// Returns just "al-123" for local file lookups.
-private func extractArtId(from serverUrlOrId: String) -> String {
+func extractArtId(from serverUrlOrId: String) -> String {
     // If it looks like a URL (contains "getCoverArt"), extract the 'id' query parameter
     if serverUrlOrId.contains("getCoverArt"),
        let url = URL(string: serverUrlOrId),
