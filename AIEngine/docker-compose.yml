@@ -1,0 +1,29 @@
+services:
+  velora-ai-engine:
+    build: .
+    container_name: velora-ai-engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the sqlite-vec database across container restarts
+      - ./data:/app/data
+      # Mount the Obsidian memories live so the AI DJ reads updates instantly (Read-Only)
+      - ./Memories:/app/Memories:ro
+      # IMPORTANT: Mount your Navidrome music folder so the AI can analyze the audio files!
+      # Change "/path/to/your/navidrome/music" to the actual path on your Ubuntu server.
+      - /home/tony/navidrome/music:/music:ro
+    environment:
+      # Allow the container to reach the Ollama instance running on the Windows/Ubuntu host
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/api
+    # This is required for host.docker.internal to work on Ubuntu Linux natively
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # GPU Passthrough configuration for PyTorch
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -183,6 +183,8 @@ struct ContentView: View {
                         selectedArtistName = name
                     }
                 })
+            case "velora":
+                VeloraChatView()
             case "now-playing":
                 NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle) { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {

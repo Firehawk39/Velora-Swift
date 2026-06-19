@@ -9,7 +9,7 @@ router = APIRouter()
 class TelemetryEvent(BaseModel):
     event_type: str  # e.g., "play", "pause", "skip"
     track_id: Optional[str] = None
-    context: Optional[dict] = None  # Extra JSON data like position, volume, etc.
+    context: Optional[str] = None  # Context from iOS app (e.g. current track title)
 
 @router.post("/event", status_code=201)
 async def record_event(event: TelemetryEvent):
@@ -19,12 +19,10 @@ async def record_event(event: TelemetryEvent):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    context_str = json.dumps(event.context) if event.context else None
-    
     try:
         cursor.execute(
             "INSERT INTO telemetry (event_type, track_id, context) VALUES (?, ?, ?)",
-            (event.event_type, event.track_id, context_str)
+            (event.event_type, event.track_id, event.context)
         )
         conn.commit()
     except Exception as e:

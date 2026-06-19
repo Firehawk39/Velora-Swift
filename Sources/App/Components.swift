@@ -281,6 +281,7 @@ struct AppHeader: View {
             TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
+            TabButton(id: "velora", label: "Velora", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
         .padding(navigationPillPadding)
@@ -318,6 +319,7 @@ struct TabButton: View {
         case "home": return "house.fill"
         case "library": return "square.stack.fill"
         case "search": return "magnifyingglass"
+        case "velora": return "bubble.left.and.bubble.right.fill"
         case "now-playing": return "play.circle.fill"
         default: return "circle"
         }

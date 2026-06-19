@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
-from api import telemetry, chat
+from api import telemetry, chat, ingestion
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -28,6 +28,11 @@ app.include_router(
     chat.router,
     prefix=f"{settings.API_V1_STR}/chat",
     tags=["chat"]
+)
+app.include_router(
+    ingestion.router,
+    prefix=f"{settings.API_V1_STR}/ingestion",
+    tags=["ingestion"]
 )
 
 @app.get("/")

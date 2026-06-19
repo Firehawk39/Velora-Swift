@@ -1,11 +1,12 @@
 import httpx
 import json
 import logging
+import os
 from typing import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_BASE_URL = "http://localhost:11434/api"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/api")
 DEFAULT_MODEL = "gemma:2b" # Placeholder until we run the heavy QAT model
 
 async def generate_chat_stream(prompt: str, system_prompt: str) -> AsyncGenerator[str, None]:
@@ -29,7 +30,10 @@ async def generate_chat_stream(prompt: str, system_prompt: str) -> AsyncGenerato
                     if chunk:
                         data = json.loads(chunk)
                         if "response" in data:
-                            yield data["response"]
+                            yield f"data: {json.dumps({'content': data['response']})}\n\n"
+                yield "data: [DONE]\n\n"
     except Exception as e:
         logger.error(f"Ollama connection error: {e}")
-        yield "I'm having trouble connecting to my local language model right now. Please check if Ollama is running."
+        error_msg = "I'm having trouble connecting to my local language model right now. Please check if Ollama is running."
+        yield f"data: {json.dumps({'content': error_msg})}\n\n"
+        yield "data: [DONE]\n\n"

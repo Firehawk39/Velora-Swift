@@ -1,0 +1,37 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Database (persisted via Docker volume, not baked into the image)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Obsidian memories (mounted as a live volume, not baked in)
+Memories/
+
+# Environment files with secrets
+.env
+.env.*
+
+# Development artifacts
+.git/
+.gitignore
+*.md
+*.log
+
+# Test scripts
+test_*.py
+
+# OS artifacts
+.DS_Store
+Thumbs.db

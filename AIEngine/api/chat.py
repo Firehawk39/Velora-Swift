@@ -1,13 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from typing import Optional
 from services.memory_reader import build_system_prompt
-from services.ollama_client import generate_chat_stream
+from services.rag_engine import perform_rag_and_generate
 
 router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str
+    context: Optional[str] = None
 
 @router.post("/message")
 async def send_chat_message(request: ChatRequest):
@@ -21,9 +23,8 @@ async def send_chat_message(request: ChatRequest):
         
     system_prompt = build_system_prompt()
     
-    # We use FastAPI's StreamingResponse to stream the generation back to the client
-    # as Server-Sent Events (SSE) or a raw stream.
+    # Perform RAG to find similar songs and stream the response back in SSE format
     return StreamingResponse(
-        generate_chat_stream(request.message, system_prompt),
-        media_type="text/plain"
+        perform_rag_and_generate(request.message, request.context, system_prompt),
+        media_type="text/event-stream"
     )
