@@ -43,6 +43,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var playbackHistory: [Int] = []
     private var isNavigatingHistory = false
     
+    // Scrobble tracking
+    @Published var hasScrobbledCurrentTrack: Bool = false
+    
     private var integrityManager = IntegrityManager.shared
     private var integrityCancellable: Any?
     
@@ -299,6 +302,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.nextArtworkRetryTime = nil
         self.progress = 0
         self.duration = 0
+        self.hasScrobbledCurrentTrack = false
         self.currentLyrics = nil
         self.currentSyncedLyrics = nil
         self.currentPrimaryColor = .black
@@ -350,6 +354,16 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 self.progress = time.seconds
                 self.duration = item.duration.seconds
                 self.updateNowPlayingInfo()
+                
+                // Scrobble at 50% or 4 minutes (240s)
+                if !self.hasScrobbledCurrentTrack, self.duration > 0 {
+                    if self.progress >= (self.duration * 0.5) || self.progress >= 240 {
+                        self.hasScrobbledCurrentTrack = true
+                        if NetworkMonitor.shared.isConnected {
+                            self.client.scrobble(id: track.id, submission: true)
+                        }
+                    }
+                }
             }
         }
         
@@ -362,7 +376,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in
                 guard let self = self else { return }
                 
-                if let track = self.currentTrack, NetworkMonitor.shared.isConnected {
+                if let track = self.currentTrack, !self.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
+                    self.hasScrobbledCurrentTrack = true
                     self.client.scrobble(id: track.id, submission: true)
                 }
                 
@@ -1222,6 +1237,15 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 self.duration = currentItem.duration.seconds
                 self.updateNowPlayingInfo()
 
+                // Scrobble at 50% or 4 minutes (240s)
+                if !self.hasScrobbledCurrentTrack, self.duration > 0 {
+                    if self.progress >= (self.duration * 0.5) || self.progress >= 240 {
+                        self.hasScrobbledCurrentTrack = true
+                        if NetworkMonitor.shared.isConnected {
+                            self.client.scrobble(id: track.id, submission: true)
+                        }
+                    }
+                }
             }
         }
         
@@ -1233,7 +1257,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in
                 guard let self = self else { return }
                 
-                if let t = self.currentTrack {
+                if let t = self.currentTrack, !self.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
+                    self.hasScrobbledCurrentTrack = true
                     self.client.scrobble(id: t.id, submission: true)
                 }
                 
