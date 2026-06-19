@@ -631,27 +631,51 @@ extension NavidromeClient {
     
     nonisolated private func fetchFromLRCLIB(artist: String, title: String) async -> String? {
         guard await NetworkMonitor.shared.isConnected else { return nil }
-        guard let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
+        
+        // Clean up title/artist for better matching (remove feat, remaster tags)
+        let cleanTitle = title.replacingOccurrences(of: "\\s*\\([^)]*\\)", with: "", options: .regularExpression)
+                              .replacingOccurrences(of: "\\s*\\[[^]]*\\]", with: "", options: .regularExpression)
+                              .trimmingCharacters(in: .whitespaces)
+        
+        let cleanArtist = artist.components(separatedBy: " feat.").first?
+                                .components(separatedBy: " ft.").first?
+                                .components(separatedBy: " & ").first?
+                                .components(separatedBy: ",").first?
+                                .trimmingCharacters(in: .whitespaces) ?? artist
+        
+        guard let encodedTitle = cleanTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let encodedArtist = cleanArtist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let getUrl = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
             return nil
         }
         
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: getUrl)
         request.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 8.0
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                return nil
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    if let synced = json["syncedLyrics"] as? String, !synced.isEmpty { return synced }
+                    if let plain = json["plainLyrics"] as? String, !plain.isEmpty { return plain }
+                }
             }
             
-            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                if let synced = json["syncedLyrics"] as? String, !synced.isEmpty {
-                    return synced
-                } else if let plain = json["plainLyrics"] as? String, !plain.isEmpty {
-                    return plain
+            // Fallback to SEARCH API if EXACT GET fails (handles slight metadata mismatches)
+            guard let q = "\(cleanArtist) \(cleanTitle)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                  let searchUrl = URL(string: "https://lrclib.net/api/search?q=\(q)") else { return nil }
+            
+            var searchReq = URLRequest(url: searchUrl)
+            searchReq.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
+            searchReq.timeoutInterval = 8.0
+            
+            let (searchData, searchResp) = try await URLSession.shared.data(for: searchReq)
+            if let httpSearchResp = searchResp as? HTTPURLResponse, httpSearchResp.statusCode == 200 {
+                if let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]],
+                   let firstMatch = jsonArray.first {
+                    if let synced = firstMatch["syncedLyrics"] as? String, !synced.isEmpty { return synced }
+                    if let plain = firstMatch["plainLyrics"] as? String, !plain.isEmpty { return plain }
                 }
             }
         } catch {
