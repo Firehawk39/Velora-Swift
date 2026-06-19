@@ -780,6 +780,32 @@ extension NavidromeClient {
             }
         }.resume()
     }
+    
+    func fetchArtist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { 
+            DispatchQueue.main.async { completion(false) }
+            return 
+        }
+        let urlStr = getCoverArtUrl(id: id)
+        guard let url = URL(string: urlStr) else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            guard error == nil, let data = data, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            // Save to VeloraStorage
+            let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
+            do {
+                try data.write(to: localUrl)
+                DispatchQueue.main.async { completion(true) }
+            } catch {
+                DispatchQueue.main.async { completion(false) }
+            }
+        }.resume()
+    }
 
 
     // MARK: - Cache Management
