@@ -29,11 +29,8 @@ func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
             return localUrl // Valid local image
         } else {
             // It's a corrupted 0-byte marker
-            if NetworkMonitor.shared.isConnected {
-                try? FileManager.default.removeItem(at: localUrl) // Self-heal by deleting it
-            } else {
-                return nil // Return nil so UI shows a placeholder instead of a black square
-            }
+            try? FileManager.default.removeItem(at: localUrl) // Self-heal by deleting it
+            // Fall through to return the serverUrl. If offline, AsyncImage will gracefully fail.
         }
     }
     

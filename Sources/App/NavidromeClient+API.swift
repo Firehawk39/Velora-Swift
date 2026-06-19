@@ -607,7 +607,7 @@ extension NavidromeClient {
         }
         
         Task {
-            guard await NetworkMonitor.shared.isConnected else {
+            guard NetworkMonitor.shared.isConnected else {
                 // Do not cache failure if we simply have no connection
                 completion(nil)
                 return
