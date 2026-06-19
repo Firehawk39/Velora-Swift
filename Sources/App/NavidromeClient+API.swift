@@ -697,7 +697,7 @@ extension NavidromeClient {
 
     // MARK: - Scrobbling
 
-    private let pendingScrobblesKey = "velora_pending_scrobbles"
+    private var pendingScrobblesKey: String { "velora_pending_scrobbles" }
 
     func scrobble(id: String, submission: Bool) {
         if NetworkMonitor.shared.isConnected {
@@ -751,6 +751,34 @@ extension NavidromeClient {
         fetchArtists()
         fetchPlaylists()
         fetchAllSongs()
+    }
+    
+    // MARK: - Dedicated Asset Fetchers
+    
+    func fetchCoverArt(id: String, size: Int = 500, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { 
+            DispatchQueue.main.async { completion(false) }
+            return 
+        }
+        let urlStr = getCoverArtUrl(id: id)
+        guard let url = URL(string: urlStr) else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            guard error == nil, let data = data, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            // Save to VeloraStorage
+            let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(extractArtId(from: id)).jpg")
+            do {
+                try data.write(to: localUrl)
+                DispatchQueue.main.async { completion(true) }
+            } catch {
+                DispatchQueue.main.async { completion(false) }
+            }
+        }.resume()
     }
 
 
