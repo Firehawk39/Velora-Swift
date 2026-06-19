@@ -349,24 +349,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 guard let self = self,
                       let capturedPlayer = capturedPlayer,
                       self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                      let item = capturedPlayer.currentItem,
+                      let item = capturedPlayer?.currentItem,
                       item.duration.isNumeric else { return }
                 
                 self.progress = time.seconds
                 self.duration = item.duration.seconds
                 self.updateNowPlayingInfo()
-                
-                // Crossfade check — also gate against short tracks shorter than 2x the fade window
-                let triggerTime = self.duration - self.crossfadeDuration
-                if self.isCrossfadeEnabled {
-                    if !self.isCrossfading {
-                        if self.duration > (self.crossfadeDuration * 2.0) {
-                            if time.seconds > triggerTime {
-                                self.startCrossfade()
-                            }
-                        }
-                    }
-                }
             }
         }
         
@@ -378,7 +366,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
-                if self.isCrossfading { return }
                 
                 if let track = self.currentTrack, NetworkMonitor.shared.isConnected {
                     self.client.scrobble(id: track.id, submission: true)
@@ -440,49 +427,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     ///                   definitely be needed) and use a conservative 8 s buffer
     ///                   window instead of the full track length.
     private func prewarmNextTrack() {
-        guard queue.count > 1 else { return }
-
-        let nextIndex = (queueIndex + 1) % queue.count
-        guard nextIndex != queueIndex else { return }   // single-item queue
-
-        let nextTrack = queue[nextIndex]
-
-        // Don't re-warm the same track twice
-        if prewarmedTrackId == nextTrack.id { return }
-
-        if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
-            // ── Offline path: always pre-warm, no data cost ────────────────────────
-            let item = AVPlayerItem(url: localUrl)
-            // Local files resolve instantly; a large buffer just forces the OS to
-            // read ahead into RAM — fine because this is already downloaded data.
-            item.preferredForwardBufferDuration = 30.0
-            prewarmedItem    = item
-            prewarmedTrackId = nextTrack.id
-            item.preferredForwardBufferDuration = 8.0
-            prewarmedItem    = item
-            prewarmedTrackId = nextTrack.id
-
-            // Attach a silent AVPlayer to the item so AVFoundation actually starts
-            // pulling bytes. Without a player owner, the item never buffers.
-            let warmupPlayer = AVPlayer(playerItem: item)
-            warmupPlayer.volume = 0.0
-            warmupPlayer.play()
-            self.prewarmPlayer = warmupPlayer
-
-            // Keep the player alive long enough to fill the buffer, then discard it.
-            // 12 s is generous — even a slow connection will have 8 s buffered by then.
-            Task {
-                try? await Task.sleep(nanoseconds: 12_000_000_000)
-                // If the item is still the one we warmed (no skip happened), pause
-                // the warmup player to stop consuming bandwidth. The buffered bytes
-                // already in the AVPlayerItem are retained for startCrossfade() to use.
-                if self.prewarmedTrackId == nextTrack.id {
-                    self.prewarmPlayer?.pause()
-                    self.prewarmPlayer = nil
-                }
-            }
-        }
-        // Stream + crossfade disabled → no pre-warm, save data.
+        // Prewarming and crossfading have been removed per user request.
     }
     
     private func prefetchNextTracks() {
@@ -1232,7 +1177,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
-                if self.isCrossfading { return }
                 
                 if let t = self.currentTrack {
                     self.client.scrobble(id: t.id, submission: true)

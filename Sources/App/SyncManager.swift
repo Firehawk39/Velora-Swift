@@ -113,7 +113,7 @@ final class SyncManager: ObservableObject {
             metadataStatus = "Analyzing library..."
             await Task.yield()
             
-            var missingArtists = [SubsonicModels.Artist]()
+            var missingArtists = [Artist]()
             let fa = await FanartManager.shared
             let mb = await MusicBrainzManager.shared
             
@@ -131,7 +131,7 @@ final class SyncManager: ObservableObject {
                 if index % 100 == 0 { await Task.yield() }
             }
             
-            var missingAlbums = [SubsonicModels.Album]()
+            var missingAlbums = [Album]()
             for (index, album) in albums.enumerated() {
                 let artistName = album.artist ?? "Unknown Artist"
                 if mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
