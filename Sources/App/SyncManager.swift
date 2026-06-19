@@ -114,8 +114,8 @@ final class SyncManager: ObservableObject {
             await Task.yield()
             
             var missingArtists = [Artist]()
-            let fa = await FanartManager.shared
-            let mb = await MusicBrainzManager.shared
+            let fa = FanartManager.shared
+            let mb = MusicBrainzManager.shared
             
             for (index, artist) in artists.enumerated() {
                 let localPortraitUrl = VeloraStorage.coverArt.appendingPathComponent("\(artist.id).jpg")

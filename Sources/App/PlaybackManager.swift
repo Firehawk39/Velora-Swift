@@ -272,12 +272,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     private func loadAndPlay(track: Track) {
-        // Invalidate any pre-warmed item — it was for the old next track
-        prewarmedItem = nil
-        prewarmedTrackId = nil
-        prewarmPlayer?.pause()
-        prewarmPlayer = nil
-
         let urlToPlay: URL
         if let localUrl = getLocalAudioUrl(for: track.id) {
             urlToPlay = localUrl
@@ -340,8 +334,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.isPlaying = true
         
         // Track progress — capture player instance to prevent stale-observer race condition
-        let capturedPlayer = player
-        timeObserver = player?.addPeriodicTimeObserver(
+        guard let capturedPlayer = player else { return }
+        timeObserver = capturedPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak capturedPlayer] time in
