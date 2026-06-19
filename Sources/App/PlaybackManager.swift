@@ -311,7 +311,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let isOnline = NetworkMonitor.shared.isConnected
         
         // Fetch lyrics — works offline too (returns disk-cached lyrics)
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration)) { lyrics in
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
@@ -560,9 +560,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         commandCenter.seekForwardCommand.addTarget { [weak self] event in
             guard let self = self, let seekEvent = event as? MPSeekCommandEvent else { return .commandFailed }
             Task { @MainActor in
-                if seekEvent.type == .beginSeek {
+                if seekEvent.type == .beginSeeking {
                     self.startContinuousSeek(forward: true)
-                } else if seekEvent.type == .endSeek {
+                } else if seekEvent.type == .endSeeking {
                     self.stopContinuousSeek()
                 }
             }
@@ -573,9 +573,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         commandCenter.seekBackwardCommand.addTarget { [weak self] event in
             guard let self = self, let seekEvent = event as? MPSeekCommandEvent else { return .commandFailed }
             Task { @MainActor in
-                if seekEvent.type == .beginSeek {
+                if seekEvent.type == .beginSeeking {
                     self.startContinuousSeek(forward: false)
-                } else if seekEvent.type == .endSeek {
+                } else if seekEvent.type == .endSeeking {
                     self.stopContinuousSeek()
                 }
             }
@@ -968,7 +968,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         client.downloadCoverArt(id: cleanArtId)
         
         // Trigger lyrics fetch alongside the track for offline use
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration)) { _ in }
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { _ in }
     }
 
     
@@ -1250,7 +1250,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     
     private func fetchMetadata(for track: Track) {
         // Lyrics work offline (returns disk-cached lyrics)
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration)) { lyrics in
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
