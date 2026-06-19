@@ -632,7 +632,9 @@ final class SyncManager: ObservableObject {
                         group.addTask {
                             try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
                             await withCheckedContinuation { cont in
-                                client.fetchCoverArt(id: id, size: 500) { _ in cont.resume() }
+                                Task { @MainActor in
+                                    client.fetchCoverArt(id: id, size: 500) { _ in cont.resume() }
+                                }
                             }
                         }
                     }
@@ -649,7 +651,9 @@ final class SyncManager: ObservableObject {
                         group.addTask {
                             try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
                             await withCheckedContinuation { cont in
-                                client.fetchArtist(id: id) { _ in cont.resume() }
+                                Task { @MainActor in
+                                    client.fetchArtist(id: id) { _ in cont.resume() }
+                                }
                             }
                         }
                     }
