@@ -457,25 +457,15 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
-                            SwipeableSyncRow(deleteText: "Clear Metadata", action: {
-                                client.clearMetadataCache()
-                                sync.metadataStatus = "Metadata Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.metadataStatus = "" }
-                            }) {
-                                Button(action: {
-                                    if sync.isSyncingMetadata {
-                                        sync.stopMetadataSync()
-                                    } else {
-                                        sync.startMetadataSync()
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "info.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
+                            // Metadata Row
+                            HStack {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncingMetadata ? "Syncing Info..." : "Download Library Metadata")
+                                        Text(sync.isSyncingMetadata ? "Syncing Info..." : "Library Metadata")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
                                         Text((sync.isSyncingMetadata || sync.metadataStatus.lowercased().contains("complete")) ? sync.metadataStatus : "Artist bios, portraits, and album details")
@@ -483,53 +473,61 @@ struct AppSettingsView: View {
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
                                     }
-                                    
                                     Spacer()
-                                    
-                                    if sync.isSyncingMetadata {
-                                        HStack(spacing: 8) {
-                                            if !sync.metadataEta.isEmpty {
-                                                Text(sync.metadataEta)
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundColor(.gray)
-                                            }
-                                            CircularProgressView(progress: sync.metadataProgress, size: 24, strokeWidth: 3, accentColor: .blue)
-                                        }
-                                    } else if sync.metadataStatus.lowercased().contains("complete") {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(.green)
-                                    } else {
-                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
-                                    }
                                 }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                            }
-
-                        }
-                            // Lyrics Sync Button
-                            SwipeableSyncRow(deleteText: "Clear Lyrics", action: {
-                                client.clearLyricsCache()
-                                sync.lyricsStatus = "Lyrics Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.lyricsStatus = "" }
-                            }) {
-                                Button(action: {
-                                    if sync.isSyncingLyrics {
-                                        sync.stopLyricsSync()
-                                    } else {
-                                        sync.startLyricsSync()
+                                .contentShape(Rectangle())
+                                .onLongPressGesture {
+                                    client.clearMetadataCache()
+                                    sync.metadataStatus = "Metadata Cleared!"
+                                    let clientRef = client
+                                    DispatchQueue.global(qos: .background).async {
+                                        let size = clientRef.getMediaCacheSize()
+                                        DispatchQueue.main.async { self.cacheSize = size }
                                     }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "text.quote")
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.metadataStatus = "" }
+                                }
+                                
+                                if sync.isSyncingMetadata {
+                                    HStack(spacing: 8) {
+                                        if !sync.metadataEta.isEmpty {
+                                            Text(sync.metadataEta)
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundColor(.gray)
+                                        }
+                                        CircularProgressView(progress: sync.metadataProgress, size: 24, strokeWidth: 3, accentColor: .blue)
+                                    }
+                                } else if sync.metadataStatus.lowercased().contains("complete") {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.green)
+                                } else {
+                                    Button(action: {
+                                        sync.startMetadataSync()
+                                    }) {
+                                        Image(systemName: "icloud.and.arrow.down")
                                             .font(.system(size: 20))
-                                            .foregroundColor(sync.isSyncingLyrics ? .purple : labelCol)
+                                            .foregroundColor(isDark ? .white : .black)
+                                            .padding(6)
+                                            .background(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                                            .clipShape(Circle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding()
+                            .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+
+                            // Lyrics Row
+                            HStack {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "text.quote")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncingLyrics ? .purple : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncingLyrics ? "Downloading Lyrics..." : "Download All Lyrics")
+                                        Text(sync.isSyncingLyrics ? "Downloading Lyrics..." : "All Lyrics")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
                                         Text((sync.isSyncingLyrics || sync.lyricsStatus.lowercased().contains("complete")) ? sync.lyricsStatus : "Cache time-synced lyrics for offline use")
@@ -537,53 +535,61 @@ struct AppSettingsView: View {
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
                                     }
-                                    
                                     Spacer()
-                                    
-                                    if sync.isSyncingLyrics {
-                                        HStack(spacing: 8) {
-                                            if !sync.lyricsEta.isEmpty {
-                                                Text(sync.lyricsEta)
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundColor(.gray)
-                                            }
-                                            CircularProgressView(progress: sync.lyricsProgress, size: 24, strokeWidth: 3, accentColor: .purple)
-                                        }
-                                    } else if sync.lyricsStatus.lowercased().contains("complete") {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(.green)
-                                    } else {
-                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
-                                    }
                                 }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                            }
-
-                        }
-                            // Media Sync Button
-                            SwipeableSyncRow(deleteText: "Clear Music", action: {
-                                client.clearMediaCache()
-                                sync.mediaStatus = "Music Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.mediaStatus = "" }
-                            }) {
-                                Button(action: {
-                                    if sync.isSyncingMedia {
-                                        sync.stopMediaSync()
-                                    } else {
-                                        sync.startMediaSync()
+                                .contentShape(Rectangle())
+                                .onLongPressGesture {
+                                    client.clearLyricsCache()
+                                    sync.lyricsStatus = "Lyrics Cleared!"
+                                    let clientRef = client
+                                    DispatchQueue.global(qos: .background).async {
+                                        let size = clientRef.getMediaCacheSize()
+                                        DispatchQueue.main.async { self.cacheSize = size }
                                     }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "icloud.and.arrow.down.fill")
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.lyricsStatus = "" }
+                                }
+                                
+                                if sync.isSyncingLyrics {
+                                    HStack(spacing: 8) {
+                                        if !sync.lyricsEta.isEmpty {
+                                            Text(sync.lyricsEta)
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundColor(.gray)
+                                        }
+                                        CircularProgressView(progress: sync.lyricsProgress, size: 24, strokeWidth: 3, accentColor: .purple)
+                                    }
+                                } else if sync.lyricsStatus.lowercased().contains("complete") {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.green)
+                                } else {
+                                    Button(action: {
+                                        sync.startLyricsSync()
+                                    }) {
+                                        Image(systemName: "icloud.and.arrow.down")
                                             .font(.system(size: 20))
-                                            .foregroundColor(sync.isSyncingMedia ? .red : labelCol)
+                                            .foregroundColor(isDark ? .white : .black)
+                                            .padding(6)
+                                            .background(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                                            .clipShape(Circle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding()
+                            .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+
+                            // Music Row
+                            HStack {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "icloud.and.arrow.down.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncingMedia ? .red : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncingMedia ? "Downloading..." : "Download All Music")
+                                        Text(sync.isSyncingMedia ? "Downloading..." : "All Music")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
                                         Text((sync.isSyncingMedia || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("all")) ? sync.mediaStatus : "Save all tracks for offline listening")
@@ -591,43 +597,57 @@ struct AppSettingsView: View {
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
                                     }
-                                    
                                     Spacer()
-                                    
-                                    if sync.isSyncingMedia {
-                                        HStack(spacing: 8) {
-                                            if !sync.mediaEta.isEmpty {
-                                                Text(sync.mediaEta)
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundColor(.gray)
-                                            }
-                                            CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 3, accentColor: .red)
-                                        }
-                                    } else if sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("all") {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(.green)
-                                    } else {
-                                        Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                }
+                                .contentShape(Rectangle())
+                                .onLongPressGesture {
+                                    client.clearMediaCache()
+                                    sync.mediaStatus = "Music Cleared!"
+                                    let clientRef = client
+                                    DispatchQueue.global(qos: .background).async {
+                                        let size = clientRef.getMediaCacheSize()
+                                        DispatchQueue.main.async { self.cacheSize = size }
                                     }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.mediaStatus = "" }
                                 }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                
+                                if sync.isSyncingMedia {
+                                    HStack(spacing: 8) {
+                                        if !sync.mediaEta.isEmpty {
+                                            Text(sync.mediaEta)
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundColor(.gray)
+                                        }
+                                        CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 3, accentColor: .red)
+                                    }
+                                } else if sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("all") {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.green)
+                                } else {
+                                    Button(action: {
+                                        sync.startMediaSync()
+                                    }) {
+                                        Image(systemName: "icloud.and.arrow.down")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(isDark ? .white : .black)
+                                            .padding(6)
+                                            .background(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                                            .clipShape(Circle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                        }
-                        
-                            Button(action: {
-                                client.clearCache()
-                                cacheCleared = true
-                                self.cacheSize = "0 MB"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                    cacheCleared = false
-                                }
-                            }) {
-                                HStack {
+                            .padding()
+                            .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+
+                            // Clear All Row
+                            HStack {
+                                HStack(spacing: 12) {
                                     Image(systemName: "trash.fill")
+                                        .font(.system(size: 20))
                                         .foregroundColor(.red)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("Clear All App Data")
@@ -638,18 +658,28 @@ struct AppSettingsView: View {
                                             .foregroundColor(.gray)
                                     }
                                     Spacer()
-                                    if cacheCleared {
-                                        Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)
-                                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                                    } else {
-                                        Text(cacheSize).font(.system(size: 14)).foregroundColor(.gray)
+                                }
+                                .contentShape(Rectangle())
+                                .onLongPressGesture {
+                                    client.clearCache()
+                                    cacheCleared = true
+                                    self.cacheSize = "0 MB"
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                        cacheCleared = false
                                     }
                                 }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                                
+                                if cacheCleared {
+                                    Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)
+                                    Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                                } else {
+                                    Text(cacheSize).font(.system(size: 14)).foregroundColor(.gray)
+                                }
                             }
+                            .padding()
+                            .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }
                         
                         // Download Concurrency
@@ -718,6 +748,18 @@ struct AppSettingsView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .refreshable {
+                await withCheckedContinuation { continuation in
+                    let clientRef = client
+                    DispatchQueue.global(qos: .background).async {
+                        let size = clientRef.getMediaCacheSize()
+                        DispatchQueue.main.async {
+                            self.cacheSize = size
+                            continuation.resume()
+                        }
+                    }
+                }
             }
             .onAppear {
                 let clientRef = client
@@ -815,78 +857,3 @@ struct StorageInfoView: View {
     }
 }
 
-// MARK: - Custom Swipeable Row
-struct SwipeableSyncRow<Content: View>: View {
-    let deleteText: String
-    let action: () -> Void
-    let content: Content
-    
-    @State private var offset: CGFloat = 0
-    @State private var isSwiped: Bool = false
-    
-    init(deleteText: String, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
-        self.deleteText = deleteText
-        self.action = action
-        self.content = content()
-    }
-    
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            // Delete Background Layer
-            HStack {
-                Spacer()
-                Button(action: {
-                    withAnimation(.spring()) {
-                        offset = 0
-                        isSwiped = false
-                    }
-                    action()
-                }) {
-                    VStack(spacing: 4) {
-                        Image(systemName: "trash.fill")
-                            .font(.system(size: 16))
-                        Text(deleteText)
-                            .font(.system(size: 10, weight: .bold))
-                            .multilineTextAlignment(.center)
-                    }
-                    .foregroundColor(.white)
-                    .frame(width: 80)
-                    .frame(maxHeight: .infinity)
-                    .background(Color.red)
-                    .cornerRadius(16)
-                }
-            }
-            
-            // Foreground Content Layer
-            content
-                .background(Color.clear)
-                .offset(x: offset)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            if value.translation.width < 0 {
-                                // Swiping left
-                                offset = isSwiped ? value.translation.width - 80 : value.translation.width
-                                // Cap the swipe to -80
-                                if offset < -100 { offset = -100 }
-                            } else if isSwiped && value.translation.width > 0 {
-                                // Swiping right from open state
-                                offset = value.translation.width - 80
-                                if offset > 0 { offset = 0 }
-                            }
-                        }
-                        .onEnded { value in
-                            withAnimation(.spring()) {
-                                if value.translation.width < -40 {
-                                    offset = -80
-                                    isSwiped = true
-                                } else {
-                                    offset = 0
-                                    isSwiped = false
-                                }
-                            }
-                        }
-                )
-        }
-    }
-}
