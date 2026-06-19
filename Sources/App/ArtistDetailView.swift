@@ -77,9 +77,7 @@ struct ArtistDetailView: View {
             headerOverlay
             
             // Back
-            if isCompact {
-                backButton
-            }
+            backButton
         }
         .onAppear {
             fetchArtistData()
@@ -355,7 +353,7 @@ struct ArtistDetailView: View {
                 .clipShape(Circle())
         }
         .padding(.leading, 24)
-        .padding(.top, 100)
+        .padding(.top, 60)
         .zIndex(110)
     }
     

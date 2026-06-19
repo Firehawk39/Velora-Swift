@@ -73,6 +73,9 @@ struct ContentView: View {
                 .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
                 .zIndex(300) 
+                
+                artistDetailOverlay
+                    .zIndex(400)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea()
@@ -186,30 +189,6 @@ struct ContentView: View {
             default:
                 HomeView()
             }
-
-            if let id = selectedArtistId, let name = selectedArtistName {
-                ArtistDetailView(
-                    artistId: id,
-                    artistName: name,
-                    onArtistClick: { nextId, nextName in
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            selectedArtistId = nextId
-                            selectedArtistName = nextName
-                        }
-                    },
-                    onPlay: { track, ctx in playback.playTrack(track, context: ctx) },
-                    onBack: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            selectedArtistId = nil
-                            selectedArtistName = nil
-                        }
-                    }
-                )
-                .id(id)
-                .background(isDarkMode ? Color.black : Color.white)
-                .transition(.move(edge: .trailing))
-                .zIndex(200)
-            }
         }
         .onChange(of: isIdle) { newValue in
             if newValue {
@@ -218,6 +197,32 @@ struct ContentView: View {
                     isQueueOpen = false
                 }
             }
+        }
+    }
+    
+    @ViewBuilder
+    private var artistDetailOverlay: some View {
+        if let id = selectedArtistId, let name = selectedArtistName {
+            ArtistDetailView(
+                artistId: id,
+                artistName: name,
+                onArtistClick: { nextId, nextName in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedArtistId = nextId
+                        selectedArtistName = nextName
+                    }
+                },
+                onPlay: { track, ctx in playback.playTrack(track, context: ctx) },
+                onBack: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedArtistId = nil
+                        selectedArtistName = nil
+                    }
+                }
+            )
+            .id(id)
+            .background(isDarkMode ? Color.black : Color.white)
+            .transition(.move(edge: .trailing))
         }
     }
 
