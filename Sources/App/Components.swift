@@ -647,7 +647,7 @@ struct QueuePanel: View {
             header
             
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 12) {
+                LazyVStack(spacing: 12) {
                     ForEach(playback.queue) { track in
                         QueueRow(
                             track: track,
