@@ -335,7 +335,7 @@ final class SyncManager: ObservableObject {
                                 try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
                                 await withCheckedContinuation { continuation in
                                     Task { @MainActor in
-                                        client.fetchLyrics(trackId: song.id, artist: song.primaryArtist, title: song.title) { _ in
+                                        client.fetchLyrics(trackId: song.id, artist: song.primaryArtist, title: song.title, duration: Double(song.duration)) { _ in
                                             continuation.resume()
                                         }
                                     }

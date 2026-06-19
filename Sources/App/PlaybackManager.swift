@@ -311,7 +311,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let isOnline = NetworkMonitor.shared.isConnected
         
         // Fetch lyrics — works offline too (returns disk-cached lyrics)
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { lyrics in
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration)) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
@@ -968,7 +968,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         client.downloadCoverArt(id: cleanArtId)
         
         // Trigger lyrics fetch alongside the track for offline use
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { _ in }
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration)) { _ in }
     }
 
     
@@ -1250,7 +1250,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     
     private func fetchMetadata(for track: Track) {
         // Lyrics work offline (returns disk-cached lyrics)
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title) { lyrics in
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration)) { lyrics in
             DispatchQueue.main.async {
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {

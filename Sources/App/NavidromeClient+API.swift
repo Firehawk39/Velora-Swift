@@ -588,7 +588,7 @@ extension NavidromeClient {
 
     // MARK: - Lyrics
 
-    func fetchLyrics(trackId: String, artist: String, title: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
+    func fetchLyrics(trackId: String, artist: String, title: String, duration: Double, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
         let isOnline = NetworkMonitor.shared.isConnected
@@ -615,7 +615,7 @@ extension NavidromeClient {
             }
             
             // Only try LRCLIB API for lyrics (time-synced first, then plain)
-            if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title), !lrclibLyrics.isEmpty {
+            if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title, duration: duration), !lrclibLyrics.isEmpty {
                 try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
                 try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
                 completion(lrclibLyrics)
@@ -629,7 +629,7 @@ extension NavidromeClient {
         }
     }
     
-    nonisolated private func fetchFromLRCLIB(artist: String, title: String) async -> String? {
+    nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double) async -> String? {
         guard await NetworkMonitor.shared.isConnected else { return nil }
         
         // Clean up title/artist for better matching (remove feat, remaster tags)
@@ -645,7 +645,7 @@ extension NavidromeClient {
         
         guard let encodedTitle = cleanTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let encodedArtist = cleanArtist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let getUrl = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
+              let getUrl = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)&duration=\(Int(duration))") else {
             return nil
         }
         
@@ -672,10 +672,21 @@ extension NavidromeClient {
             
             let (searchData, searchResp) = try await URLSession.shared.data(for: searchReq)
             if let httpSearchResp = searchResp as? HTTPURLResponse, httpSearchResp.statusCode == 200 {
-                if let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]],
-                   let firstMatch = jsonArray.first {
-                    if let synced = firstMatch["syncedLyrics"] as? String, !synced.isEmpty { return synced }
-                    if let plain = firstMatch["plainLyrics"] as? String, !plain.isEmpty { return plain }
+                if let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]] {
+                    
+                    // WORLD CLASS HEURISTIC: Find the best match that is within ±3 seconds of our actual audio file
+                    // This prevents syncing a "Live Version" to a "Studio Version" and causing drift.
+                    let bestMatch = jsonArray.first { result in
+                        if let resultDuration = result["duration"] as? Double {
+                            return abs(resultDuration - duration) <= 3.0
+                        }
+                        return false
+                    } ?? jsonArray.first // Fallback to first if no duration matches perfectly
+                    
+                    if let match = bestMatch {
+                        if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
+                        if let plain = match["plainLyrics"] as? String, !plain.isEmpty { return plain }
+                    }
                 }
             }
         } catch {
