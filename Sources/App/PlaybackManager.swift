@@ -343,7 +343,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 guard let self = self,
                       let capturedPlayer = capturedPlayer,
                       self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                      let item = capturedPlayer?.currentItem,
+                      let item = capturedPlayer.currentItem,
                       item.duration.isNumeric else { return }
                 
                 self.progress = time.seconds
