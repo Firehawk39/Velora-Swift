@@ -20,13 +20,17 @@ We've pivoted the architecture to focus on the absolute easiest, most frictionle
 
 ## 2. System Architecture & Tech Stack (The "Ultra-Lean" Stack)
 
-By leveraging embedded databases, we can drastically reduce the number of Docker containers and VRAM overhead, making the system incredibly easy to install and maintain.
+By leveraging embedded databases and standard file formats, we can drastically reduce the number of Docker containers and VRAM overhead, making the system incredibly easy to install and maintain.
 
-### A. The Storage Layer: `sqlite-vec` (The "All-in-One" File)
+### A. The Numerical Storage Layer: `sqlite-vec` (The "All-in-One" File)
 *   **What it is:** Instead of running massive database servers, we use **SQLite** with the brand new **`sqlite-vec`** extension.
 *   **Why it's cutting edge but easy:** It requires zero setup, no passwords, and no separate Docker containers. Your standard relational data (metadata, track names), your raw telemetry (play/pause history), *and* your high-dimensional audio embeddings all live inside a single, hyper-fast local `.db` file on your hard drive. 
 
-### B. Core Infrastructure & Machine Learning Stack
+### B. The Textual Memory Layer: Obsidian (Standard Markdown)
+*   **What it is:** Instead of a complex graph database, the AI's long-term memory and knowledge base is a simple local folder containing standard `.md` files (an Obsidian Vault).
+*   **Why it's cutting edge but easy:** Python's FastAPI backend can read, write, and chunk these plain-text files natively with zero overhead. You can open this same folder on your desktop using the Obsidian app to visually read, edit, or delete the Conversational DJ's memories in plain English.
+
+### C. Core Infrastructure & Machine Learning Stack
 *   **Containers Required:** Only **Two** (FastAPI Backend + Ollama).
 *   **FastAPI (Python):** The orchestrator API that also runs the embedded `sqlite-vec` database directly in memory.
 *   **Conversational DJ:** `gemma-4-12b-it-qat-q4_0` via Ollama.
