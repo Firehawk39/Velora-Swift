@@ -338,9 +338,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         player?.play()
         self.isPlaying = true
         
-        // Log to AI Engine
-        AIEngineClient.shared.logEvent(type: "play", trackId: track.id)
-        
         // Track progress — capture player instance to prevent stale-observer race condition
         guard let capturedPlayer = player else { return }
         timeObserver = capturedPlayer.addPeriodicTimeObserver(
@@ -470,14 +467,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     func togglePlayPause() {
         if isPlaying {
             player?.pause()
-            if let track = currentTrack {
-                AIEngineClient.shared.logEvent(type: "pause", trackId: track.id, context: "progress: \(progress)")
-            }
         } else {
             player?.play()
-            if let track = currentTrack {
-                AIEngineClient.shared.logEvent(type: "resume", trackId: track.id, context: "progress: \(progress)")
-            }
         }
         isPlaying.toggle()
         updateNowPlayingInfo()
@@ -485,11 +476,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     
     func skipForward() {
         guard !queue.isEmpty else { return }
-        
-        if let track = currentTrack {
-            AIEngineClient.shared.logEvent(type: "skip_forward", trackId: track.id, context: "progress: \(progress)")
-        }
-
         
         // Save current index to history before moving forward
         if !isNavigatingHistory {
@@ -517,13 +503,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         // If more than 3 seconds in, restart the current song
         if progress > 3 {
             player?.seek(to: .zero)
-            if let track = currentTrack {
-                AIEngineClient.shared.logEvent(type: "restart", trackId: track.id)
-            }
         } else {
-            if let track = currentTrack {
-                AIEngineClient.shared.logEvent(type: "skip_backward", trackId: track.id)
-            }
             // Check history first for correct backward navigation
             if let lastIndex = playbackHistory.popLast() {
                 isNavigatingHistory = true
