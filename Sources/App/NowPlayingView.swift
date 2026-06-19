@@ -15,6 +15,7 @@ struct NowPlayingView: View {
     @State private var isDragging   = false
     @State private var artistBiography: String? = nil
     @State private var isFetchingArtistInfo: Bool = false
+    @State private var lyricsLoadFailed: Bool = false
     @State private var dragProgress: Double = 0
     @State private var idleTimer: Timer? = nil
     @State private var showPlayPauseHint: Bool = false
@@ -635,14 +636,18 @@ struct NowPlayingView: View {
 
     private var artistImage: some View {
         Group {
-            if let artistId = playback.currentTrack?.artistId,
-               let url = URL(string: playback.client.getCoverArtUrl(id: artistId)) {
-                AsyncImage(url: url) { img in
+            if let artistId = playback.currentTrack?.artistId {
+                // Prefer local cached portrait; fall back to server URL
+                let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(artistId).jpg")
+                let imageUrl: URL? = FileManager.default.fileExists(atPath: localUrl.path)
+                    ? localUrl
+                    : URL(string: playback.client.getCoverArtUrl(id: artistId))
+                AsyncImage(url: imageUrl) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Circle().fill(Color.white.opacity(0.1))
                 }
-                .id(playback.playbackSessionId)
+                .id(playback.currentTrack?.artistId ?? "")
             } else {
                 Circle().fill(Color.white.opacity(0.1))
             }
@@ -740,27 +745,54 @@ struct NowPlayingView: View {
         
         return ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
+                LazyVStack(alignment: .leading, spacing: 24) {
                     if !syncedLyrics.isEmpty {
                         ForEach(Array(syncedLyrics.enumerated()), id: \.offset) { index, line in
-                            renderLyricLine(line: line, index: index, activeIndex: activeIndex, syncedLyrics: syncedLyrics)
-                                .id(index)
+                            LyricLineView(
+                                line: line,
+                                index: index,
+                                activeIndex: activeIndex,
+                                syncedLyrics: syncedLyrics,
+                                progress: playback.progress,
+                                fontSize: isLargeCanvas ? 44 : 32
+                            )
+                            .id(index)
                         }
                     } else if let lyrics = playback.currentLyrics {
                         let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                        
                         ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                             Text(line)
                                 .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
                                 .foregroundColor(.white)
-                                .opacity(1.0)
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                    } else if isFetchingArtistInfo || playback.currentTrack == nil {
+                        // Still loading — show spinner
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(1.5)
+                            Spacer()
+                        }
+                        .padding(.top, 60)
                     } else {
-                        Text("Looking for lyrics...")
-                            .font(.system(size: 32, weight: .black))
-                            .foregroundColor(.white.opacity(0.4))
+                        // Fetch finished, nothing found
+                        VStack(spacing: 12) {
+                            Image(systemName: "music.note.list")
+                                .font(.system(size: 40))
+                                .foregroundColor(.white.opacity(0.2))
+                            Text("No lyrics available")
+                                .font(.system(size: 24, weight: .black))
+                                .foregroundColor(.white.opacity(0.4))
+                            Text("Lyrics could not be found for this track")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white.opacity(0.25))
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 60)
                     }
                 }
                 .padding(.top, 10)
@@ -792,47 +824,7 @@ struct NowPlayingView: View {
         return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
     }
 
-    private func renderLyricLine(line: LyricLine, index: Int, activeIndex: Int, syncedLyrics: [LyricLine]) -> Text {
-        let baseFont = Font.system(size: isLargeCanvas ? 44 : 32, weight: .black)
-        
-        if index != activeIndex {
-            return Text(line.text)
-                .font(baseFont)
-                .foregroundColor(.white.opacity(0.4))
-        } else {
-            if !line.words.isEmpty {
-                // True Spotify-like exact word sync
-                var concatenatedText = Text("")
-                for (i, word) in line.words.enumerated() {
-                    let isSpoken = playback.progress >= (word.time - 0.1)
-                    let opacity = isSpoken ? 1.0 : 0.4
-                    
-                    let textSegment = Text(word.text + (i == line.words.count - 1 ? "" : " ")).foregroundColor(.white.opacity(opacity))
-                    concatenatedText = concatenatedText + textSegment
-                }
-                return concatenatedText.font(baseFont)
-            } else {
-                // Fallback simulated word sync
-                let duration = (index + 1 < syncedLyrics.count) ? (syncedLyrics[index + 1].time - line.time) : 5.0
-                let elapsed = max(0, playback.progress - line.time)
-                
-                let words = line.text.split(separator: " ").map(String.init)
-                let wordDuration = duration / Double(max(1, words.count))
-                
-                var concatenatedText = Text("")
-                for (i, word) in words.enumerated() {
-                    let wordStart = Double(i) * wordDuration
-                    let isSpoken = elapsed >= (wordStart - 0.1)
-                    let opacity = isSpoken ? 1.0 : 0.4
-                    
-                    let textSegment = Text(word + (i == words.count - 1 ? "" : " ")).foregroundColor(.white.opacity(opacity))
-                    concatenatedText = concatenatedText + textSegment
-                }
-                
-                return concatenatedText.font(baseFont)
-            }
-        }
-    }
+    // renderLyricLine removed — replaced by LyricLineView struct below
     private func refreshMetadata() {
         guard let track = playback.currentTrack else { return }
         
@@ -863,6 +855,60 @@ struct NowPlayingView: View {
         
         // 3. Album info
         mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: nil)
+    }
+}
+
+// MARK: - LyricLineView (LazyVStack-compatible, replaces old renderLyricLine Text func)
+@MainActor
+struct LyricLineView: View {
+    let line: LyricLine
+    let index: Int
+    let activeIndex: Int
+    let syncedLyrics: [LyricLine]
+    let progress: Double
+    let fontSize: CGFloat
+
+    var body: some View {
+        let baseFont = Font.system(size: fontSize, weight: .black)
+
+        if index != activeIndex {
+            Text(line.text)
+                .font(baseFont)
+                .foregroundColor(.white.opacity(0.4))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if !line.words.isEmpty {
+            buildWordSyncedText(words: line.words, font: baseFont)
+        } else {
+            buildSimulatedWordText(font: baseFont)
+        }
+    }
+
+    private func buildWordSyncedText(words: [LyricWord], font: Font) -> Text {
+        var result = Text("")
+        for (i, word) in words.enumerated() {
+            let isSpoken = progress >= (word.time - 0.1)
+            let suffix = (i == words.count - 1) ? "" : " "
+            result = result + Text(word.text + suffix).foregroundColor(.white.opacity(isSpoken ? 1.0 : 0.4))
+        }
+        return result.font(font)
+    }
+
+    private func buildSimulatedWordText(font: Font) -> Text {
+        let duration = (index + 1 < syncedLyrics.count)
+            ? (syncedLyrics[index + 1].time - line.time)
+            : 5.0
+        let elapsed = max(0, progress - line.time)
+        let words = line.text.split(separator: " ").map(String.init)
+        let wordDuration = duration / Double(max(1, words.count))
+
+        var result = Text("")
+        for (i, word) in words.enumerated() {
+            let isSpoken = elapsed >= (Double(i) * wordDuration - 0.1)
+            let suffix = (i == words.count - 1) ? "" : " "
+            result = result + Text(word + suffix).foregroundColor(.white.opacity(isSpoken ? 1.0 : 0.4))
+        }
+        return result.font(font)
     }
 }
 

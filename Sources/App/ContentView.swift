@@ -162,6 +162,10 @@ struct ContentView: View {
                         selectedArtistId = id
                         selectedArtistName = name
                     }
+                }, onSeeAll: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        activeTab = "library"
+                    }
                 })
             case "library":
                 LibraryView(onArtistClick: { id, name in

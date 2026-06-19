@@ -293,44 +293,6 @@ struct AppHeader: View {
     }
 }
 
-// MARK: - Bottom Navigation Pill (Spotify Style)
-struct BottomNavigationPill: View {
-    @Binding var activeTab: String
-    let isDarkMode: Bool
-    var onAction: () -> Void
-    
-    var isPlayingTab: Bool { activeTab == "now-playing" }
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-        }
-        .padding(.horizontal, 4)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .background(
-            ZStack {
-                if isDarkMode {
-                    Color(hex: "#121212")
-                } else {
-                    Color.white
-                }
-            }
-            .ignoresSafeArea(edges: .bottom)
-        )
-        .overlay(
-            VStack {
-                Rectangle()
-                    .fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
-                    .frame(height: 0.5)
-                Spacer()
-            }
-        )
-    }
-}
 
 struct TabButton: View {
     let id: String

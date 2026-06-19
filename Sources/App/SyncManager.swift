@@ -198,19 +198,20 @@ final class SyncManager: ObservableObject {
                 artistStartIndex += maxConcurrentMetadata
                 metadataProgress = tasksCompleted / totalTasks
                 
-                // ETA
+                // ETA — wait at least 2s before showing
                 if tasksCompleted > 0 {
                     let elapsed = Date().timeIntervalSince(startTime)
-                    let tracksPerSecond = tasksCompleted / elapsed
-                    let remaining = totalTasks - tasksCompleted
-                    let remainingSeconds = Int(remaining / tracksPerSecond)
-                    
-                    if remainingSeconds > 3600 {
-                        self.metadataEta = "\(remainingSeconds / 3600)h remaining"
-                    } else if remainingSeconds > 60 {
-                        self.metadataEta = "\(remainingSeconds / 60)m remaining"
-                    } else {
-                        self.metadataEta = "\(remainingSeconds)s remaining"
+                    if elapsed >= 2.0 {
+                        let tracksPerSecond = tasksCompleted / elapsed
+                        let remaining = totalTasks - tasksCompleted
+                        let remainingSeconds = Int(remaining / max(tracksPerSecond, 0.01))
+                        if remainingSeconds > 3600 {
+                            self.metadataEta = "\(remainingSeconds / 3600)h remaining"
+                        } else if remainingSeconds > 60 {
+                            self.metadataEta = "\(remainingSeconds / 60)m remaining"
+                        } else {
+                            self.metadataEta = "\(remainingSeconds)s remaining"
+                        }
                     }
                 }
             }
@@ -245,19 +246,20 @@ final class SyncManager: ObservableObject {
                 albumStartIndex += maxConcurrentMetadata
                 metadataProgress = tasksCompleted / totalTasks
                 
-                // ETA
+                // ETA — wait at least 2s before showing
                 if tasksCompleted > 0 {
                     let elapsed = Date().timeIntervalSince(startTime)
-                    let tracksPerSecond = tasksCompleted / elapsed
-                    let remaining = totalTasks - tasksCompleted
-                    let remainingSeconds = Int(remaining / tracksPerSecond)
-                    
-                    if remainingSeconds > 3600 {
-                        self.metadataEta = "\(remainingSeconds / 3600)h remaining"
-                    } else if remainingSeconds > 60 {
-                        self.metadataEta = "\(remainingSeconds / 60)m remaining"
-                    } else {
-                        self.metadataEta = "\(remainingSeconds)s remaining"
+                    if elapsed >= 2.0 {
+                        let tracksPerSecond = tasksCompleted / elapsed
+                        let remaining = totalTasks - tasksCompleted
+                        let remainingSeconds = Int(remaining / max(tracksPerSecond, 0.01))
+                        if remainingSeconds > 3600 {
+                            self.metadataEta = "\(remainingSeconds / 3600)h remaining"
+                        } else if remainingSeconds > 60 {
+                            self.metadataEta = "\(remainingSeconds / 60)m remaining"
+                        } else {
+                            self.metadataEta = "\(remainingSeconds)s remaining"
+                        }
                     }
                 }
             }
@@ -348,20 +350,22 @@ final class SyncManager: ObservableObject {
                     tasksCompleted += Double(batch.count)
                     lyricsProgress = tasksCompleted / totalTasks
 
-                    // ETA Calculation
+                    // ETA Calculation — wait at least 2s before showing (avoids ∞ on first batch)
                     let nowProcessed = tasksCompleted - Double(skippedCount)
                     if nowProcessed > 0 {
                         let elapsed = Date().timeIntervalSince(startTime)
-                        let tracksPerSecond = nowProcessed / elapsed
-                        let remainingTracks = Double(missingSongs.count) - nowProcessed
-                        let remainingSeconds = Int(remainingTracks / tracksPerSecond)
-                        
-                        if remainingSeconds > 3600 {
-                            self.lyricsEta = "\(remainingSeconds / 3600)h remaining"
-                        } else if remainingSeconds > 60 {
-                            self.lyricsEta = "\(remainingSeconds / 60)m remaining"
-                        } else {
-                            self.lyricsEta = "\(remainingSeconds)s remaining"
+                        if elapsed >= 2.0 {
+                            let tracksPerSecond = nowProcessed / elapsed
+                            let remainingTracks = Double(missingSongs.count) - nowProcessed
+                            let remainingSeconds = Int(remainingTracks / max(tracksPerSecond, 0.01))
+                            
+                            if remainingSeconds > 3600 {
+                                self.lyricsEta = "\(remainingSeconds / 3600)h remaining"
+                            } else if remainingSeconds > 60 {
+                                self.lyricsEta = "\(remainingSeconds / 60)m remaining"
+                            } else {
+                                self.lyricsEta = "\(remainingSeconds)s remaining"
+                            }
                         }
                     }
                     

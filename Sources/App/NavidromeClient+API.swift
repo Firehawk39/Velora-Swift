@@ -697,8 +697,23 @@ extension NavidromeClient {
 
     // MARK: - Scrobbling
 
+    private let pendingScrobblesKey = "velora_pending_scrobbles"
+
     func scrobble(id: String, submission: Bool) {
-        guard NetworkMonitor.shared.isConnected else { return }
+        if NetworkMonitor.shared.isConnected {
+            sendScrobble(id: id, submission: submission)
+        } else if submission {
+            // Queue the submission for when we reconnect (nowPlaying pings are fire-and-forget, not worth queuing)
+            var pending = UserDefaults.standard.stringArray(forKey: pendingScrobblesKey) ?? []
+            if !pending.contains(id) {
+                pending.append(id)
+                UserDefaults.standard.set(pending, forKey: pendingScrobblesKey)
+                AppLogger.shared.log("[Scrobble] Queued offline scrobble for track \(id)")
+            }
+        }
+    }
+
+    private func sendScrobble(id: String, submission: Bool) {
         guard let url = buildUrl(method: "scrobble.view", params: [
             "id": id,
             "time": "\(Int(Date().timeIntervalSince1970 * 1000))",
@@ -707,6 +722,17 @@ extension NavidromeClient {
         URLSession.shared.dataTask(with: url) { _, _, error in
             if let error = error { print("Scrobble error: \(error)") }
         }.resume()
+    }
+
+    /// Called on reconnect (inside fetchEverything) to flush any queued offline scrobbles.
+    func flushPendingScrobbles() {
+        let pending = UserDefaults.standard.stringArray(forKey: pendingScrobblesKey) ?? []
+        guard !pending.isEmpty else { return }
+        AppLogger.shared.log("[Scrobble] Flushing \(pending.count) pending offline scrobble(s)")
+        for id in pending {
+            sendScrobble(id: id, submission: true)
+        }
+        UserDefaults.standard.removeObject(forKey: pendingScrobblesKey)
     }
 
     func reportNowPlaying(id: String) { scrobble(id: id, submission: false) }
@@ -719,6 +745,7 @@ extension NavidromeClient {
             AppLogger.shared.log("[Offline] Skipping fetchEverything — no network connection.")
             return
         }
+        flushPendingScrobbles() // Flush any scrobbles queued while offline
         fetchRecentlyPlayed()
         fetchAlbums()
         fetchArtists()

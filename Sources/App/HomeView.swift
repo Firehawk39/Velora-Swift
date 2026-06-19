@@ -13,6 +13,7 @@ struct HomeView: View {
     var isSE: Bool { ScreenTier.isSE }
     var hPad: CGFloat { isCompact ? 24 : 48 }
     var onArtistClick: ((String, String) -> Void)? = nil
+    var onSeeAll: (() -> Void)? = nil
 
     // Greeting — matches the web's time-of-day logic
     var greeting: String {
@@ -41,7 +42,7 @@ struct HomeView: View {
                 // ── Recent Tracks ─────────────────────────────────────
                 let offlineRecent = !network.isConnected ? playback.filterOffline(client.recentTracks) : client.recentTracks
                 if !offlineRecent.isEmpty || network.isConnected {
-                    SectionHeader(title: "Recent tracks", isDark: isDark, hPad: hPad)
+                    SectionHeader(title: "Recent tracks", isDark: isDark, hPad: hPad, onSeeAll: onSeeAll)
 
                     if client.recentTracks.isEmpty {
                         SkeletonRow(count: 4, cardWidth: ScreenTier.isPhone ? 140 : 150, cardHeight: ScreenTier.isPhone ? 140 : 150, isDark: isDark)
@@ -71,7 +72,7 @@ struct HomeView: View {
                 } : client.artists
 
                 if !offlineArtists.isEmpty || network.isConnected {
-                    SectionHeader(title: "Artists", isDark: isDark, hPad: hPad)
+                    SectionHeader(title: "Artists", isDark: isDark, hPad: hPad, onSeeAll: onSeeAll)
 
                     if client.artists.isEmpty {
                         SkeletonRow(count: 5, cardWidth: isCompact ? 75 : 90, cardHeight: isCompact ? 75 : 90, isDark: isDark, circular: true)
@@ -101,7 +102,7 @@ struct HomeView: View {
                 } : client.albums
 
                 if !offlineAlbums.isEmpty || network.isConnected {
-                    SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad)
+                    SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad, onSeeAll: onSeeAll)
 
                     if client.albums.isEmpty {
                         SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 160 : 200, cardHeight: ScreenTier.isPhone ? 100 : 130, isDark: isDark, rounded: 24)
@@ -142,6 +143,7 @@ private struct SectionHeader: View {
     let title: String
     let isDark: Bool
     let hPad: CGFloat
+    var onSeeAll: (() -> Void)? = nil
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
     var isLargeCanvas: Bool { ScreenTier.current == .large }
@@ -153,9 +155,11 @@ private struct SectionHeader: View {
                 .foregroundColor(isDark ? .white : Color(hex: "#374151"))
             Spacer()
             if !isCompact {
-                Text("See all")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(isDark ? .white.opacity(0.6) : .blue)
+                Button(action: { onSeeAll?() }) {
+                    Text("See all")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(isDark ? .white.opacity(0.6) : .blue)
+                }
             }
         }
         .padding(.horizontal, hPad)
