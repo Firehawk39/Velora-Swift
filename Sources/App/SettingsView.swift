@@ -457,22 +457,17 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
-                            SwipeableSyncRow(deleteText: "Clear Metadata", action: {
-                                client.clearMetadataCache()
-                                sync.metadataStatus = "Metadata Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.metadataStatus = "" }
+                            Button(action: {
+                                if sync.isSyncingMetadata {
+                                    sync.stopMetadataSync()
+                                } else {
+                                    sync.startMetadataSync()
+                                }
                             }) {
-                                Button(action: {
-                                    if sync.isSyncingMetadata {
-                                        sync.stopMetadataSync()
-                                    } else {
-                                        sync.startMetadataSync()
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "info.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
+                                HStack {
+                                    Image(systemName: "info.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isSyncingMetadata ? "Syncing Info..." : "Download Library Metadata")
@@ -509,24 +504,18 @@ struct AppSettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
 
-                        }
                             // Lyrics Sync Button
-                            SwipeableSyncRow(deleteText: "Clear Lyrics", action: {
-                                client.clearLyricsCache()
-                                sync.lyricsStatus = "Lyrics Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.lyricsStatus = "" }
+                            Button(action: {
+                                if sync.isSyncingLyrics {
+                                    sync.stopLyricsSync()
+                                } else {
+                                    sync.startLyricsSync()
+                                }
                             }) {
-                                Button(action: {
-                                    if sync.isSyncingLyrics {
-                                        sync.stopLyricsSync()
-                                    } else {
-                                        sync.startLyricsSync()
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "text.quote")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(sync.isSyncingLyrics ? .purple : labelCol)
+                                HStack {
+                                    Image(systemName: "text.quote")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncingLyrics ? .purple : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isSyncingLyrics ? "Downloading Lyrics..." : "Download All Lyrics")
@@ -563,24 +552,18 @@ struct AppSettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
 
-                        }
                             // Media Sync Button
-                            SwipeableSyncRow(deleteText: "Clear Music", action: {
-                                client.clearMediaCache()
-                                sync.mediaStatus = "Music Cleared!"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { sync.mediaStatus = "" }
+                            Button(action: {
+                                if sync.isSyncingMedia {
+                                    sync.stopMediaSync()
+                                } else {
+                                    sync.startMediaSync()
+                                }
                             }) {
-                                Button(action: {
-                                    if sync.isSyncingMedia {
-                                        sync.stopMediaSync()
-                                    } else {
-                                        sync.startMediaSync()
-                                    }
-                                }) {
-                                    HStack {
-                                        Image(systemName: "icloud.and.arrow.down.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(sync.isSyncingMedia ? .red : labelCol)
+                                HStack {
+                                    Image(systemName: "icloud.and.arrow.down.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(sync.isSyncingMedia ? .red : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(sync.isSyncingMedia ? "Downloading..." : "Download All Music")
@@ -616,8 +599,7 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
-                        }
-                        
+                            
                             Button(action: {
                                 client.clearCache()
                                 cacheCleared = true
