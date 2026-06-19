@@ -204,6 +204,8 @@ struct ContentView: View {
         }
     }
     
+    @State private var artistDetailOffset: CGFloat = 0
+
     @ViewBuilder
     private var artistDetailOverlay: some View {
         if let id = selectedArtistId, let name = selectedArtistName {
@@ -214,6 +216,7 @@ struct ContentView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         selectedArtistId = nextId
                         selectedArtistName = nextName
+                        artistDetailOffset = 0
                     }
                 },
                 onPlay: { track, ctx in playback.playTrack(track, context: ctx) },
@@ -221,11 +224,34 @@ struct ContentView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         selectedArtistId = nil
                         selectedArtistName = nil
+                        artistDetailOffset = 0
                     }
                 }
             )
             .id(id)
             .background(isDarkMode ? Color.black : Color.white)
+            .offset(x: artistDetailOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if value.translation.width > 0 {
+                            artistDetailOffset = value.translation.width
+                        }
+                    }
+                    .onEnded { value in
+                        if value.translation.width > 100 || value.velocity.width > 300 {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                selectedArtistId = nil
+                                selectedArtistName = nil
+                                artistDetailOffset = 0
+                            }
+                        } else {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                artistDetailOffset = 0
+                            }
+                        }
+                    }
+            )
             .transition(.move(edge: .trailing))
         }
     }
