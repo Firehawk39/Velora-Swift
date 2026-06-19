@@ -591,15 +591,29 @@ extension NavidromeClient {
     func fetchLyrics(trackId: String, artist: String, title: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
+        let isOnline = NetworkMonitor.shared.isConnected
         
-        // If cached on disk, return immediately
+        // If cached on disk, check the contents
         if FileManager.default.fileExists(atPath: cacheFile.path) {
             let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8)
-            completion(cachedLyrics?.isEmpty == true ? nil : cachedLyrics)
-            return
+            if let lyrics = cachedLyrics, !lyrics.isEmpty {
+                completion(lyrics)
+                return
+            } else if !isOnline {
+                // It's an empty marker, and we are offline, so don't bother retrying
+                completion(nil)
+                return
+            }
+            // If it's empty but we are online, we fall through and retry fetching
         }
         
         Task {
+            guard await NetworkMonitor.shared.isConnected else {
+                // Do not cache failure if we simply have no connection
+                completion(nil)
+                return
+            }
+            
             // Only try LRCLIB API for lyrics (time-synced first, then plain)
             if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title), !lrclibLyrics.isEmpty {
                 try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
@@ -608,7 +622,7 @@ extension NavidromeClient {
                 return
             }
             
-            // Save empty file so we don't retry forever
+            // Save empty file so we don't retry forever on un-lyric-able songs
             try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
             try? "".write(to: cacheFile, atomically: true, encoding: .utf8)
             completion(nil)
