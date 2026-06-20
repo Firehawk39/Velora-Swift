@@ -77,9 +77,7 @@ struct ArtistDetailView: View {
             headerOverlay
             
             // Back
-            if isCompact {
-                backButton
-            }
+            backButton
         }
         .onAppear {
             fetchArtistData()
@@ -128,23 +126,10 @@ struct ArtistDetailView: View {
                 .padding(.horizontal, 24)
             } else {
                 VStack(alignment: .leading, spacing: 32) {
-                    ZStack(alignment: .topLeading) {
-                        Button(action: onBack) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(isDarkMode ? .white : .black)
-                                .frame(width: 36, height: 36)
-                                .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
-                                .clipShape(Circle())
-                        }
-                        .padding(.leading, 0)
-                        .padding(.top, 20)
-                        
-                        HStack {
-                            Spacer()
-                            artistLogo(size: 220)
-                            Spacer()
-                        }
+                    HStack {
+                        Spacer()
+                        artistLogo(size: 220)
+                        Spacer()
                     }
                     
                     HStack(alignment: .bottom) {
@@ -354,7 +339,7 @@ struct ArtistDetailView: View {
                 .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
                 .clipShape(Circle())
         }
-        .padding(.leading, 24)
+        .padding(.leading, isCompact ? 24 : 48)
         .padding(.top, 60)
         .zIndex(110)
     }
