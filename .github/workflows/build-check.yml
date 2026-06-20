@@ -23,4 +23,4 @@ jobs:
 
       - name: Build (compile check only)
         run: |
-          swift build -c debug -Xswiftc -sdk -Xswiftc $(xcrun --sdk iphonesimulator --show-sdk-path) -Xswiftc -target -Xswiftc arm64-apple-ios15.0-simulator
+          swift build -c debug --sdk $(xcrun --sdk iphonesimulator --show-sdk-path) --triple arm64-apple-ios15.0-simulator
