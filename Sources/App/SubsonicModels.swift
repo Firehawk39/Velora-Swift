@@ -51,6 +51,8 @@ struct SubsonicSong: Codable {
     let starred: String?
     let playCount: Int?
     let suffix: String?
+    let track: Int?
+    let discNumber: Int?
     let created: String?
 }
 

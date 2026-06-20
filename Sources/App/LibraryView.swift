@@ -652,20 +652,24 @@ private struct SongListView: View {
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
             
             // Recent sort mode
-            let aCreated = a.created ?? ""
-            let bCreated = b.created ?? ""
-            if aCreated != bCreated {
+            if let aCreated = a.created, let bCreated = b.created, aCreated != bCreated {
                 return aCreated > bCreated
             }
             
             // Secondary sort: Album name
-            let aAlbum = a.album ?? ""
-            let bAlbum = b.album ?? ""
-            if aAlbum != bAlbum {
+            if let aAlbum = a.album, let bAlbum = b.album, aAlbum != bAlbum {
                 return aAlbum < bAlbum
             }
             
-            // Tertiary sort: Track title
+            // Tertiary sort: Disc and Track number
+            if let aDisc = a.discNumber, let bDisc = b.discNumber, aDisc != bDisc {
+                return aDisc < bDisc
+            }
+            if let aTrack = a.track, let bTrack = b.track, aTrack != bTrack {
+                return aTrack < bTrack
+            }
+            
+            // Final fallback: Track title
             return a.title < b.title
         }
         
@@ -821,15 +825,17 @@ private struct PlaylistDetailView: View {
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
             if sortMode == .recent {
-                let aCreated = a.created ?? ""
-                let bCreated = b.created ?? ""
-                if aCreated != bCreated {
+                if let aCreated = a.created, let bCreated = b.created, aCreated != bCreated {
                     return aCreated > bCreated
                 }
-                let aAlbum = a.album ?? ""
-                let bAlbum = b.album ?? ""
-                if aAlbum != bAlbum {
+                if let aAlbum = a.album, let bAlbum = b.album, aAlbum != bAlbum {
                     return aAlbum < bAlbum
+                }
+                if let aDisc = a.discNumber, let bDisc = b.discNumber, aDisc != bDisc {
+                    return aDisc < bDisc
+                }
+                if let aTrack = a.track, let bTrack = b.track, aTrack != bTrack {
+                    return aTrack < bTrack
                 }
                 return a.title < b.title
             }
