@@ -77,7 +77,9 @@ struct ArtistDetailView: View {
             headerOverlay
             
             // Back
-            backButton
+            if isCompact {
+                backButton
+            }
         }
         .onAppear {
             fetchArtistData()
@@ -474,7 +476,11 @@ struct ArtistBackdropView: View {
                 
                 // Top-to-Bottom Vignette for readability
                 LinearGradient(
-                    gradient: Gradient(colors: [.black.opacity(0.4), .clear, .black.opacity(0.6)]),
+                    gradient: Gradient(colors: [
+                        .black.opacity(0.4),
+                        .clear,
+                        isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa")
+                    ]),
                     startPoint: .top,
                     endPoint: .bottom
                 )
