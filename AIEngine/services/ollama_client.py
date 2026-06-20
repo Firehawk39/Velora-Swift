@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/api")
-DEFAULT_MODEL = "gemma:2b" # Placeholder until we run the heavy QAT model
+DEFAULT_MODEL = os.getenv("VELORA_MODEL", "gemma4:12b-it-qat")
 
 async def generate_chat_stream(prompt: str, system_prompt: str) -> AsyncGenerator[str, None]:
     """
