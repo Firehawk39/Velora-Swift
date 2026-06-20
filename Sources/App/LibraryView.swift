@@ -647,25 +647,49 @@ private struct SongListView: View {
         let base = client.allSongs
         let filtered = showOfflineOnly ? playback.filterOffline(base) : base
         
+        let albumMaxDates: [String: String] = {
+            var dict = [String: String]()
+            for track in filtered {
+                let album = track.album ?? ""
+                let created = track.created ?? ""
+                if let existing = dict[album] {
+                    if created > existing { dict[album] = created }
+                } else {
+                    dict[album] = created
+                }
+            }
+            return dict
+        }()
+        
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
             
-            // Recent sort mode
-            if let aCreated = a.created, let bCreated = b.created, aCreated != bCreated {
-                return aCreated > bCreated
+            // Recent sort mode: Group by Album's newest track, then order by track sequence
+            let aAlbum = a.album ?? ""
+            let bAlbum = b.album ?? ""
+            
+            let aMax = albumMaxDates[aAlbum] ?? ""
+            let bMax = albumMaxDates[bAlbum] ?? ""
+            
+            if aMax != bMax {
+                return aMax > bMax // descending order
             }
             
             // Secondary sort: Album name
-            if let aAlbum = a.album, let bAlbum = b.album, aAlbum != bAlbum {
+            if aAlbum != bAlbum {
                 return aAlbum < bAlbum
             }
             
             // Tertiary sort: Disc and Track number
-            if let aDisc = a.discNumber, let bDisc = b.discNumber, aDisc != bDisc {
+            let aDisc = a.discNumber ?? 1
+            let bDisc = b.discNumber ?? 1
+            if aDisc != bDisc {
                 return aDisc < bDisc
             }
-            if let aTrack = a.track, let bTrack = b.track, aTrack != bTrack {
+            let aTrack = a.track ?? 0
+            let bTrack = b.track ?? 0
+            if aTrack != bTrack {
                 return aTrack < bTrack
             }
             
