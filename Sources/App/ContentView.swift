@@ -75,7 +75,7 @@ struct ContentView: View {
                 .zIndex(300) 
                 
                 artistDetailOverlay
-                    .zIndex(400)
+                    .zIndex(200)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea()
