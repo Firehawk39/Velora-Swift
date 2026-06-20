@@ -90,6 +90,8 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
     var isStarred: Bool = false
     var playCount: Int? = 0
     let suffix: String?
+    let track: Int?
+    let discNumber: Int?
     
     var coverArtUrl: URL? { 
         let artId = coverArt ?? albumId ?? id.components(separatedBy: ".").first ?? id

@@ -198,7 +198,8 @@ extension NavidromeClient {
                         var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                               artist: s.artist ?? "", duration: s.duration ?? 0,
                               coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix)
+                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix,
+                              track: s.track, discNumber: s.discNumber)
                         t.isStarred = s.starred != nil
                         t.playCount = s.playCount
                         t.created = s.created
