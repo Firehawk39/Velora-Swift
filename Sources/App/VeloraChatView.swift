@@ -107,7 +107,7 @@ struct VeloraChatView: View {
                             HStack(alignment: .bottom, spacing: 0) {
                                 if msg.isUser { Spacer(minLength: 60) }
                                 Text(msg.text.isEmpty && !msg.isUser ? "▍" : msg.text)
-                                    .font(.custom("Stardom", size: 16))
+                                    .font(.system(size: 16))
                                     .foregroundColor(fg)
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 12)
@@ -137,14 +137,14 @@ struct VeloraChatView: View {
             ZStack(alignment: .topLeading) {
                 if vm.inputText.isEmpty {
                     Text("Ask Velora...")
-                        .font(.custom("Stardom", size: 16))
+                        .font(.system(size: 16))
                         .foregroundColor(.gray)
                         .padding(.top, 14)
                         .padding(.leading, 18)
                         .allowsHitTesting(false)
                 }
                 TextEditor(text: $vm.inputText)
-                    .font(.custom("Stardom", size: 16))
+                    .font(.system(size: 16))
                     .foregroundColor(fg)
                     .frame(minHeight: 44, maxHeight: 120)
                     .padding(.horizontal, 8)
