@@ -650,7 +650,23 @@ private struct SongListView: View {
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-            return (a.created ?? "") > (b.created ?? "")
+            
+            // Recent sort mode
+            let aCreated = a.created ?? ""
+            let bCreated = b.created ?? ""
+            if aCreated != bCreated {
+                return aCreated > bCreated
+            }
+            
+            // Secondary sort: Album name
+            let aAlbum = a.album ?? ""
+            let bAlbum = b.album ?? ""
+            if aAlbum != bAlbum {
+                return aAlbum < bAlbum
+            }
+            
+            // Tertiary sort: Track title
+            return a.title < b.title
         }
         
         if viewMode == .grid {
@@ -804,7 +820,19 @@ private struct PlaylistDetailView: View {
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-            if sortMode == .recent { return (a.created ?? "") > (b.created ?? "") }
+            if sortMode == .recent {
+                let aCreated = a.created ?? ""
+                let bCreated = b.created ?? ""
+                if aCreated != bCreated {
+                    return aCreated > bCreated
+                }
+                let aAlbum = a.album ?? ""
+                let bAlbum = b.album ?? ""
+                if aAlbum != bAlbum {
+                    return aAlbum < bAlbum
+                }
+                return a.title < b.title
+            }
             return a.title < b.title
         }
 
