@@ -15,14 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-dev \
     python3.11-venv \
-    python3-pip \
+    curl \
+    ca-certificates \
     ffmpeg \
     libsndfile1 \
     build-essential \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
     && ln -sf /usr/bin/python3.11 /usr/bin/python \
-    && python3.11 -m ensurepip --upgrade \
-    && python3.11 -m pip install --upgrade pip \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
