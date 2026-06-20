@@ -154,13 +154,15 @@ private struct SectionHeader: View {
                 .font(.system(size: isCompact ? 16 : 18, weight: .bold))
                 .foregroundColor(isDark ? .white : Color(hex: "#374151"))
             Spacer()
-            if !isCompact {
-                Button(action: { onSeeAll?() }) {
-                    Text("See all")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(isDark ? .white.opacity(0.6) : .blue)
-                }
+            Button(action: { onSeeAll?() }) {
+                Text("See all")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(isDark ? .white.opacity(0.6) : .blue)
+                    .padding(.vertical, 8)
+                    .padding(.leading, 16)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(.horizontal, hPad)
         .padding(.bottom, isCompact ? 12 : 14)

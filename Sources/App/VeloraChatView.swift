@@ -92,7 +92,7 @@ struct VeloraChatView: View {
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
     @State private var scrollID: UUID? = nil
 
-    private var bg: Color { isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa") }
+    private var bg: Color { isDarkMode ? Color.black : Color(hex: "#f0f0f0") }
     private var fg: Color { isDarkMode ? .white : .black }
     private var bubble: Color { isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06) }
 
@@ -129,7 +129,7 @@ struct VeloraChatView: View {
 
             inputBar
         }
-        .background(bg.ignoresSafeArea())
+        .background(Color.clear)
     }
 
     private var inputBar: some View {

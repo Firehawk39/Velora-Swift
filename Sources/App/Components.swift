@@ -280,8 +280,8 @@ struct AppHeader: View {
         HStack(spacing: 0) {
             TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
-            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "velora", label: "Velora", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
+            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
         .padding(navigationPillPadding)
@@ -383,18 +383,34 @@ struct TabButton: View {
         }) {
             VStack(spacing: 4) {
                 if isBottomNav {
-                    Image(systemName: iconName)
-                        .font(.system(size: 22))
-                    Text(label)
-                        .font(.system(size: 10, weight: .medium))
-                        .lineLimit(1)
+                    if id == "velora" {
+                        Text("V")
+                            .font(.custom("Stardom", size: 26))
+                            .offset(y: 1)
+                    } else {
+                        Image(systemName: iconName)
+                            .font(.system(size: 22))
+                        Text(label)
+                            .font(.system(size: 10, weight: .medium))
+                            .lineLimit(1)
+                    }
                 } else {
-                    Text(label)
-                        .font(.system(size: fontSize, weight: isActive ? .bold : .medium))
-                        .padding(.horizontal, horizontalPadding)
-                        .padding(.vertical, verticalPadding)
-                        .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
-                        .clipShape(Capsule())
+                    if id == "velora" {
+                        Text("V")
+                            .font(.custom("Stardom", size: fontSize + 4))
+                            .padding(.horizontal, horizontalPadding)
+                            .padding(.vertical, verticalPadding)
+                            .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
+                            .clipShape(Capsule())
+                            .offset(y: 1) // optical alignment for Stardom
+                    } else {
+                        Text(label)
+                            .font(.system(size: fontSize, weight: isActive ? .bold : .medium))
+                            .padding(.horizontal, horizontalPadding)
+                            .padding(.vertical, verticalPadding)
+                            .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
+                            .clipShape(Capsule())
+                    }
                 }
             }
             .foregroundColor(isActive ? (isDarkMode ? .white : .black) : .gray)
