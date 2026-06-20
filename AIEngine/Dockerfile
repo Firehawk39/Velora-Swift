@@ -3,36 +3,33 @@
 # instead of downloading its own 2.5GB bundled CUDA runtime.
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
-# Install Python 3.11 alongside CUDA
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-dev \
-    python3-pip \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set environment variables
+# Set environment variables early so apt doesn't prompt during installs
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Set work directory
-WORKDIR /app
-
-# Install ONLY the audio system libraries not already in the NVIDIA base image
+# Install Python 3.11 and bootstrap pip for Python 3.11 specifically.
+# NOTE: python3-pip on Ubuntu 22.04 installs pip for Python 3.10 (OS default).
+# We use python3.11 -m ensurepip to guarantee pip targets Python 3.11.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
     ffmpeg \
     libsndfile1 \
     build-essential \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && python3.11 -m ensurepip --upgrade \
+    && python3.11 -m pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Step 1: Upgrade pip
-RUN pip install --no-cache-dir --upgrade pip
+# Set work directory
+WORKDIR /app
 
-# Step 2: Install all general packages from PyPI
-RUN pip install --no-cache-dir \
-    fastapi>=0.109.0 \
+# Step 1: Install all general packages into Python 3.11 explicitly
+RUN python3.11 -m pip install --no-cache-dir \
+    "fastapi>=0.109.0" \
     "uvicorn[standard]>=0.27.0" \
     "pydantic>=2.5.0" \
     "pydantic-settings>=2.1.0" \
@@ -43,9 +40,9 @@ RUN pip install --no-cache-dir \
     "librosa>=0.10.1" \
     "sqlite-vec>=0.1.1"
 
-# Step 3: Install PyTorch from the official CUDA 12.1 slim wheel index.
-# This installs the CUDA-aware wheel WITHOUT bundling a second copy of CUDA.
-RUN pip install --no-cache-dir \
+# Step 2: Install PyTorch CUDA 12.1 slim wheels into Python 3.11 explicitly.
+# --extra-index-url adds the PyTorch server alongside PyPI (not instead of it).
+RUN python3.11 -m pip install --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cu121 \
     "torch>=2.2.0" \
     "torchaudio>=2.2.0"
@@ -56,5 +53,5 @@ COPY . .
 # Expose the API port
 EXPOSE 8000
 
-# Run the FastAPI application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run using python3.11 explicitly so there is no ambiguity
+CMD ["python3.11", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
