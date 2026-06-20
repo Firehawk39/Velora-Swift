@@ -842,6 +842,9 @@ struct NowPlayingView: View {
             isFetchingArtistInfo = true
             playback.client.fetchArtistInfo(artistId: artistId) { bio, mbid in
                 DispatchQueue.main.async {
+                    // Check if we haven't skipped to another track in the meantime
+                    guard self.playback.currentTrack?.id == track.id else { return }
+                    
                     self.artistBiography = bio
                     self.isFetchingArtistInfo = false
                     
