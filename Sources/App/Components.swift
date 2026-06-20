@@ -385,7 +385,7 @@ struct TabButton: View {
                 if isBottomNav {
                     if id == "velora" {
                         Text("V")
-                            .font(.custom("Stardom", size: 26))
+                            .font(.custom("Stardom", size: 26).weight(.bold))
                             .offset(y: 1)
                     } else {
                         Image(systemName: iconName)
@@ -397,7 +397,7 @@ struct TabButton: View {
                 } else {
                     if id == "velora" {
                         Text("V")
-                            .font(.custom("Stardom", size: fontSize + 4))
+                            .font(.custom("Stardom", size: fontSize + 4).weight(.bold))
                             .padding(.horizontal, horizontalPadding)
                             .padding(.vertical, verticalPadding)
                             .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
