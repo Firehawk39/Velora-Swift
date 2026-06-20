@@ -134,15 +134,25 @@ struct VeloraChatView: View {
     }
 
     private var inputBar: some View {
-        HStack(spacing: 12) {
-            TextField("Ask Velora...", text: $vm.inputText, axis: .vertical)
-                .font(.custom("Stardom", size: 16))
-                .foregroundColor(fg)
-                .lineLimit(1...4)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(bubble)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        HStack(alignment: .bottom, spacing: 12) {
+            ZStack(alignment: .topLeading) {
+                if vm.inputText.isEmpty {
+                    Text("Ask Velora...")
+                        .font(.custom("Stardom", size: 16))
+                        .foregroundColor(.gray)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                }
+                TextEditor(text: $vm.inputText)
+                    .font(.custom("Stardom", size: 16))
+                    .foregroundColor(fg)
+                    .frame(minHeight: 44, maxHeight: 120)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .scrollContentBackground(.hidden)
+            }
+            .background(bubble)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             Button {
                 let ctx = playback.currentTrack.map { "Currently playing: \($0.title)" }
