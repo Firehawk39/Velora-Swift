@@ -149,7 +149,9 @@ struct VeloraChatView: View {
                     .frame(minHeight: 44, maxHeight: 120)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+                    .onAppear { UITextView.appearance().backgroundColor = .clear }
+                    .onDisappear { UITextView.appearance().backgroundColor = nil }
             }
             .background(bubble)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
