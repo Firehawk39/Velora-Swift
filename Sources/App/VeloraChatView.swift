@@ -1,9 +1,10 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 // MARK: - Data Models
 
-struct VeloraChatMessage: Identifiable, Equatable {
+struct VeloraChatMessage: Identifiable {
     let id = UUID()
     let isUser: Bool
     var text: String
@@ -28,18 +29,17 @@ final class VeloraChatViewModel: ObservableObject {
     }
 
     func send(context: String?) {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
 
-        messages.append(VeloraChatMessage(isUser: true, text: text))
+        messages.append(VeloraChatMessage(isUser: true, text: trimmed))
         inputText = ""
         isStreaming = true
-
-        let replyIndex = messages.count
         messages.append(VeloraChatMessage(isUser: false, text: ""))
+        let index = messages.count - 1
 
-        Task {
-            await stream(prompt: text, context: context, at: replyIndex)
+        Task { @MainActor in
+            await stream(prompt: trimmed, context: context, at: index)
         }
     }
 
@@ -61,7 +61,7 @@ final class VeloraChatViewModel: ObservableObject {
 
         do {
             let (bytes, response) = try await URLSession.shared.bytes(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 messages[index].text = "Server error. Is Velora running?"
                 isStreaming = false
                 return
@@ -90,6 +90,7 @@ struct VeloraChatView: View {
     @StateObject private var vm = VeloraChatViewModel()
     @EnvironmentObject var playback: PlaybackManager
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
+    @State private var scrollID: UUID? = nil
 
     private var bg: Color { isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa") }
     private var fg: Color { isDarkMode ? .white : .black }
@@ -102,8 +103,8 @@ struct VeloraChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(vm.messages) { msg in
-                            HStack {
+                        ForEach(vm.messages, id: \.id) { msg in
+                            HStack(alignment: .bottom, spacing: 0) {
                                 if msg.isUser { Spacer(minLength: 60) }
                                 Text(msg.text.isEmpty && !msg.isUser ? "▍" : msg.text)
                                     .font(.custom("Stardom", size: 16))
@@ -112,7 +113,6 @@ struct VeloraChatView: View {
                                     .padding(.vertical, 12)
                                     .background(bubble)
                                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                    .frame(maxWidth: .infinity, alignment: msg.isUser ? .trailing : .leading)
                                 if !msg.isUser { Spacer(minLength: 60) }
                             }
                             .id(msg.id)
@@ -121,11 +121,10 @@ struct VeloraChatView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 20)
                 }
-                .onChange(of: vm.messages.count) { _ in
-                    if let last = vm.messages.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
-                }
+                .onChange(of: vm.messages.count, perform: { _ in
+                    guard let last = vm.messages.last else { return }
+                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                })
             }
 
             inputBar
@@ -140,21 +139,22 @@ struct VeloraChatView: View {
                     Text("Ask Velora...")
                         .font(.custom("Stardom", size: 16))
                         .foregroundColor(.gray)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.top, 14)
+                        .padding(.leading, 18)
+                        .allowsHitTesting(false)
                 }
                 TextEditor(text: $vm.inputText)
                     .font(.custom("Stardom", size: 16))
                     .foregroundColor(fg)
                     .frame(minHeight: 44, maxHeight: 120)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(Color.clear)
-                    .onAppear { UITextView.appearance().backgroundColor = .clear }
-                    .onDisappear { UITextView.appearance().backgroundColor = nil }
             }
             .background(bubble)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .onAppear { UITextView.appearance().backgroundColor = .clear }
+            .onDisappear { UITextView.appearance().backgroundColor = nil }
 
             Button {
                 let ctx = playback.currentTrack.map { "Currently playing: \($0.title)" }
@@ -162,7 +162,10 @@ struct VeloraChatView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 34))
-                    .foregroundColor(vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : fg)
+                    .foregroundColor(
+                        vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? .gray : fg
+                    )
             }
             .disabled(vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
