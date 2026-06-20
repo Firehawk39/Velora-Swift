@@ -77,7 +77,9 @@ struct ArtistDetailView: View {
             headerOverlay
             
             // Back
-            backButton
+            if isCompact {
+                backButton
+            }
         }
         .onAppear {
             fetchArtistData()
@@ -97,7 +99,7 @@ struct ArtistDetailView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 100)
         .background(
-            (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+            (isDarkMode ? Color.black : Color(hex: "#fafafa"))
                 .opacity(Double(opacity))
         )
         .zIndex(100)
@@ -126,10 +128,23 @@ struct ArtistDetailView: View {
                 .padding(.horizontal, 24)
             } else {
                 VStack(alignment: .leading, spacing: 32) {
-                    HStack {
-                        Spacer()
-                        artistLogo(size: 220)
-                        Spacer()
+                    ZStack(alignment: .topLeading) {
+                        Button(action: onBack) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(isDarkMode ? .white : .black)
+                                .frame(width: 36, height: 36)
+                                .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                                .clipShape(Circle())
+                        }
+                        .padding(.leading, 0)
+                        .padding(.top, 20)
+                        
+                        HStack {
+                            Spacer()
+                            artistLogo(size: 220)
+                            Spacer()
+                        }
                     }
                     
                     HStack(alignment: .bottom) {
@@ -339,7 +354,7 @@ struct ArtistDetailView: View {
                 .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
                 .clipShape(Circle())
         }
-        .padding(.leading, isCompact ? 24 : 48)
+        .padding(.leading, 24)
         .padding(.top, 60)
         .zIndex(110)
     }
@@ -464,7 +479,7 @@ struct ArtistBackdropView: View {
                     gradient: Gradient(colors: [
                         .black.opacity(0.4),
                         .clear,
-                        isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa")
+                        isDarkMode ? Color.black : Color(hex: "#fafafa")
                     ]),
                     startPoint: .top,
                     endPoint: .bottom
