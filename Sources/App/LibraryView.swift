@@ -845,24 +845,53 @@ private struct PlaylistDetailView: View {
 
     var body: some View {
         let filtered = showOfflineOnly ? playback.filterOffline(tracks) : tracks
+        let albumMaxDates: [String: String] = {
+            var dict = [String: String]()
+            for track in filtered {
+                let album = track.album ?? ""
+                let created = track.created ?? ""
+                if let existing = dict[album] {
+                    if created > existing { dict[album] = created }
+                } else {
+                    dict[album] = created
+                }
+            }
+            return dict
+        }()
+        
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-            if sortMode == .recent {
-                if let aCreated = a.created, let bCreated = b.created, aCreated != bCreated {
-                    return aCreated > bCreated
-                }
-                if let aAlbum = a.album, let bAlbum = b.album, aAlbum != bAlbum {
-                    return aAlbum < bAlbum
-                }
-                if let aDisc = a.discNumber, let bDisc = b.discNumber, aDisc != bDisc {
-                    return aDisc < bDisc
-                }
-                if let aTrack = a.track, let bTrack = b.track, aTrack != bTrack {
-                    return aTrack < bTrack
-                }
-                return a.title < b.title
+            
+            // Recent sort mode: Group by Album's newest track, then order by track sequence
+            let aAlbum = a.album ?? ""
+            let bAlbum = b.album ?? ""
+            
+            let aMax = albumMaxDates[aAlbum] ?? ""
+            let bMax = albumMaxDates[bAlbum] ?? ""
+            
+            if aMax != bMax {
+                return aMax > bMax // descending order
             }
+            
+            // Secondary sort: Album name
+            if aAlbum != bAlbum {
+                return aAlbum < bAlbum
+            }
+            
+            // Tertiary sort: Disc and Track number
+            let aDisc = a.discNumber ?? 1
+            let bDisc = b.discNumber ?? 1
+            if aDisc != bDisc {
+                return aDisc < bDisc
+            }
+            let aTrack = a.track ?? 0
+            let bTrack = b.track ?? 0
+            if aTrack != bTrack {
+                return aTrack < bTrack
+            }
+            
+            // Final fallback: Track title
             return a.title < b.title
         }
 

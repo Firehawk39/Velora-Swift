@@ -111,7 +111,8 @@ extension NavidromeClient {
 
     func fetchAlbums() {
         guard NetworkMonitor.shared.isConnected else { return }
-        guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "alphabeticalByArtist", "size": "20"]) else { return }
+        // Fetch up to 100 albums, sorted by newest, so the Home screen "Recently added albums" section is correct
+        guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "newest", "size": "100"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
             do {
