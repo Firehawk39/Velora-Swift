@@ -14,7 +14,6 @@ class Settings(BaseSettings):
     # API Settings
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Velora AI Engine"
-    API_KEY: str = "velora_dev_secret_key"  # Override via .env in production
 
     class Config:
         env_file = ".env"

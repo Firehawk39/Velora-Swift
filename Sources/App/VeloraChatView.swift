@@ -54,8 +54,6 @@ final class VeloraChatViewModel: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora_dev_secret_key"
-        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
         
         request.timeoutInterval = 60
 
