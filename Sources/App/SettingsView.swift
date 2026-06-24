@@ -260,7 +260,7 @@ struct SettingsView: View {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora_dev_secret_key"
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
 
         Task {
@@ -741,7 +741,7 @@ struct AppSettingsView: View {
                             VStack(alignment: .leading, spacing: 16) {
                                 FloatingLabelField(
                                     label: "API Key",
-                                    placeholder: "velora-dev-key",
+                                    placeholder: "velora_dev_secret_key",
                                     text: Binding(
                                         get: { UserDefaults.standard.string(forKey: "velora_api_key") ?? "" },
                                         set: { UserDefaults.standard.set($0, forKey: "velora_api_key") }
@@ -895,7 +895,7 @@ struct AppSettingsView: View {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora_dev_secret_key"
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
 
         Task {
@@ -937,7 +937,7 @@ struct AppSettingsView: View {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora_dev_secret_key"
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
 
         Task {

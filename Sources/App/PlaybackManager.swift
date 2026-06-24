@@ -253,7 +253,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora_dev_secret_key"
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
 
         let contextStr = "\(track.title) by \(track.artist ?? "Unknown Artist")"
