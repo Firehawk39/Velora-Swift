@@ -89,13 +89,21 @@ class AudioProcessor:
             logger.error(f"Embedding generation failed: {e}")
             return [0.0] * 512
 
-def process_track(track_id: str, file_path: str):
+_instance = None
+
+def get_audio_processor() -> AudioProcessor:
+    global _instance
+    if _instance is None:
+        _instance = AudioProcessor()
+    return _instance
+
+def process_track(track_id: str, file_path: str, tags: str = ""):
     """
     Background worker function to process a track and save it to the database.
     """
     logger.info(f"Starting analysis for track: {track_id}")
     
-    processor = AudioProcessor()
+    processor = get_audio_processor()
     
     bpm, key = processor.extract_features(file_path)
     embedding = processor.generate_embedding(file_path)
@@ -111,14 +119,15 @@ def process_track(track_id: str, file_path: str):
         # 1. Update standard tracks table
         cursor.execute(
             """
-            INSERT INTO tracks (track_id, bpm, key, embedding)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO tracks (track_id, bpm, key, tags, embedding)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(track_id) DO UPDATE SET
                 bpm=excluded.bpm,
                 key=excluded.key,
+                tags=COALESCE(NULLIF(excluded.tags, ''), tracks.tags),
                 embedding=excluded.embedding
             """,
-            (track_id, bpm, key, embedding_bytes)
+            (track_id, bpm, key, tags, embedding_bytes)
         )
         
         # 2. Update vec_tracks virtual table for vector search

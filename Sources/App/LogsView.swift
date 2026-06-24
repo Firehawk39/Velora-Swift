@@ -3,7 +3,7 @@ import SwiftUI
 struct LogsView: View {
     @ObservedObject var logger = AppLogger.shared
     @Environment(\.presentationMode) var presentationMode
-    
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -15,7 +15,7 @@ struct LogsView: View {
                                     .font(.system(.caption2, design: .monospaced))
                                     .foregroundColor(.gray)
                                     .frame(width: 65, alignment: .leading)
-                                
+
                                 Text(entry.message)
                                     .font(.system(.caption, design: .monospaced))
                                     .foregroundColor(entry.level.color)

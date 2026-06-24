@@ -12,7 +12,7 @@ struct LibraryView: View {
     @State private var activeCategory: String? = nil
     @AppStorage("library_viewMode") private var _viewModeRaw: String = ViewMode.grid.rawValue
     @AppStorage("library_sortMode") private var _sortModeRaw: String = SortMode.alphabetical.rawValue
-    
+
     private var viewMode: ViewMode {
         get { ViewMode(rawValue: _viewModeRaw) ?? .grid }
         nonmutating set { _viewModeRaw = newValue.rawValue }
@@ -26,10 +26,10 @@ struct LibraryView: View {
     @State private var selectedPlaylist: Playlist? = nil
     @State private var playlistTracks: [Track] = []
     @State private var isLoadingPlaylist: Bool = false
-    
+
     enum ViewMode: String { case grid, list }
     enum SortMode: String { case alphabetical, recent, topPlayed }
-    
+
     var onArtistClick: ((String, String) -> Void)?
 
     var isCompact: Bool { hSizeClass == .compact }
@@ -88,7 +88,7 @@ struct LibraryView: View {
                     }
                 }
                 Spacer()
-                
+
                 // View Mode & Sort Mode Controls
                 HStack(spacing: isCompact ? 12 : 20) {
                     // View Mode Menu
@@ -112,7 +112,7 @@ struct LibraryView: View {
                         .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
                     .accessibilityLabel("View Options")
-                    
+
                     // Offline Only Toggle
                     let isForcedOffline = !network.isConnected
                     Button(action: { showOfflineOnly.toggle() }) {
@@ -130,7 +130,7 @@ struct LibraryView: View {
                     }
                     .accessibilityLabel("Offline Only Filter")
                     .disabled(isForcedOffline)
-                    
+
                     // Sort Mode Menu
                     Menu {
                         Button(action: { sortMode = .alphabetical }) {
@@ -155,8 +155,13 @@ struct LibraryView: View {
                         .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
                     .accessibilityLabel("Sort Options")
-                    
-                    // Shuffle & Download All for Songs
+                }
+            }
+            .padding(.horizontal, hPad)
+            .padding(.top, 8)
+            .padding(.bottom, category == "songs" ? 8 : 20)
+
+            // Shuffle & Download All for Songs
                     if category == "songs" {
                         HStack(spacing: 8) {
                             Button(action: {
@@ -170,14 +175,14 @@ struct LibraryView: View {
                                     .clipShape(Circle())
                             }
                             .accessibilityLabel("Shuffle Play All")
-                            
+
                              HStack(spacing: 6) {
                                  if sync.isSyncingMedia && !sync.mediaEta.isEmpty {
                                      Text(sync.mediaEta)
                                          .font(.system(size: 10, weight: .medium))
                                          .foregroundColor(.red)
                                  }
-                                 
+
                                  Button(action: {
                                       if sync.isSyncingMedia {
                                           sync.stopMediaSync()
@@ -203,10 +208,9 @@ struct LibraryView: View {
                         }
                     }
                 }
+                .padding(.horizontal, hPad)
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal, hPad)
-            .padding(.top, 8)
-            .padding(.bottom, 20)
 
             ScrollView(showsIndicators: false) {
                 Group {
@@ -268,7 +272,7 @@ private struct LibraryMenuView: View {
                     }
                     Divider().padding(.horizontal, hPad).opacity(0.1)
                 }
-                
+
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 12) {
                         Image(systemName: "chart.bar.fill").foregroundColor(.red).font(.system(size: isCompact ? 18 : 20))
@@ -281,7 +285,7 @@ private struct LibraryMenuView: View {
                         ("Albums", "\(client.albums.count)", "opticaldisc", Color.orange),
                         ("Artists", "\(client.artists.count)", "person.2", Color.teal)
                     ]
-                    
+
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: isCompact ? 140 : 200), spacing: 16)], spacing: 16) {
                         ForEach(stats, id: \.0) { stat in
                             VStack(alignment: .leading, spacing: 8) {
@@ -312,19 +316,19 @@ private struct PlaylistGridView: View {
     let isCompact: Bool
     let showOfflineOnly: Bool
     var onPlaylistClick: (Playlist) -> Void
-    
+
     @State private var showCreateAlert = false
     @State private var newPlaylistName = ""
 
     var body: some View {
         let base = client.playlists
         let filtered = showOfflineOnly ? base.filter { p in
-            // For playlists, we consider it offline if at least one song is downloaded 
+            // For playlists, we consider it offline if at least one song is downloaded
             // (or ideally if the user has flagged the whole playlist for offline, but we don't have that yet)
             // For now, let's just show all playlists, but we could improve this.
-            return true 
+            return true
         } : base
-        
+
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Playlists don't have play counts
@@ -340,19 +344,19 @@ private struct PlaylistGridView: View {
                                 .stroke(Color.red.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [5]))
                                 .aspectRatio(1, contentMode: .fit)
                                 .overlay(Image(systemName: "plus").foregroundColor(.red).font(.system(size: isCompact ? 24 : 32)))
-                            
+
                             Text("New Playlist")
                                 .font(.system(size: isCompact ? 14 : 16, weight: .bold))
                                 .foregroundColor(.red)
                             Spacer().frame(height: 14)
                         }
                     }
-                    
+
                     ForEach(sorted) { p in
                         VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                             Rectangle().fill(Color.gray.opacity(0.1)).aspectRatio(1, contentMode: .fit).cornerRadius(isCompact ? 8 : 12)
                                 .overlay(Image(systemName: "music.note.list").foregroundColor(.gray).font(.system(size: isCompact ? 20 : 28)))
-                            
+
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(p.name)
                                     .font(.system(size: isCompact ? 14 : 16, weight: .bold))
@@ -465,7 +469,7 @@ private struct ArtistGridView: View {
                 return base
             }
         }()
-        
+
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Artists don't have direct play counts in this model yet
@@ -477,7 +481,7 @@ private struct ArtistGridView: View {
                     VStack(spacing: isCompact ? 6 : 8) {
                         ArtistPortraitView(artistId: a.id, size: isCompact ? 100 : 160, client: client, isDarkMode: isDarkMode)
                             .id("artist-grid-\(a.id)")
-                        
+
                         Text(a.name)
                             .font(.system(size: isCompact ? 14 : 16, weight: .bold))
                             .lineLimit(1)
@@ -528,7 +532,7 @@ private struct AlbumGridView: View {
                 return base
             }
         }()
-        
+
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.name < b.name }
             if sortMode == .topPlayed { return false } // Albums don't have direct play counts in this model yet
@@ -551,7 +555,7 @@ private struct AlbumGridView: View {
                             .clipped()
                             .cornerRadius(isCompact ? 8 : 12)
                             .id("album-grid-\(a.id)")
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text(a.name)
                                 .font(.system(size: isCompact ? 14 : 16, weight: .bold))
@@ -646,7 +650,7 @@ private struct SongListView: View {
     var body: some View {
         let base = client.allSongs
         let filtered = showOfflineOnly ? playback.filterOffline(base) : base
-        
+
         let albumMaxDates: [String: String] = {
             var dict = [String: String]()
             for track in filtered {
@@ -660,27 +664,27 @@ private struct SongListView: View {
             }
             return dict
         }()
-        
+
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-            
+
             // Recent sort mode: Group by Album's newest track, then order by track sequence
             let aAlbum = a.album ?? ""
             let bAlbum = b.album ?? ""
-            
+
             let aMax = albumMaxDates[aAlbum] ?? ""
             let bMax = albumMaxDates[bAlbum] ?? ""
-            
+
             if aMax != bMax {
                 return aMax > bMax // descending order
             }
-            
+
             // Secondary sort: Album name
             if aAlbum != bAlbum {
                 return aAlbum < bAlbum
             }
-            
+
             // Tertiary sort: Disc and Track number
             let aDisc = a.discNumber ?? 1
             let bDisc = b.discNumber ?? 1
@@ -692,25 +696,25 @@ private struct SongListView: View {
             if aTrack != bTrack {
                 return aTrack < bTrack
             }
-            
+
             // Final fallback: Track title
             return a.title < b.title
         }
-        
+
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
                 ForEach(sorted) { t in
                     VStack(alignment: .leading, spacing: isCompact ? 6 : 8) {
                         SongArtworkView(track: t, isDarkMode: isDarkMode)
                             .id("song-grid-\(t.id)")
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
                                 Text(t.title)
                                     .font(.system(size: isCompact ? 14 : 16, weight: .bold))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.75)
-                                
+
                                 if let progress = playback.downloadProgress[t.id] {
                                     Spacer()
                                     HStack(spacing: 4) {
@@ -794,7 +798,7 @@ private struct SongListView: View {
                                 }
                             }
                         }
-                        
+
                         if playback.isDownloaded(t.id) {
                             Button(role: .destructive, action: {
                                 playback.deleteDownload(trackId: t.id)
@@ -828,15 +832,15 @@ private struct PlaylistDetailView: View {
     let isCompact: Bool
     let hPad: CGFloat
     var onBack: () -> Void
-    
+
     @AppStorage("playlist_viewMode") private var _viewModeRaw: String = LibraryView.ViewMode.list.rawValue
-    
+
     private var viewMode: LibraryView.ViewMode {
         get { LibraryView.ViewMode(rawValue: _viewModeRaw) ?? .list }
         nonmutating set { _viewModeRaw = newValue.rawValue }
     }
     @AppStorage("playlist_sortMode") private var _sortModeRaw: String = LibraryView.SortMode.alphabetical.rawValue
-    
+
     private var sortMode: LibraryView.SortMode {
         get { LibraryView.SortMode(rawValue: _sortModeRaw) ?? .alphabetical }
         nonmutating set { _sortModeRaw = newValue.rawValue }
@@ -858,27 +862,27 @@ private struct PlaylistDetailView: View {
             }
             return dict
         }()
-        
+
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-            
+
             // Recent sort mode: Group by Album's newest track, then order by track sequence
             let aAlbum = a.album ?? ""
             let bAlbum = b.album ?? ""
-            
+
             let aMax = albumMaxDates[aAlbum] ?? ""
             let bMax = albumMaxDates[bAlbum] ?? ""
-            
+
             if aMax != bMax {
                 return aMax > bMax // descending order
             }
-            
+
             // Secondary sort: Album name
             if aAlbum != bAlbum {
                 return aAlbum < bAlbum
             }
-            
+
             // Tertiary sort: Disc and Track number
             let aDisc = a.discNumber ?? 1
             let bDisc = b.discNumber ?? 1
@@ -890,14 +894,14 @@ private struct PlaylistDetailView: View {
             if aTrack != bTrack {
                 return aTrack < bTrack
             }
-            
+
             // Final fallback: Track title
             return a.title < b.title
         }
 
         VStack(alignment: .leading, spacing: 0) {
             Spacer().frame(height: isCompact ? 80 : 100)
-            
+
             // Header with Filters & Toggles
             HStack(alignment: .center, spacing: 12) {
                 Button(action: onBack) {
@@ -909,9 +913,9 @@ private struct PlaylistDetailView: View {
                     }
                     .foregroundColor(.red)
                 }
-                
+
                 Spacer()
-                
+
                 // View Mode Menu (Matching Songs style)
                 Menu {
                     Button(action: { viewMode = .grid }) {
@@ -932,7 +936,7 @@ private struct PlaylistDetailView: View {
                     .padding(.vertical, 8)
                     .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                 }
-                
+
                 // Offline Only Toggle (Matching Songs style)
                 Button(action: { showOfflineOnly.toggle() }) {
                     HStack(spacing: 6) {
@@ -947,7 +951,7 @@ private struct PlaylistDetailView: View {
                     .padding(.vertical, 8)
                     .background(Capsule().fill(showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
                 }
-                
+
                 // Sort Mode Menu (Matching Songs style)
                 Menu {
                     Button(action: { sortMode = .alphabetical }) {
@@ -1042,7 +1046,7 @@ private struct PlaylistDetailView: View {
         HStack(spacing: 16) {
             SongArtworkView(track: track, isDarkMode: isDarkMode, size: isCompact ? 48 : 56)
                 .id("playlist-row-\(track.id)")
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(track.title).font(.system(size: isCompact ? 16 : 18, weight: .bold)).lineLimit(1)
                 Text(track.artist ?? "").font(.system(size: isCompact ? 12 : 14)).foregroundColor(.gray).lineLimit(1)
@@ -1075,7 +1079,7 @@ private struct PlaylistDetailView: View {
             ZStack(alignment: .topTrailing) {
                 SongArtworkView(track: track, isDarkMode: isDarkMode)
                     .id("playlist-grid-\(track.id)")
-                
+
                 if let progress = playback.downloadProgress[track.id] {
                     let isPaused = playback.pausedDownloadIds.contains(track.id)
                     ZStack {
@@ -1097,7 +1101,7 @@ private struct PlaylistDetailView: View {
                         .padding(4)
                 }
             }
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(track.title)
                     .font(.system(size: isCompact ? 14 : 16, weight: .bold))
@@ -1127,7 +1131,7 @@ private struct PlaylistDetailView: View {
         }) {
             Label("Remove from Playlist", systemImage: "minus.circle")
         }
-        
+
         if playback.isDownloaded(track.id) {
             Button(role: .destructive, action: {
                 playback.deleteDownload(trackId: track.id)
@@ -1140,7 +1144,7 @@ private struct PlaylistDetailView: View {
             }) {
                 let isDownloading = playback.downloadProgress[track.id] != nil
                 let isPaused = playback.pausedDownloadIds.contains(track.id)
-                
+
                 if isPaused {
                     Label("Resume Download", systemImage: "play.circle")
                 } else if isDownloading {

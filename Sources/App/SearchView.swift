@@ -5,7 +5,7 @@ struct SearchView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
-    
+
     @State private var query: String = ""
     @State private var tracks: [Track] = []
     @State private var albums: [Album] = []
@@ -18,17 +18,17 @@ struct SearchView: View {
     /// Monotonically-increasing counter. Each new search increments it.
     /// Completion callbacks compare against this to discard stale responses.
     @State private var searchGeneration: Int = 0
-    
+
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
     var hPad: CGFloat { isCompact ? 16 : 40 }
     var onArtistClick: ((String, String) -> Void)?
-    
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer().frame(height: isCompact ? 80 : 100)
             SearchSearchBar(query: $query, isDarkMode: isDarkMode, hPad: hPad, isCompact: isCompact, onSearch: performSearch)
-            
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 36) {
                     if isLoading {
@@ -51,7 +51,7 @@ struct SearchView: View {
         }
         .background(Color.clear)
     }
-    
+
     private func performSearch(query: String) {
         // ── Step 1: Cancel the previous debounce sleep (if still pending) ──────
         searchTask?.cancel()
@@ -91,14 +91,14 @@ struct SearchView: View {
             } else {
                 // Offline Local Search
                 let lowerQuery = trimmed.lowercased()
-                
+
                 // Tracks
-                let foundTracks = self.client.allSongs.filter { 
-                    $0.title.lowercased().contains(lowerQuery) || 
+                let foundTracks = self.client.allSongs.filter {
+                    $0.title.lowercased().contains(lowerQuery) ||
                     ($0.artist?.lowercased().contains(lowerQuery) ?? false) ||
                     ($0.album?.lowercased().contains(lowerQuery) ?? false)
                 }.filter { self.playback.isDownloaded($0.id) }
-                
+
                 // Albums
                 let foundAlbums = self.client.albums.filter {
                     $0.name.lowercased().contains(lowerQuery) ||
@@ -106,14 +106,14 @@ struct SearchView: View {
                 }.filter { album in
                     self.client.allSongs.contains { $0.albumId == album.id && self.playback.isDownloaded($0.id) }
                 }
-                
+
                 // Artists
                 let foundArtists = self.client.artists.filter {
                     $0.name.lowercased().contains(lowerQuery)
                 }.filter { artist in
                     self.client.allSongs.contains { $0.artistId == artist.id && self.playback.isDownloaded($0.id) }
                 }
-                
+
                 DispatchQueue.main.async {
                     guard self.searchGeneration == myGeneration else { return }
                     self.tracks = Array(foundTracks.prefix(20))
@@ -141,13 +141,13 @@ private struct SearchSearchBar: View {
                 .foregroundColor(isDarkMode ? .white.opacity(0.4) : .black.opacity(0.4))
                 .font(.system(size: isCompact ? 16 : 20))
                 .padding(.leading, 16)
-            
+
             TextField("Artists, songs, or podcasts", text: $query)
                 .font(.system(size: isCompact ? 16 : 18))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .submitLabel(.search)
                 .onChange(of: query) { newValue in onSearch(newValue) }
-            
+
             if !query.isEmpty {
                 Button(action: { query = "" }) {
                     Image(systemName: "xmark.circle.fill")
@@ -203,7 +203,7 @@ private struct SearchResultsView: View {
                     }
                 }
             }
-            
+
             if !albums.isEmpty {
                 VStack(alignment: .leading, spacing: 16) {
                     SearchSectionHeader(title: "Albums", isDark: isDarkMode).padding(.horizontal, hPad)
@@ -217,7 +217,7 @@ private struct SearchResultsView: View {
                     }
                 }
             }
-            
+
             if !artists.isEmpty {
                 VStack(alignment: .leading, spacing: 16) {
                     SearchSectionHeader(title: "Artists", isDark: isDarkMode).padding(.horizontal, hPad)
@@ -258,7 +258,7 @@ private struct SearchSongRow: View {
                 SelfHealingAsyncImage(url: track.coverArtUrl) { img in img.resizable().scaledToFill() }
                 placeholder: { Rectangle().fill(isDarkMode ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb")) }
                 .frame(width: 54, height: 54).cornerRadius(8).clipped()
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title).font(.system(size: 16, weight: .bold))
                         .foregroundColor(isDarkMode ? .white : .black).lineLimit(1)

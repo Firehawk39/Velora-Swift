@@ -130,13 +130,17 @@ struct HomeView: View {
                 }
             }
             .padding(.top, 4)
+        }
+        .refreshable {
+            client.fetchAlbums()
+            client.fetchArtists()
+        }
         .onAppear {
-            if client.recentTracks.isEmpty {
-                client.fetchRecentlyPlayed()
+            if !client.isConfigured {
+                showingSettings = true
             }
         }
     }
-}
 }
 
 private struct SectionHeader: View {

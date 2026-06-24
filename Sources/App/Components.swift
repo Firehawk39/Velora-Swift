@@ -9,7 +9,7 @@ public enum ScreenTier {
         let h = UIScreen.main.bounds.height
         let minDim = min(w, h)
         let maxDim = max(w, h)
-        
+
         if minDim <= 330 { return .tiny } // iPhone SE 1st Gen
         if minDim <= 395 { return .compact } // Standard iPhone / mini
         if minDim <= 440 { return .regular } // Plus/Max iPhones
@@ -23,23 +23,23 @@ public enum ScreenTier {
     @MainActor public static var isCarDisplay: Bool {
         if UIDevice.current.userInterfaceIdiom == .carPlay { return true }
         if UIScreen.screens.count > 1 { return true }
-        
+
         let w = UIScreen.main.bounds.width
         let h = UIScreen.main.bounds.height
         let minDim = min(w, h)
         let maxDim = max(w, h)
-        
+
         let nativeW = UIScreen.main.nativeBounds.width
         let nativeH = UIScreen.main.nativeBounds.height
         let minNative = min(nativeW, nativeH)
         let maxNative = max(nativeW, nativeH)
-        
+
         // Direct check for 720p physical resolution (1280x720 or 720x1280)
         if minNative == 720 && maxNative == 1280 { return true }
-        
+
         // Direct check for 720p logical bounds
         if minDim == 720 && maxDim == 1280 { return true }
-        
+
         // Common car screen sizes in physical pixels
         if (minNative == 480 && maxNative == 800) ||   // 800x480
            (minNative == 480 && maxNative == 1280) ||  // 1280x480
@@ -47,7 +47,7 @@ public enum ScreenTier {
            (minNative == 800 && maxNative == 1280) {   // 1280x800
             return true
         }
-        
+
         // Generic check: widescreen aspect ratio (>= 1.55 and <= 2.7) on non-phone devices (or mirrored/projected screens)
         // which distinguishes it from standard 4:3 or 16:10 iPads (iPad Pro 11 is 1.43, iPad 12.9 is 1.33)
         let aspect = Double(maxNative) / Double(minNative)
@@ -57,10 +57,10 @@ public enum ScreenTier {
                 return true
             }
         }
-        
+
         // Also keep standard iPhone landscape when it is large enough
         if UIDevice.current.userInterfaceIdiom == .phone && w > h && minDim > 375 { return true }
-        
+
         return false
     }
 }
@@ -70,16 +70,16 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
     public let url: URL?
     @ViewBuilder public let content: (Image) -> Content
     @ViewBuilder public let placeholder: () -> Placeholder
-    
+
     @State private var retryCount = 0
     @State private var reloadTrigger = UUID()
-    
+
     public init(url: URL?, @ViewBuilder content: @escaping (Image) -> Content, @ViewBuilder placeholder: @escaping () -> Placeholder) {
         self.url = url
         self.content = content
         self.placeholder = placeholder
     }
-    
+
     public var body: some View {
         AsyncImage(url: url) { phase in
             if let image = phase.image {
@@ -96,12 +96,12 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
         }
         .id(reloadTrigger)
     }
-    
+
     private func scheduleRetry() {
         guard retryCount < 5 else { return } // Max retries
         retryCount += 1
         let delay = min(pow(2.0, Double(retryCount)), 30.0) // 2s, 4s, 8s, 16s, 30s
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             reloadTrigger = UUID()
         }
@@ -134,27 +134,27 @@ struct AppHeader: View {
         if isLandscape { return 84 }
         return 72
     }
-    
+
     private var themeToggleHeight: CGFloat {
         if isLandscape { return 40 }
         return 36
     }
-    
+
     private var themeToggleCircleSize: CGFloat {
         if isLandscape { return 32 }
         return 28
     }
-    
+
     private var themeToggleOffset: CGFloat {
         if isLandscape { return 22 }
         return 18
     }
-    
+
     private var themeToggleIconSize: CGFloat {
         if isLandscape { return 13 }
         return 11
     }
-    
+
     private var themeToggleHStackWidth: CGFloat {
         if isLandscape { return 56 }
         return 48
@@ -194,7 +194,7 @@ struct AppHeader: View {
         }
         .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
     }
-    
+
     private var mainHeaderContent: some View {
         HStack(alignment: .center, spacing: 0) {
             logoButton
@@ -203,13 +203,13 @@ struct AppHeader: View {
         }
         .padding(.horizontal, mainHeaderHorizontalPadding)
     }
-    
+
     private var logoButton: some View {
-        Button(action: { 
+        Button(action: {
             onAction()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { 
-                activeTab = "home" 
-            } 
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                activeTab = "home"
+            }
         }) {
             Text("Velora.")
                 .font(.custom("Stardom", size: logoFontSize).weight(.bold))
@@ -219,7 +219,7 @@ struct AppHeader: View {
         .accessibilityLabel("Velora Home")
         .hoverEffect()
     }
-    
+
     private var headerActions: some View {
         HStack(spacing: ScreenTier.isSmall ? 12.0 : 20.0) {
             if (isLandscape || ScreenTier.isHuge) && !isPlayingTab {
@@ -228,7 +228,7 @@ struct AppHeader: View {
             profileButton
         }
     }
-    
+
     private var themeToggle: some View {
         Button(action: {
             withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
@@ -239,12 +239,12 @@ struct AppHeader: View {
                 Capsule()
                     .fill(isDarkMode ? Color.white.opacity(0.2) : Color(hex: "#d1d5db"))
                     .frame(width: themeToggleWidth, height: themeToggleHeight)
-                
+
                 Circle()
                     .fill(Color.white)
                     .frame(width: themeToggleCircleSize, height: themeToggleCircleSize)
                     .offset(x: isDarkMode ? themeToggleOffset : -themeToggleOffset)
-                
+
                 HStack {
                     Image(systemName: "sun.max.fill")
                         .font(.system(size: themeToggleIconSize, weight: .bold))
@@ -261,7 +261,7 @@ struct AppHeader: View {
         .accessibilityLabel("Toggle Dark Mode")
         .hoverEffect()
     }
-    
+
     private var profileButton: some View {
         Button(action: {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
@@ -275,7 +275,7 @@ struct AppHeader: View {
         .accessibilityLabel("Profile and Settings")
         .hoverEffect()
     }
-    
+
     private var navigationPill: some View {
         HStack(spacing: 0) {
             TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
@@ -294,7 +294,6 @@ struct AppHeader: View {
     }
 }
 
-
 struct TabButton: View {
     let id: String
     let label: String
@@ -304,7 +303,7 @@ struct TabButton: View {
     let isPlayingTab: Bool
     let onAction: () -> Void
     var isBottomNav: Bool = false
-    
+
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
 
@@ -312,7 +311,7 @@ struct TabButton: View {
     var isLandscape: Bool {
         UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
-    
+
     private var iconName: String {
         if let icon = icon { return icon }
         switch id {
@@ -341,7 +340,7 @@ struct TabButton: View {
             }
         }
     }
-    
+
     private var horizontalPadding: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
@@ -359,7 +358,7 @@ struct TabButton: View {
             }
         }
     }
-    
+
     private var verticalPadding: CGFloat {
         if isLandscape {
             if ScreenTier.isSmall {
@@ -375,11 +374,11 @@ struct TabButton: View {
     }
 
     var body: some View {
-        Button(action: { 
+        Button(action: {
             onAction()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { 
-                activeTab = id 
-            } 
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                activeTab = id
+            }
         }) {
             VStack(spacing: 4) {
                 if isBottomNav {
@@ -441,7 +440,7 @@ struct TrackCard: View {
                 .cornerRadius(12)
                 .id(track.id)
                 .clipped()
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
                         .font(.system(size: 14, weight: .bold))
@@ -476,7 +475,7 @@ struct ArtistCircle: View {
             .id(artist.id)
             .clipShape(Circle())
             .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-            
+
             Text(artist.name)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(isDark ? .white : .black)
@@ -505,7 +504,7 @@ struct AlbumCard: View {
             .id(album.id)
             .clipped()
             .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(album.name)
                     .font(.system(size: 15, weight: .bold))
@@ -544,7 +543,7 @@ struct SkeletonRow: View {
                                 .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                                 .frame(width: cardWidth, height: cardHeight)
                         }
-                        
+
                         VStack(alignment: .leading, spacing: 6) {
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
@@ -624,7 +623,7 @@ struct QueuePanel: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            
+
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 12) {
                     ForEach(playback.queue) { track in
@@ -645,7 +644,7 @@ struct QueuePanel: View {
         .background(backgroundView)
         .overlay(sideBorder, alignment: .leading)
     }
-    
+
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -669,13 +668,13 @@ struct QueuePanel: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 32)
     }
-    
+
     private var backgroundView: some View {
         ZStack {
             // Performance-optimized solid background with subtle gradient
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
-            
+
             LinearGradient(
                 gradient: Gradient(colors: [
                     isDarkMode ? Color.white.opacity(0.03) : Color.black.opacity(0.02),
@@ -685,7 +684,7 @@ struct QueuePanel: View {
                 endPoint: .bottom
             )
             .ignoresSafeArea()
-            
+
             // Glass material (Thin for performance)
             if isDarkMode {
                 Color.black.opacity(0.4)
@@ -694,7 +693,7 @@ struct QueuePanel: View {
             }
         }
     }
-    
+
     private var sideBorder: some View {
         Rectangle()
             .fill(Color.white.opacity(0.05))
@@ -708,7 +707,7 @@ struct QueueRow: View {
     let isCurrent: Bool
     let isDarkMode: Bool
     let onSelect: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 16) {
             ZStack {
@@ -719,7 +718,7 @@ struct QueueRow: View {
                 }
                 .frame(width: 56, height: 56)
                 .cornerRadius(8)
-                
+
                 if isCurrent {
                     Color.black.opacity(0.4)
                         .cornerRadius(8)
@@ -740,7 +739,7 @@ struct QueueRow: View {
                     .lineLimit(1)
             }
             Spacer()
-            
+
             Text(track.durationFormatted)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(.gray)
@@ -763,13 +762,13 @@ struct CircularProgressView: View {
     var size: CGFloat = 24
     var strokeWidth: CGFloat = 3
     var accentColor: Color = .red
-    
+
     var body: some View {
         ZStack {
             // Background circle (Track)
             Circle()
                 .stroke(accentColor.opacity(0.15), lineWidth: strokeWidth)
-            
+
             // Foreground circle (Progress)
             Circle()
                 .trim(from: 0, to: max(0.01, progress))
@@ -785,14 +784,14 @@ struct LoadingCircle: View {
     var size: CGFloat = 24
     var strokeWidth: CGFloat = 3
     var accentColor: Color = .red
-    
+
     @State private var isAnimating = false
-    
+
     var body: some View {
         ZStack {
             Circle()
                 .stroke(accentColor.opacity(0.15), lineWidth: strokeWidth)
-            
+
             Circle()
                 .trim(from: 0, to: 0.3)
                 .stroke(accentColor, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))

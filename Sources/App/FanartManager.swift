@@ -4,37 +4,37 @@ import Foundation
 @MainActor
 final class FanartManager: ObservableObject {
     static let shared = FanartManager()
-    
+
     @Published var currentBackdrop: UIImage? = nil
     @Published var cachedArtistImages: [String: UIImage] = [:]
-    
+
     private let fileManager = FileManager.default
     private let backdropDir: URL
     private let portraitDir: URL
-    
+
     // Fanart.tv API Key - Provided by user
-    private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80" 
-    
+    private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80"
+
     init() {
         self.backdropDir = VeloraStorage.backdrops
         self.portraitDir = VeloraStorage.artistPortraits
     }
-    
+
     // MARK: - Backdrops
-    
+
     private var activeBackdropFetches = Set<String>()
     private var currentArtistName: String?
-    
+
     /// Synchronously checks if a backdrop exists in cache and returns it
     func getCachedBackdrop(for artist: String) -> UIImage? {
         let sanitized = sanitizeFileName(artist)
         if let memoryCached = cachedArtistImages[sanitized] {
             return memoryCached
         }
-        
+
         let fileName = sanitized + ".jpg"
         let fileUrl = self.backdropDir.appendingPathComponent(fileName)
-        
+
         if FileManager.default.fileExists(atPath: fileUrl.path),
            let data = try? Data(contentsOf: fileUrl),
            let image = UIImage(data: data) {
@@ -51,18 +51,18 @@ final class FanartManager: ObservableObject {
         let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
-    
+
     func hasPortrait(for artist: String) -> Bool {
         let sanitized = sanitizeFileName(artist)
         let fileUrl = self.portraitDir.appendingPathComponent(sanitized + ".jpg")
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
-    
+
     func fetchBackdrop(for artists: [String], mbid: String? = nil) {
         guard !artists.isEmpty else { return }
         let primaryArtist = artists[0]
         let isNewArtist = self.currentArtistName != primaryArtist
-        
+
         // 1. Check Cache Synchronously BEFORE nilling anything
         for artist in artists {
             if let cached = getCachedBackdrop(for: artist) {
@@ -76,14 +76,14 @@ final class FanartManager: ObservableObject {
                 }
                 return
             }
-            
+
             // Check for negative cache marker (0 byte file)
             let sanitized = sanitizeFileName(artist)
             let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
             if FileManager.default.fileExists(atPath: fileUrl.path),
                let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
                let size = attr[.size] as? Int64, size == 0 {
-                
+
                 if NetworkMonitor.shared.isConnected {
                     // SELF-HEAL: Delete the marker and try fetching again since we are online.
                     try? FileManager.default.removeItem(at: fileUrl)
@@ -92,30 +92,30 @@ final class FanartManager: ObservableObject {
                 }
             }
         }
-        
+
         // 2. Clear current UI if new artist
         if isNewArtist {
             self.currentArtistName = primaryArtist
             withAnimation(.easeInOut(duration: 0.4)) { self.currentBackdrop = nil }
         }
-        
+
         fetchBackdropRecursive(artists: artists, index: 0, providedMbid: mbid)
     }
-    
+
     private func fetchBackdropRecursive(artists: [String], index: Int, providedMbid: String?) {
         guard index < artists.count else { return }
         let artist = artists[index]
         let primaryArtist = artists[0]
         let sanitized = sanitizeFileName(artist)
         let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
-        
+
         let alreadyFetching = activeBackdropFetches.contains(sanitized)
         if alreadyFetching { return }
-        
+
         guard NetworkMonitor.shared.isConnected else { return }
-        
+
         activeBackdropFetches.insert(sanitized)
-        
+
         let queryFanart: @MainActor @Sendable (String) -> Void = { resolvedMBID in
             AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
@@ -137,7 +137,7 @@ final class FanartManager: ObservableObject {
                 }
             }
         }
-        
+
         // 3. Resolve MBID and Fetch
         if index == 0, let validMBID = providedMbid, !validMBID.isEmpty {
             queryFanart(validMBID)
@@ -153,15 +153,15 @@ final class FanartManager: ObservableObject {
             }
         }
     }
-    
+
     func downloadBackdropSilently(for artists: [String], mbid: String? = nil) async {
         guard !artists.isEmpty else { return }
         let primaryArtist = artists[0]
-        
+
         for (index, artist) in artists.enumerated() {
             let sanitized = sanitizeFileName(artist)
             let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
-            
+
             if fileManager.fileExists(atPath: fileUrl.path) {
                 if let attr = try? fileManager.attributesOfItem(atPath: fileUrl.path), let size = attr[.size] as? Int64, size > 0 {
                     return // Found a valid image!
@@ -169,16 +169,16 @@ final class FanartManager: ObservableObject {
                 if index == artists.count - 1 { return } // Last fallback artist has a marker, we're done
                 continue // Current artist has marker, try next
             }
-            
+
             let alreadyFetching = activeBackdropFetches.contains(sanitized)
             if !alreadyFetching { activeBackdropFetches.insert(sanitized) }
             if alreadyFetching { return }
-            
+
             guard NetworkMonitor.shared.isConnected else {
                 self.activeBackdropFetches.remove(sanitized)
                 return
             }
-            
+
             let success: Bool = await withCheckedContinuation { continuation in
                 let query: @MainActor @Sendable (String) -> Void = { resolvedMBID in
                     let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
@@ -197,7 +197,7 @@ final class FanartManager: ObservableObject {
                         }
                     }
                 }
-                
+
                 if index == 0, let validMBID = mbid, !validMBID.isEmpty {
                     Task { @MainActor in query(validMBID) }
                 } else {
@@ -212,30 +212,30 @@ final class FanartManager: ObservableObject {
                     }
                 }
             }
-            
+
             if success { return } // We got one, stop cascading
         }
     }
-    
+
     // MARK: - Artist Portraits
-    
+
     func fetchArtistPortrait(for artist: String, mbid: String? = nil, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
         let sanitized = sanitizeFileName(artist)
         let fileName = sanitized + ".jpg"
         let fileUrl = portraitDir.appendingPathComponent(fileName)
-        
+
         if fileManager.fileExists(atPath: fileUrl.path),
            let data = try? Data(contentsOf: fileUrl),
            let image = UIImage(data: data) {
             completion(image)
             return
         }
-        
+
         guard NetworkMonitor.shared.isConnected else {
             completion(nil)
             return
         }
-        
+
         let apiKey = self.fanartApiKey
         let queryFanartPortrait: @Sendable @MainActor (String) -> Void = { [weak self] resolvedMBID in
             guard let self = self else { completion(nil); return }
@@ -248,7 +248,7 @@ final class FanartManager: ObservableObject {
                 }
             }
         }
-        
+
         guard let validMBID = mbid, !validMBID.isEmpty else {
             self.getMBID(for: artist) { [weak self] resolved in
                 guard self != nil else { completion(nil); return }
@@ -260,7 +260,7 @@ final class FanartManager: ObservableObject {
             }
             return
         }
-        
+
         let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
         self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url, isEmpty in
             guard let self = self else { completion(nil); return }
@@ -277,17 +277,17 @@ final class FanartManager: ObservableObject {
             }
         }
     }
-    
+
     // MARK: - API Helpers
-    
+
     private enum FanartType { case background, portrait }
-    
+
     nonisolated private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?, Bool) -> Void) {
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil, false) }
             return
         }
-        
+
         let task = URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
                 let desc = error.localizedDescription
@@ -310,7 +310,7 @@ final class FanartManager: ObservableObject {
                     return
                 }
             }
-            
+
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if type == .background {
@@ -326,7 +326,7 @@ final class FanartManager: ObservableObject {
                             return
                         }
                     } else {
-                        if let thumbs = json["artistthumb"] as? [[String: Any]], 
+                        if let thumbs = json["artistthumb"] as? [[String: Any]],
                            let first = thumbs.first?["url"] as? String {
                             DispatchQueue.main.async { completion(first, false) }
                             return
@@ -337,15 +337,15 @@ final class FanartManager: ObservableObject {
                         }
                     }
                 }
-            } catch { print("Fanart JSON error: \(error)") }
+            } catch { AppLogger.shared.log("Fanart JSON error: \(error, level: .error)") }
             DispatchQueue.main.async { completion(nil, false) }
         }
         task.priority = priority
         task.resume()
     }
-    
+
     // MARK: - Helpers
-    
+
     nonisolated private func stableHash(_ s: String) -> Int {
         var h: UInt64 = 14695981039346656037
         for byte in s.utf8 {
@@ -354,21 +354,21 @@ final class FanartManager: ObservableObject {
         }
         return Int(truncatingIfNeeded: h)
     }
-    
+
     nonisolated private func downloadAndCache(from urlString: String, to localUrl: URL, primaryArtistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil) }
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.networkServiceType = priority == URLSessionTask.highPriority ? .responsiveData : .background
-        
+
         let task = URLSession.shared.dataTask(with: request) { data, _, _ in
             if let data = data, let image = UIImage(data: data) {
                 try? data.write(to: localUrl)
-                
-                // CRITICAL: Even if this was a "silent" or background fetch, 
+
+                // CRITICAL: Even if this was a "silent" or background fetch,
                 // if the artist is the one we are currently viewing, update the UI!
                 DispatchQueue.main.async {
                     self.cachedArtistImages[self.sanitizeFileName(primaryArtistName)] = image
@@ -386,13 +386,13 @@ final class FanartManager: ObservableObject {
         task.priority = priority
         task.resume()
     }
-    
+
     nonisolated private func sanitizeFileName(_ name: String) -> String {
         return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
             .components(separatedBy: .whitespaces).joined(separator: "_")
             .lowercased()
     }
-    
+
     nonisolated private func extractPrimaryArtist(_ name: String) -> String {
         let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and "]
         var primary = name
@@ -413,10 +413,10 @@ final class FanartManager: ObservableObject {
             DispatchQueue.main.async { completion(nil) }
             return
         }
-        
+
         var request = URLRequest(url: url)
         request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
-        
+
         let task = URLSession.shared.dataTask(with: request) { data, _, _ in
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

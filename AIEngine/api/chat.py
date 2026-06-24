@@ -7,8 +7,12 @@ from services.rag_engine import perform_rag_and_generate
 
 router = APIRouter()
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
-    message: str
+    messages: list[ChatMessage]
     context: Optional[str] = None
 
 @router.post("/message")
@@ -18,13 +22,16 @@ async def send_chat_message(request: ChatRequest):
     It reads the Obsidian memory files to construct the system prompt,
     then streams the response back from the local Ollama instance.
     """
-    if not request.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="Messages array cannot be empty.")
         
     system_prompt = build_system_prompt()
     
+    # Convert Pydantic models to dicts before passing to RAG engine
+    messages_dicts = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    
     # Perform RAG to find similar songs and stream the response back in SSE format
     return StreamingResponse(
-        perform_rag_and_generate(request.message, request.context, system_prompt),
+        perform_rag_and_generate(messages_dicts, request.context, system_prompt),
         media_type="text/event-stream"
     )

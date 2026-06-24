@@ -13,7 +13,7 @@ extension NavidromeClient {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10.0
-        
+
         URLSession.shared.dataTask(with: request) { data, _, error in
             if let error = error {
                 let desc = error.localizedDescription
@@ -39,75 +39,7 @@ extension NavidromeClient {
     }
 
     // MARK: - Fetch Recently Played
-
-    func fetchRecentlyPlayed() {
-        guard NetworkMonitor.shared.isConnected else { return }
-        guard let url = buildUrl(method: "getRecentlyPlayed.view", params: ["size": "15"]) else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
-            do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let recentlyPlayed = decoded.subsonicResponse?.recentlyPlayed
-                let items = recentlyPlayed?.song ?? recentlyPlayed?.entry ?? []
-                
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    if items.isEmpty {
-                        if self.recentlyPlayed.isEmpty {
-                            self.fetchRandomAsRecent()
-                        }
-                        return
-                    }
-                    
-                    self.recentlyPlayed = items.map { s in
-                        var t = Track(id: s.id, title: s.title ?? "Unknown",
-                               album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
-                               duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix,
-                               track: s.track, discNumber: s.discNumber)
-                        t.created = s.created
-                        return t
-                    }
-                    self.saveOfflineMetadata()
-                }
-            } catch { 
-                print("Error decoding recent songs: \(error)")
-                DispatchQueue.main.async { [weak self] in
-                    self?.fetchRandomAsRecent()
-                }
-            }
-        }.resume()
-    }
-
-    private func fetchRandomAsRecent() {
-        guard self.recentlyPlayed.isEmpty else { return }
-        guard let url = buildUrl(method: "getRandomSongs.view", params: ["size": "15"]) else { return }
-        
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
-            do {
-                let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                let wrapper = decoded.subsonicResponse?.randomSongs ?? decoded.subsonicResponse?.randomSongs2
-                let items = wrapper?.song ?? wrapper?.entry ?? []
-                
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
-                    self.recentlyPlayed = items.map { s in
-                        var t = Track(id: s.id, title: s.title ?? "Unknown",
-                               album: s.album ?? "Unknown Album", artist: s.artist ?? "Unknown Artist",
-                               duration: s.duration ?? 0, coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                               artistId: s.artistId, albumId: s.albumId, suffix: s.suffix,
-                               track: s.track, discNumber: s.discNumber)
-                        t.created = s.created
-                        return t
-                    }
-                    self.saveOfflineMetadata()
-                }
-            } catch { print("Error decoding random songs as fallback: \(error)") }
-        }.resume()
-    }
-
-    // MARK: - Fetch Albums
+    // Local history tracking is handled by `sendScrobble` and cached via `saveOfflineMetadata()`    // MARK: - Fetch Albums
 
     func fetchAlbums() {
         guard NetworkMonitor.shared.isConnected else { return }
@@ -118,7 +50,7 @@ extension NavidromeClient {
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let items = decoded.subsonicResponse?.albumList?.album ?? decoded.subsonicResponse?.albumList2?.album ?? []
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.albums = items.map { sub in
@@ -131,29 +63,29 @@ extension NavidromeClient {
                     }
                     self.saveOfflineMetadata()
                 }
-            } catch { print("Error decoding albums: \(error)") }
+            } catch { AppLogger.shared.log("Error decoding albums: \(error, level: .error)") }
         }.resume()
     }
 
     // MARK: - Fetch Artists
 
     func fetchArtists(completion: (@MainActor @Sendable ([Artist]) -> Void)? = nil) {
-        guard NetworkMonitor.shared.isConnected else { 
+        guard NetworkMonitor.shared.isConnected else {
             completion?([])
-            return 
+            return
         }
-        guard let url = buildUrl(method: "getArtists.view") else { 
+        guard let url = buildUrl(method: "getArtists.view") else {
             completion?([])
-            return 
+            return
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { 
+            guard error == nil, let data = data else {
                 DispatchQueue.main.async { completion?([]) }
-                return 
+                return
             }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
-                
+
                 struct RawArtist: Sendable {
                     let id: String
                     let name: String
@@ -164,18 +96,18 @@ extension NavidromeClient {
                         rawArtists.append(RawArtist(id: sub.id, name: sub.name))
                     }
                 }
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { completion?([]); return }
                     let parsed = rawArtists.map { raw in
                         Artist(id: raw.id, name: raw.name, coverArt: self.getCoverArtUrl(id: raw.id))
                     }
-                    self.artists = parsed 
+                    self.artists = parsed
                     self.saveOfflineMetadata()
                     completion?(parsed)
                 }
-            } catch { 
-                print("Error decoding artists: \(error)") 
+            } catch {
+                AppLogger.shared.log("Error decoding artists: \(error, level: .error)")
                 DispatchQueue.main.async { completion?([]) }
             }
         }.resume()
@@ -194,7 +126,7 @@ extension NavidromeClient {
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawSongs = decoded.subsonicResponse?.album?.song ?? []
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawSongs.map { s in
@@ -242,10 +174,10 @@ extension NavidromeClient {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let subsonicArtist = decoded.subsonicResponse?.artist
                 let albumsData = subsonicArtist?.album ?? []
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { completion([], [], nil, nil); return }
-                    
+
                     let albums = albumsData.map { a -> Album in
                         var albumModel = Album(
                             id: a.id,
@@ -259,13 +191,13 @@ extension NavidromeClient {
                         albumModel.created = a.created
                         return albumModel
                     }
-                    
+
                     var allTracks: [Track] = []
                     var bio: String? = nil
                     var mbid: String? = nil
-                    
+
                     let group = DispatchGroup()
-                    
+
                     for album in albumsData {
                         group.enter()
                         self.fetchAlbumTracks(albumId: album.id) { tracks in
@@ -273,20 +205,20 @@ extension NavidromeClient {
                             group.leave()
                         }
                     }
-                    
+
                     group.enter()
                     self.fetchArtistInfo(artistId: artistId) { b, m in
                         bio = b
                         mbid = m
                         group.leave()
                     }
-                    
+
                     group.notify(queue: .main) {
                         completion(allTracks, albums, bio, mbid)
                     }
                 }
             } catch {
-                print("Error decoding artist details: \(error)")
+                AppLogger.shared.log("Error decoding artist details: \(error, level: .error)")
                 DispatchQueue.main.async { completion([], [], nil, nil) }
             }
         }.resume()
@@ -323,12 +255,12 @@ extension NavidromeClient {
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
-                print("[Search] Network error: \(error.localizedDescription)")
+                AppLogger.shared.log("[Search] Network error: \(error.localizedDescription, level: .error)")
                 DispatchQueue.main.async { completion([], [], []) }
                 return
             }
             guard let data = data else {
-                print("[Search] No data received from server")
+                AppLogger.shared.log("[Search] No data received from server", level: .info)
                 DispatchQueue.main.async { completion([], [], []) }
                 return
             }
@@ -338,10 +270,10 @@ extension NavidromeClient {
                 let rawSongs = r?.song ?? []
                 let rawAlbums = r?.album ?? []
                 let rawArtists = r?.artist ?? []
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { completion([], [], []); return }
-                    
+
                     let tracks = rawSongs.map { s in
                         var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                               artist: s.artist ?? "", duration: s.duration ?? 0,
@@ -367,7 +299,7 @@ extension NavidromeClient {
                     completion(tracks, albums, artists)
                 }
             } catch {
-                print("[Search] JSON decode error: \(error)")
+                AppLogger.shared.log("[Search] JSON decode error: \(error, level: .error)")
                 DispatchQueue.main.async { completion([], [], []) }
             }
         }.resume()
@@ -383,7 +315,7 @@ extension NavidromeClient {
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawPlaylists = decoded.subsonicResponse?.playlists?.playlist ?? []
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.playlists = rawPlaylists.map { p in
@@ -391,7 +323,7 @@ extension NavidromeClient {
                     }
                     self.saveOfflineMetadata()
                 }
-            } catch { print("Error decoding playlists: \(error)") }
+            } catch { AppLogger.shared.log("Error decoding playlists: \(error, level: .error)") }
         }.resume()
     }
 
@@ -406,7 +338,7 @@ extension NavidromeClient {
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawTracks = decoded.subsonicResponse?.playlist?.entry ?? []
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawTracks.map { s in
@@ -466,28 +398,28 @@ extension NavidromeClient {
         var extra: [URLQueryItem] = []
         songIdsToAdd.forEach { extra.append(URLQueryItem(name: "songIdToAdd", value: $0)) }
         songIndicesToRemove.forEach { extra.append(URLQueryItem(name: "songIndexToRemove", value: String($0))) }
-        
+
         guard let url = buildUrl(method: "updatePlaylist.view", params: ["playlistId": id], extraItems: extra) else {
             completion(false); return
         }
-        
+
         URLSession.shared.dataTask(with: url) { data, _, error in
             let success = error == nil
             DispatchQueue.main.async { completion(success) }
         }.resume()
     }
-    
+
     func syncLosslessPlaylist() {
         let flacIds = allSongs.filter { $0.suffix?.lowercased() == "flac" }.map { $0.id }
         guard !flacIds.isEmpty else { return }
-        
+
         if let existing = playlists.first(where: { $0.name == "Lossless" }) {
             updatePlaylist(id: existing.id, songIdsToAdd: flacIds) { _ in
-                print("Synced \(flacIds.count) tracks to existing Lossless playlist.")
+                AppLogger.shared.log("Synced \(flacIds.count, level: .info) tracks to existing Lossless playlist.")
             }
         } else {
             createPlaylist(name: "Lossless", songIds: flacIds) { success in
-                if success { print("Created new Lossless playlist with \(flacIds.count) tracks.") }
+                if success { AppLogger.shared.log("Created new Lossless playlist with \(flacIds.count, level: .info) tracks.") }
             }
         }
     }
@@ -508,27 +440,27 @@ extension NavidromeClient {
             completion?(allFetchedSongs)
         }
     }
-    
+
     private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
-        guard NetworkMonitor.shared.isConnected else { 
+        guard NetworkMonitor.shared.isConnected else {
             completion(allSongsSoFar)
-            return 
+            return
         }
-        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "\(batchSize)", "songOffset": "\(offset)"]) else { 
+        guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "\(batchSize)", "songOffset": "\(offset)"]) else {
             completion(allSongsSoFar)
-            return 
+            return
         }
-        
+
         URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { 
+            guard error == nil, let data = data else {
                 DispatchQueue.main.async { completion(allSongsSoFar) }
-                return 
+                return
             }
-            
+
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawSongs = decoded.subsonicResponse?.searchResult3?.song ?? []
-                
+
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { completion(allSongsSoFar); return }
                     let songs = rawSongs.map { s in
@@ -542,7 +474,7 @@ extension NavidromeClient {
                         t.created = s.created
                         return t
                     }
-                    
+
                     if !songs.isEmpty {
                         let combined = allSongsSoFar + songs
                         self.fetchSongsPage(offset: offset + batchSize, batchSize: batchSize, allSongsSoFar: combined, completion: completion)
@@ -550,19 +482,19 @@ extension NavidromeClient {
                         completion(allSongsSoFar)
                     }
                 }
-            } catch { 
-                print("Error decoding search3.view at offset \(offset): \(error)")
+            } catch {
+                AppLogger.shared.log("Error decoding search3.view at offset \(offset, level: .error): \(error)")
                 DispatchQueue.main.async { completion(allSongsSoFar) }
             }
         }.resume()
     }
-    
+
     // MARK: - Cover Art Caching
 
     func downloadCoverArt(id: String) {
         let coverArtDir = VeloraStorage.coverArt
         let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
-        
+
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
             if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
                let size = attr[.size] as? Int64, size > 0 {
@@ -572,13 +504,13 @@ extension NavidromeClient {
                 try? FileManager.default.removeItem(at: destinationUrl)
             }
         }
-        
+
         guard NetworkMonitor.shared.isConnected else { return }
         guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
-        
+
         URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
             guard let tempLocation = tempLocation, error == nil else {
-                print("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
+                AppLogger.shared.log("Failed to download cover art for \(id, level: .error): \(error?.localizedDescription ?? "Unknown error")")
                 return
             }
             do {
@@ -587,7 +519,7 @@ extension NavidromeClient {
                 }
                 try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
             } catch {
-                print("Failed to save cover art for \(id): \(error)")
+                AppLogger.shared.log("Failed to save cover art for \(id, level: .error): \(error)")
             }
         }.resume()
     }
@@ -598,11 +530,14 @@ extension NavidromeClient {
         let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
         let isOnline = NetworkMonitor.shared.isConnected
-        
-        // If cached on disk, check the contents
+
         if FileManager.default.fileExists(atPath: cacheFile.path) {
             let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8)
-            if let lyrics = cachedLyrics, !lyrics.isEmpty {
+            if let lyrics = cachedLyrics, !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if lyrics.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
+                    completion(nil)
+                    return
+                }
                 completion(lyrics)
                 return
             } else if !isOnline {
@@ -612,14 +547,14 @@ extension NavidromeClient {
             }
             // If it's empty but we are online, we fall through and retry fetching
         }
-        
+
         Task {
             guard NetworkMonitor.shared.isConnected else {
                 // Do not cache failure if we simply have no connection
                 completion(nil)
                 return
             }
-            
+
             // Only try LRCLIB API for lyrics (time-synced first, then plain)
             if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title, duration: duration), !lrclibLyrics.isEmpty {
                 try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
@@ -627,38 +562,38 @@ extension NavidromeClient {
                 completion(lrclibLyrics)
                 return
             }
-            
+
             // Save empty file so we don't retry forever on un-lyric-able songs
             try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
-            try? "".write(to: cacheFile, atomically: true, encoding: .utf8)
+            try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
             completion(nil)
         }
     }
-    
+
     nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double) async -> String? {
         guard await NetworkMonitor.shared.isConnected else { return nil }
-        
+
         // Clean up title/artist for better matching (remove feat, remaster tags)
         let cleanTitle = title.replacingOccurrences(of: "\\s*\\([^)]*\\)", with: "", options: .regularExpression)
                               .replacingOccurrences(of: "\\s*\\[[^]]*\\]", with: "", options: .regularExpression)
                               .trimmingCharacters(in: .whitespaces)
-        
+
         let cleanArtist = artist.components(separatedBy: " feat.").first?
                                 .components(separatedBy: " ft.").first?
                                 .components(separatedBy: " & ").first?
                                 .components(separatedBy: ",").first?
                                 .trimmingCharacters(in: .whitespaces) ?? artist
-        
+
         guard let encodedTitle = cleanTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let encodedArtist = cleanArtist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let getUrl = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)&duration=\(Int(duration))") else {
             return nil
         }
-        
+
         var request = URLRequest(url: getUrl)
         request.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 8.0
-        
+
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
@@ -667,20 +602,20 @@ extension NavidromeClient {
                     if let plain = json["plainLyrics"] as? String, !plain.isEmpty { return plain }
                 }
             }
-            
+
             // Fallback to SEARCH API if EXACT GET fails (handles slight metadata mismatches)
             guard let q = "\(cleanArtist) \(cleanTitle)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
                   let searchUrl = URL(string: "https://lrclib.net/api/search?q=\(q)") else { return nil }
-            
+
             var searchReq = URLRequest(url: searchUrl)
             searchReq.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
             searchReq.timeoutInterval = 8.0
-            
+
             let (searchData, searchResp) = try await URLSession.shared.data(for: searchReq)
             if let httpSearchResp = searchResp as? HTTPURLResponse, httpSearchResp.statusCode == 200 {
                 if let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]] {
-                    
-                    // WORLD CLASS HEURISTIC: Find the best match that is within ±3 seconds of our actual audio file
+
+                    // WORLD CLASS HEURISTIC: Find the best match that is within Â±3 seconds of our actual audio file
                     // This prevents syncing a "Live Version" to a "Studio Version" and causing drift.
                     let bestMatch = jsonArray.first { result in
                         if let resultDuration = result["duration"] as? Double {
@@ -688,7 +623,7 @@ extension NavidromeClient {
                         }
                         return false
                     } ?? jsonArray.first // Fallback to first if no duration matches perfectly
-                    
+
                     if let match = bestMatch {
                         if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
                         if let plain = match["plainLyrics"] as? String, !plain.isEmpty { return plain }
@@ -696,7 +631,7 @@ extension NavidromeClient {
                 }
             }
         } catch {
-            print("[LRCLIB] Fetch error: \(error.localizedDescription)")
+            AppLogger.shared.log("[LRCLIB] Fetch error: \(error.localizedDescription, level: .error)")
             return nil
         }
         return nil
@@ -726,8 +661,22 @@ extension NavidromeClient {
             "time": "\(Int(Date().timeIntervalSince1970 * 1000))",
             "submission": submission ? "true" : "false"
         ]) else { return }
-        URLSession.shared.dataTask(with: url) { _, _, error in
-            if let error = error { print("Scrobble error: \(error)") }
+        URLSession.shared.dataTask(with: url) { [weak self] _, _, error in
+            if let error = error {
+                AppLogger.shared.log("Scrobble error: \(error, level: .error)")
+            } else if submission {
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    if let track = self.allSongs.first(where: { $0.id == id }) {
+                        self.recentlyPlayed.removeAll(where: { $0.id == id })
+                        self.recentlyPlayed.insert(track, at: 0)
+                        if self.recentlyPlayed.count > 15 {
+                            self.recentlyPlayed.removeLast()
+                        }
+                        self.saveOfflineMetadata()
+                    }
+                }
+            }
         }.resume()
     }
 
@@ -759,13 +708,13 @@ extension NavidromeClient {
         fetchPlaylists()
         fetchAllSongs()
     }
-    
+
     // MARK: - Dedicated Asset Fetchers
-    
+
     func fetchCoverArt(id: String, size: Int = 500, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        guard NetworkMonitor.shared.isConnected else { 
+        guard NetworkMonitor.shared.isConnected else {
             DispatchQueue.main.async { completion(false) }
-            return 
+            return
         }
         let urlStr = getCoverArtUrl(id: id)
         guard let url = URL(string: urlStr) else {
@@ -773,38 +722,15 @@ extension NavidromeClient {
             return
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
-            guard error == nil, let data = data, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                DispatchQueue.main.async { completion(false) }
-                return
-            }
-            // Save to VeloraStorage
             let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(extractArtId(from: id)).jpg")
-            do {
-                try data.write(to: localUrl)
-                DispatchQueue.main.async { completion(true) }
-            } catch {
-                DispatchQueue.main.async { completion(false) }
-            }
-        }.resume()
-    }
-    
-    func fetchArtist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        guard NetworkMonitor.shared.isConnected else { 
-            DispatchQueue.main.async { completion(false) }
-            return 
-        }
-        let urlStr = getCoverArtUrl(id: id)
-        guard let url = URL(string: urlStr) else {
-            DispatchQueue.main.async { completion(false) }
-            return
-        }
-        URLSession.shared.dataTask(with: url) { data, response, error in
             guard error == nil, let data = data, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                if let naData = "NA".data(using: .utf8) {
+                    try? naData.write(to: localUrl)
+                }
                 DispatchQueue.main.async { completion(false) }
                 return
             }
             // Save to VeloraStorage
-            let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
             do {
                 try data.write(to: localUrl)
                 DispatchQueue.main.async { completion(true) }
@@ -814,6 +740,34 @@ extension NavidromeClient {
         }.resume()
     }
 
+    func fetchArtist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
+        guard NetworkMonitor.shared.isConnected else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
+        let urlStr = getCoverArtUrl(id: id)
+        guard let url = URL(string: urlStr) else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
+            guard error == nil, let data = data, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                if let naData = "NA".data(using: .utf8) {
+                    try? naData.write(to: localUrl)
+                }
+                DispatchQueue.main.async { completion(false) }
+                return
+            }
+            // Save to VeloraStorage
+            do {
+                try data.write(to: localUrl)
+                DispatchQueue.main.async { completion(true) }
+            } catch {
+                DispatchQueue.main.async { completion(false) }
+            }
+        }.resume()
+    }
 
     // MARK: - Cache Management
 
@@ -826,14 +780,14 @@ extension NavidromeClient {
             }
         }
     }
-    
+
     func clearLyricsCache() {
         let fileManager = FileManager.default
         if let contents = try? fileManager.contentsOfDirectory(at: VeloraStorage.lyrics, includingPropertiesForKeys: nil) {
             contents.forEach { try? fileManager.removeItem(at: $0) }
         }
     }
-    
+
     func clearMediaCache() {
         let fileManager = FileManager.default
         if let contents = try? fileManager.contentsOfDirectory(at: VeloraStorage.tracks, includingPropertiesForKeys: nil) {
@@ -855,7 +809,7 @@ extension NavidromeClient {
         if let contents = try? fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil) {
             contents.forEach { try? fileManager.removeItem(at: $0) }
         }
-        
+
         // Clear all VeloraStorage subdirectories
         let dirsToClean = [
             VeloraStorage.backdrops,
@@ -865,26 +819,25 @@ extension NavidromeClient {
             VeloraStorage.tracks,
             VeloraStorage.lyrics,
         ]
-        
+
         for dir in dirsToClean {
             if let contents = try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
                 contents.forEach { try? fileManager.removeItem(at: $0) }
             }
         }
-        
-        fetchRecentlyPlayed()
+
         fetchAlbums()
         fetchArtists()
         fetchPlaylists()
         fetchAllSongs()
     }
-    
+
     nonisolated func getMediaCacheSize() -> String {
         var totalSize: Int64 = 0
         let fileManager = FileManager.default
-        
+
         totalSize += Int64(URLCache.shared.currentDiskUsage)
-        
+
         let tempDir = fileManager.temporaryDirectory
         if let enumerator = fileManager.enumerator(at: tempDir, includingPropertiesForKeys: [.fileSizeKey]) {
             for case let fileURL as URL in enumerator {
@@ -893,7 +846,7 @@ extension NavidromeClient {
                 }
             }
         }
-        
+
         // Scan VeloraData directory recursively
         if let enumerator = fileManager.enumerator(at: VeloraStorage.root, includingPropertiesForKeys: [.fileSizeKey]) {
             for case let fileURL as URL in enumerator {
@@ -905,7 +858,7 @@ extension NavidromeClient {
                 }
             }
         }
-        
+
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useMB, .useGB]
         formatter.countStyle = .file

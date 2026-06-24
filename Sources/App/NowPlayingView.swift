@@ -23,9 +23,9 @@ struct NowPlayingView: View {
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     // Header height to avoid overlap
-    var headerHeight: CGFloat { 
+    var headerHeight: CGFloat {
         if isSmallDevice && !isLandscape { return 64 }
-        return UIScreen.main.bounds.width < 768 ? 72 : 96 
+        return UIScreen.main.bounds.width < 768 ? 72 : 96
     }
 
     var isCompact:     Bool { hSizeClass == .compact }
@@ -34,19 +34,19 @@ struct NowPlayingView: View {
     }
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1000 }
     var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
-    var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } 
+    var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 }
     var isSE:          Bool { ScreenTier.isSE }
-    
+
     // Layout Constants
-    private var tabletArtworkSize: CGFloat { 
+    private var tabletArtworkSize: CGFloat {
         let base: CGFloat = isLargeCanvas ? 220 : (!isCompact ? 160 : (isSE ? 130.0 : 120.0))
         return isLandscape ? base * 1.25 : base // 25% increase in landscape
     }
-    private var tabletTitleSize: CGFloat { 
+    private var tabletTitleSize: CGFloat {
         let base: CGFloat = isLargeCanvas ? 32 : (!isCompact ? 26 : (isSE ? 18.0 : 20.0))
         return isLandscape ? base * 1.2 : base // 20% increase in landscape
     }
-    private var tabletArtistSize: CGFloat { 
+    private var tabletArtistSize: CGFloat {
         let base: CGFloat = isLargeCanvas ? 18 : (!isCompact ? 16 : 14.0)
         return isLandscape ? base * 1.2 : base // 20% increase in landscape
     }
@@ -58,7 +58,7 @@ struct NowPlayingView: View {
         guard playback.duration > 0 else { return 0 }
         return displayProgress / playback.duration
     }
-    
+
     // 120Hz Optimized Response: Faster on ProMotion iPads, standard on iPhones
     var animationResponse: Double {
         (ScreenTier.current == .large || ScreenTier.current == .huge) ? 0.35 : 0.55
@@ -107,12 +107,12 @@ struct NowPlayingView: View {
                             startRadius: 50,
                             endRadius: proxy.size.width * 1.2
                         )
-                        
+
                         // Top and Bottom protection (Linear)
                         LinearGradient(
                             gradient: Gradient(colors: [
-                                .black.opacity(isIdle ? 0.3 : 0.6), 
-                                .clear, 
+                                .black.opacity(isIdle ? 0.3 : 0.6),
+                                .clear,
                                 .black.opacity(isIdle ? 0.5 : 0.9)
                             ]),
                             startPoint: .top,
@@ -131,8 +131,6 @@ struct NowPlayingView: View {
                 )
                 .allowsHitTesting(false)
 
-
-
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         VStack(spacing: 0) {
@@ -143,7 +141,7 @@ struct NowPlayingView: View {
                             }
                         }
                         .frame(minHeight: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
-                        
+
                         metadataCards
                             .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
                             .padding(.top, 40)
@@ -186,7 +184,7 @@ struct NowPlayingView: View {
                         if isIdle {
                             let horizontal = value.translation.width
                             let vertical = value.translation.height
-                            
+
                             if abs(horizontal) > abs(vertical) && abs(horizontal) > 50 {
                                 if horizontal < 0 {
                                     playback.skipForward()
@@ -199,13 +197,13 @@ struct NowPlayingView: View {
                     }
             )
         }
-        .onAppear { 
+        .onAppear {
             isIdle = false // Ensure we don't start in idle state
-            startIdleTimer() 
+            startIdleTimer()
             refreshMetadata()
         }
-        .onDisappear { 
-            stopIdleTimer() 
+        .onDisappear {
+            stopIdleTimer()
             UIApplication.shared.isIdleTimerDisabled = false
         }
         .onChange(of: isIdle) { idle in
@@ -227,7 +225,7 @@ struct NowPlayingView: View {
     private func startIdleTimer() {
         stopIdleTimer()
         guard !isQueueOpen && !playback.isLyricsMode else { return }
-        
+
         idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
             DispatchQueue.main.async {
                 // Golden standard: ONE animation context drives the entire view tree.
@@ -263,7 +261,7 @@ struct NowPlayingView: View {
             if !playback.isLyricsMode {
                 Spacer()
             }
-            
+
             VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 32)) {
                 if playback.isLyricsMode {
                     inlineLyricsView
@@ -274,7 +272,7 @@ struct NowPlayingView: View {
                     // Album Art
                     artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.42 : (isSmallDevice ? 0.55 : 0.7)), 280) : tabletArtworkSize)
                         .padding(.bottom, isSE ? 0 : (isSmallDevice ? 6 : 12))
-                    
+
                     // Centered Metadata
                     VStack(alignment: .center, spacing: isSE ? 2 : 6) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
@@ -282,7 +280,7 @@ struct NowPlayingView: View {
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
-                        
+
                         Text(playback.currentTrack?.artist ?? "Unknown Artist")
                             .font(.system(size: isSE ? 12 : (isSmallDevice ? 14 : 16), weight: .bold))
                             .foregroundColor(.white.opacity(0.6))
@@ -291,11 +289,11 @@ struct NowPlayingView: View {
                     }
                     .padding(.horizontal, 24)
                 }
-                
+
                 // Progress Bar
                 progressBar
                     .padding(.horizontal, 24)
-                
+
                 if !isIdle && !playback.isLyricsMode {
                     // Controls Section for Portrait
                     VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 24)) {
@@ -307,7 +305,7 @@ struct NowPlayingView: View {
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
-                        
+
                         HStack(spacing: 12) {
                             lyricsButton
                             queueButton
@@ -338,7 +336,7 @@ struct NowPlayingView: View {
             if !playback.isLyricsMode {
                 Spacer() // Push everything to bottom
             }
-            
+
             VStack(spacing: isShortCanvas ? 20 : 32) {
                 if playback.isLyricsMode {
                     // Inline Lyrics State
@@ -359,13 +357,13 @@ struct NowPlayingView: View {
                     // Artwork & Metadata side-by-side
                     HStack(alignment: .bottom, spacing: isLargeCanvas ? 40 : 24) {
                         artworkSection(size: tabletArtworkSize)
-                        
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text(playback.currentTrack?.title ?? "Not Playing")
                                 .font(.system(size: tabletTitleSize, weight: .black))
                                 .foregroundColor(.white)
                                 .lineLimit(2)
-                            
+
                             Text(playback.currentTrack?.artist ?? "Unknown Artist")
                                 .font(.system(size: tabletArtistSize, weight: .bold))
                                 .foregroundColor(.white.opacity(0.8))
@@ -376,11 +374,11 @@ struct NowPlayingView: View {
                     .padding(.horizontal, isLargeCanvas ? 60 : 32)
                     .transition(.opacity)
                 }
-                
+
                 // Progress Bar (Always visible below content)
                 progressBar
                     .padding(.horizontal, isLargeCanvas ? 60 : 32)
-                
+
                 // Controls Section
                 if !isIdle && !playback.isLyricsMode {
                     HStack(alignment: .center) {
@@ -389,7 +387,7 @@ struct NowPlayingView: View {
                             Spacer()
                         }
                         .frame(maxWidth: .infinity)
-                        
+
                         // 2. Center Section: Playback Controls Pill
                         HStack(spacing: isLargeCanvas ? 48 : 36) {
                             playbackControls
@@ -399,7 +397,7 @@ struct NowPlayingView: View {
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1.5))
-                        
+
                         // 3. Right Section: Lyrics, Queue & Download
                         HStack {
                             Spacer()
@@ -461,9 +459,9 @@ struct NowPlayingView: View {
         .hoverEffect()
 
         // Repeat
-        Button { 
+        Button {
             playback.toggleRepeatMode()
-            resetIdleTimer() 
+            resetIdleTimer()
         } label: {
             Image(systemName: playback.repeatMode == .one ? "repeat.1" : "repeat")
                 .font(.system(size: 16))
@@ -484,14 +482,14 @@ struct NowPlayingView: View {
                 }
             }
             .id(playback.playbackSessionId) // Force refresh on track change or manual replay
-            
+
             // Hidden Secret Feedback Overlay
             if showPlayPauseHint {
                 ZStack {
                     Circle()
                         .fill(.black.opacity(0.4))
                         .frame(width: 70, height: 70)
-                    
+
                     Image(systemName: hintIcon)
                         .font(.system(size: 32, weight: .bold))
                         .foregroundColor(.white)
@@ -510,11 +508,11 @@ struct NowPlayingView: View {
                 // Secret Toggle: No resetIdleTimer() called here
                 hintIcon = playback.isPlaying ? "pause.fill" : "play.fill"
                 playback.togglePlayPause()
-                
+
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                     showPlayPauseHint = true
                 }
-                
+
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     withAnimation(.easeOut(duration: 0.4)) {
                         showPlayPauseHint = false
@@ -534,7 +532,7 @@ struct NowPlayingView: View {
                 Text("About the Artist")
                     .font(.system(size: isSE ? 28 : 32, weight: .bold))
                     .foregroundColor(.white)
-                
+
                 VStack(alignment: .leading, spacing: 20) {
                     if let bio = artistBiography {
                         Button {
@@ -545,7 +543,7 @@ struct NowPlayingView: View {
                             HStack(spacing: 24) {
                                 artistImage
                                     .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
-                                
+
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
                                         .font(.system(size: isSE ? 20 : 28, weight: .bold))
@@ -554,7 +552,7 @@ struct NowPlayingView: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
-                        
+
                         Text(bio)
                             .font(.system(size: isSE ? 14 : 16))
                             .foregroundColor(.white.opacity(0.8))
@@ -577,7 +575,7 @@ struct NowPlayingView: View {
                             HStack(spacing: 24) {
                                 artistImage
                                     .frame(width: isSE ? 80 : 120, height: isSE ? 80 : 120)
-                                
+
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(playback.currentTrack?.artist ?? "Unknown Artist")
                                         .font(.system(size: isSE ? 20 : 28, weight: .bold))
@@ -586,7 +584,7 @@ struct NowPlayingView: View {
                             }
                         }
                         .buttonStyle(PlainButtonStyle())
-                        
+
                         Text("No further information found.")
                             .font(.system(size: isSE ? 14 : 16))
                             .foregroundColor(.white.opacity(0.4))
@@ -597,20 +595,20 @@ struct NowPlayingView: View {
                 .background(Color.white.opacity(0.05))
                 .cornerRadius(isSE ? 20 : 32)
             }
-            
+
             // Album Info
             VStack(alignment: .leading, spacing: isSE ? 16 : 24) {
                 Text("From the Album")
                     .font(.system(size: isSE ? 28 : 32, weight: .bold))
                     .foregroundColor(.white)
-                
+
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(playback.currentTrack?.album ?? "Unknown Album")
                                 .font(.system(size: isSE ? 22 : 26, weight: .bold))
                                 .foregroundColor(.white)
-                            
+
                             if let info = mb.currentAlbumInfo {
                                 Text([info.label, info.firstReleaseDate].compactMap { $0 }.joined(separator: " • "))
                                     .font(.system(size: isSE ? 14 : 16))
@@ -619,7 +617,7 @@ struct NowPlayingView: View {
                         }
                         Spacer()
                     }
-                    
+
                     if let annotation = mb.currentAlbumInfo?.annotation {
                         Text(annotation)
                             .font(.system(size: isSE ? 14 : 16))
@@ -637,8 +635,9 @@ struct NowPlayingView: View {
     private var artistImage: some View {
         Group {
             if let artistId = playback.currentTrack?.artistId {
-                // Prefer local cached portrait; fall back to server URL
-                let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(artistId).jpg")
+                // FIX #4: Look in artistPortraits (where SyncManager saves Fanart.tv portraits),
+                // not coverArt (which stores album art). Wrong dir caused a cache miss every time.
+                let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
                 let imageUrl: URL? = FileManager.default.fileExists(atPath: localUrl.path)
                     ? localUrl
                     : URL(string: playback.client.getCoverArtUrl(id: artistId))
@@ -654,7 +653,6 @@ struct NowPlayingView: View {
         }
         .clipShape(Circle())
     }
-
 
     private var progressBar: some View {
         IsolatedProgressBarView(isIdle: $isIdle, resetIdleTimer: resetIdleTimer)
@@ -707,7 +705,7 @@ struct NowPlayingView: View {
             let trackId = playback.currentTrack?.id ?? ""
             let isDownloaded = playback.downloadedTrackIds.contains(trackId)
             let isPaused = playback.pausedDownloadIds.contains(trackId)
-            
+
             ZStack {
                 if let progress = playback.downloadProgress[trackId] {
                     ZStack {
@@ -742,7 +740,7 @@ struct NowPlayingView: View {
     private var inlineLyricsView: some View {
         let syncedLyrics = playback.currentSyncedLyrics ?? []
         let activeIndex = syncedLyrics.isEmpty ? 0 : (syncedLyrics.lastIndex(where: { playback.progress >= $0.time }) ?? 0)
-        
+
         return ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 24) {
@@ -767,8 +765,8 @@ struct NowPlayingView: View {
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                    } else if isFetchingArtistInfo || playback.currentTrack == nil {
-                        // Still loading — show spinner
+                    } else if playback.isLoadingLyrics {
+                        // Lyrics fetch in progress — keep spinner until they arrive
                         HStack {
                             Spacer()
                             ProgressView()
@@ -827,16 +825,16 @@ struct NowPlayingView: View {
     // renderLyricLine removed — replaced by LyricLineView struct below
     private func refreshMetadata() {
         guard let track = playback.currentTrack else { return }
-        
+
         let artistName = track.artist ?? "Unknown Artist"
         let albumName = track.album ?? "Unknown Album"
-        
+
         self.artistBiography = nil
-        
+
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker
         fanart.fetchBackdrop(for: track.allArtists, mbid: nil)
-        
+
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
             isFetchingArtistInfo = true
@@ -844,10 +842,10 @@ struct NowPlayingView: View {
                 DispatchQueue.main.async {
                     // Check if we haven't skipped to another track in the meantime
                     guard self.playback.currentTrack?.id == track.id else { return }
-                    
+
                     self.artistBiography = bio
                     self.isFetchingArtistInfo = false
-                    
+
                     // If we got a fresh MBID, update fanart too (though usually it's already there)
                     if let mbid = mbid {
                         fanart.fetchBackdrop(for: track.allArtists, mbid: mbid)
@@ -855,7 +853,7 @@ struct NowPlayingView: View {
                 }
             }
         }
-        
+
         // 3. Album info
         mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: nil)
     }
@@ -959,7 +957,7 @@ struct AnimatedMeshGradientView: View {
         let d = colors.indices.contains(3) ? Color(colors[3]) : Color.black
         let e = colors.indices.contains(4) ? Color(colors[4]) : Color.black
         let dark = Color.black
-        
+
         return phase
             ? [a, b, dark, c, e, d, dark, d, dark]
             : [b, a, e, dark, d, c, dark, b, dark]
@@ -1040,24 +1038,24 @@ struct IsolatedProgressBarView: View {
     @EnvironmentObject var playback: PlaybackManager
     @Binding var isIdle: Bool
     var resetIdleTimer: () -> Void
-    
+
     @State private var isDragging = false
     @State private var dragProgress: Double = 0
-    
+
     var displayProgress: Double {
         isDragging ? dragProgress : playback.progress
     }
-    
+
     var progressFraction: Double {
         guard playback.duration > 0 else { return 0 }
         return displayProgress / playback.duration
     }
-    
+
     private func formatTime(_ t: Double) -> String {
         guard !t.isNaN, !t.isInfinite else { return "0:00" }
         return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
     }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             GeometryReader { barGeo in
@@ -1065,7 +1063,7 @@ struct IsolatedProgressBarView: View {
                     // Visual Bar (4pt height, centered vertically)
                     ZStack(alignment: .leading) {
                         Color.white.opacity(0.2)
-                        
+
                         Color.white
                             .scaleEffect(x: CGFloat(progressFraction), y: 1.0, anchor: .leading)
                             .animation(isDragging ? nil : .linear(duration: 0.1), value: progressFraction)

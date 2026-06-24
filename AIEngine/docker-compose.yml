@@ -6,17 +6,16 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Persist the sqlite-vec database across container restarts
-      - ./data:/app/data
-      # Mount the Obsidian memories live so the AI DJ reads updates instantly (Read-Only)
-      - ./Memories:/app/Memories:ro
-      # IMPORTANT: Mount your Navidrome music folder so the AI can analyze the audio files!
-      # Change "/path/to/your/navidrome/music" to the actual path on your Ubuntu server.
+      # Save the sqlite-vec database in the unified data folder
+      - /home/tony/Velora_AI/db:/app/data
+      # Save Obsidian memories in the unified data folder
+      - /home/tony/Velora_AI/Memories:/app/Memories
+      # Mount your existing Navidrome music folder (Read-Only)
       - /home/tony/navidrome/music:/music:ro
     environment:
-      # Allow the container to reach the Ollama instance running on the Windows/Ubuntu host
+      # Connect to the native Ollama installation running on your Ubuntu Host
       - OLLAMA_BASE_URL=http://host.docker.internal:11434/api
-    # This is required for host.docker.internal to work on Ubuntu Linux natively
+    # This is required for host.docker.internal to work natively on Ubuntu Linux
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # GPU Passthrough configuration for PyTorch
