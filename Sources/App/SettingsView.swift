@@ -205,103 +205,6 @@ struct SettingsView: View {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // STEP 3 — Client Settings & AI Engine
-    // ─────────────────────────────────────────────────────────────
-    private var clientStep: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                Text("Velora AI Engine")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(isDark ? .white : .black)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                
-                VStack(alignment: .leading, spacing: 16) {
-                    FloatingLabelField(
-                        label: "API Key",
-                        placeholder: "velora-dev-key",
-                        text: Binding(
-                            get: { UserDefaults.standard.string(forKey: "velora_api_key") ?? "" },
-                            set: { UserDefaults.standard.set(, forKey: "velora_api_key") }
-                        ),
-                        isDark: isDark,
-                        borderCol: borderCol,
-                        labelCol: labelCol,
-                        isSecure: true
-                    )
-                    
-                    Button(action: {
-                        triggerAIIngestion()
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                            Text("Sync Music to AI Engine")
-                                .fontWeight(.medium)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(accentBg.opacity(0.15))
-                        .cornerRadius(12)
-                        .foregroundColor(labelCol)
-                    }
-                    
-                    if aiTotalTracks > 0 {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Sync Progress")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.gray)
-                                Spacer()
-                                Text("\(aiProcessedTracks) / \(aiTotalTracks)")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(isDark ? .white : .black)
-                            }
-                            
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(height: 8)
-                                    
-                                    let progress = CGFloat(aiProcessedTracks) / CGFloat(max(1, aiTotalTracks))
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(labelCol)
-                                        .frame(width: geo.size.width * progress, height: 8)
-                                        .animation(.spring(), value: progress)
-                                }
-                            }
-                            .frame(height: 8)
-                            
-                            if isAISyncing {
-                                Text("Syncing in progress...")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                        .padding(.top, 8)
-                    }
-                }
-                
-                Button(action: { withAnimation { step = .server } }) {
-                    Text("Back to Connection")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color(hex: "#9ca3af"))
-                }
-                .padding(.top, 20)
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 20)
-        }
-        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .trailing)).combined(with: .opacity))
-        .onAppear {
-            startAIStatusPolling()
-        }
-        .onDisappear {
-            stopAIStatusPolling()
-        }
-    }
-
-
-    // ─────────────────────────────────────────────────────────────
     // Logic
     // ─────────────────────────────────────────────────────────────
     private func isValidUrl(_ s: String) -> Bool {
@@ -359,52 +262,6 @@ struct SettingsView: View {
                 }
             }
         }
-
-    // ─────────────────────────────────────────────────────────────
-    // AI Engine Sync Logic
-    // ─────────────────────────────────────────────────────────────
-    private func triggerAIIngestion() {
-        guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
-              var components = URLComponents(string: serverStr) else { return }
-        components.port = 8000
-        components.path = "/api/v1/ingestion/scan_all"
-        guard let url = components.url else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
-        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
-
-        Task {
-            do {
-                _ = try await URLSession.shared.data(for: request)
-                AppLogger.shared.log("AI Scan All triggered successfully", level: .info)
-                DispatchQueue.main.async {
-                    self.isAISyncing = true
-                    self.startAIStatusPolling()
-                }
-            } catch {
-                AppLogger.shared.log("Failed to trigger AI Scan: \(error.localizedDescription)", level: .error)
-            }
-        }
-    }
-    
-    private func startAIStatusPolling() {
-        if statusTimer == nil {
-            fetchAIStatus() // initial fetch
-            statusTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-                fetchAIStatus()
-            }
-        }
-    }
-    
-    private func stopAIStatusPolling() {
-        statusTimer?.invalidate()
-        statusTimer = nil
-    }
-    
-    private func fetchAIStatus() {
         guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
               var components = URLComponents(string: serverStr) else { return }
         components.port = 8000
@@ -513,6 +370,13 @@ struct AppSettingsView: View {
     @State private var cacheSize: String = "Calculating..."
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @State private var showLogs: Bool = false
+    
+    // AI Ingestion State
+    @State private var aiTotalTracks: Int = 0
+    @State private var aiProcessedTracks: Int = 0
+    @State private var isAISyncing: Bool = false
+    @State private var statusTimer: Timer? = nil
+
     // Constants matching web app
     let accentBg   = Color(hex: "#a8c7fa")
     let accentFg   = Color(hex: "#0b1b32")
@@ -875,6 +739,86 @@ struct AppSettingsView: View {
                         .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
                         .cornerRadius(16)
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                        
+                        // Velora AI Engine Section
+                        VStack(alignment: .leading, spacing: 20) {
+                            Text("Velora AI Engine")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+                            
+                            VStack(alignment: .leading, spacing: 16) {
+                                FloatingLabelField(
+                                    label: "API Key",
+                                    placeholder: "velora-dev-key",
+                                    text: Binding(
+                                        get: { UserDefaults.standard.string(forKey: "velora_api_key") ?? "" },
+                                        set: { UserDefaults.standard.set($0, forKey: "velora_api_key") }
+                                    ),
+                                    isDark: isDark,
+                                    borderCol: borderCol,
+                                    labelCol: labelCol,
+                                    isSecure: true
+                                )
+                                
+                                Button(action: {
+                                    triggerAIIngestion()
+                                }) {
+                                    HStack {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                        Text("Sync Music to AI Engine")
+                                            .fontWeight(.medium)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 54)
+                                    .background(accentBg.opacity(0.15))
+                                    .cornerRadius(12)
+                                    .foregroundColor(labelCol)
+                                }
+                                
+                                if aiTotalTracks > 0 {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text("Sync Progress")
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundColor(.gray)
+                                            Spacer()
+                                            Text("\(aiProcessedTracks) / \(aiTotalTracks)")
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(isDark ? .white : .black)
+                                        }
+                                        
+                                        GeometryReader { geo in
+                                            ZStack(alignment: .leading) {
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .fill(Color.gray.opacity(0.2))
+                                                    .frame(height: 8)
+                                                
+                                                let progress = CGFloat(aiProcessedTracks) / CGFloat(max(1, aiTotalTracks))
+                                                RoundedRectangle(cornerRadius: 4)
+                                                    .fill(labelCol)
+                                                    .frame(width: geo.size.width * progress, height: 8)
+                                                    .animation(.spring(), value: progress)
+                                            }
+                                        }
+                                        .frame(height: 8)
+                                        
+                                        if isAISyncing {
+                                            Text("Syncing in progress...")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    .padding(.top, 8)
+                                }
+                            }
+                            .padding()
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                        }
+
                         // Danger Zone
                         VStack(alignment: .leading, spacing: 20) {
                             Button(action: {
@@ -925,6 +869,10 @@ struct AppSettingsView: View {
                         self.cacheSize = size
                     }
                 }
+                startAIStatusPolling()
+            }
+            .onDisappear {
+                stopAIStatusPolling()
             }
         }
         .sheet(isPresented: $showLogs) {
@@ -942,6 +890,76 @@ struct AppSettingsView: View {
             client.configure(url: finalUrl, user: username, pass: savedPass)
             if connectionMode != 2 {
                 client.fetchEverything()
+            }
+        }
+    }
+    
+    // MARK: - AI Ingestion Logic
+    private func triggerAIIngestion() {
+        guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
+              var components = URLComponents(string: serverStr) else { return }
+        components.port = 8000
+        components.path = "/api/v1/ingestion/scan_all"
+        guard let url = components.url else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+
+        Task {
+            do {
+                _ = try await URLSession.shared.data(for: request)
+                AppLogger.shared.log("AI Scan All triggered successfully", level: .info)
+                DispatchQueue.main.async {
+                    self.isAISyncing = true
+                    self.startAIStatusPolling()
+                }
+            } catch {
+                AppLogger.shared.log("Failed to trigger AI Scan: \(error.localizedDescription)", level: .error)
+            }
+        }
+    }
+    
+    private func startAIStatusPolling() {
+        if statusTimer == nil {
+            fetchAIStatus() // initial fetch
+            statusTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+                fetchAIStatus()
+            }
+        }
+    }
+    
+    private func stopAIStatusPolling() {
+        statusTimer?.invalidate()
+        statusTimer = nil
+    }
+    
+    private func fetchAIStatus() {
+        guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
+              var components = URLComponents(string: serverStr) else { return }
+        components.port = 8000
+        components.path = "/api/v1/ingestion/status"
+        guard let url = components.url else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(for: request)
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    DispatchQueue.main.async {
+                        self.aiTotalTracks = json["total_tracks"] as? Int ?? 0
+                        self.aiProcessedTracks = json["processed_tracks"] as? Int ?? 0
+                        self.isAISyncing = json["is_syncing"] as? Bool ?? false
+                    }
+                }
+            } catch {
+                AppLogger.shared.log("Failed to fetch AI Status: \(error.localizedDescription)", level: .error)
             }
         }
     }
