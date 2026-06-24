@@ -337,7 +337,7 @@ final class FanartManager: ObservableObject {
                         }
                     }
                 }
-            } catch { AppLogger.shared.log("Fanart JSON error: \(error, level: .error)") }
+            } catch { AppLogger.shared.log("Fanart JSON error: \(error)", level: .error) }
             DispatchQueue.main.async { completion(nil, false) }
         }
         task.priority = priority

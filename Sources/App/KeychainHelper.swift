@@ -39,7 +39,7 @@ final class KeychainHelper {
         }
 
         if status != errSecSuccess {
-            AppLogger.shared.log("Error saving to Keychain: \(status, level: .error)")
+            AppLogger.shared.log("Error saving to Keychain: \(status)", level: .error)
         }
     }
 
