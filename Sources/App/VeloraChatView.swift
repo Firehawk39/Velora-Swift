@@ -157,6 +157,13 @@ struct VeloraChatView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .background(Color.clear)
+                    .onChange(of: vm.inputText) { newValue in
+                        if newValue.hasSuffix("\n") {
+                            vm.inputText.removeLast()
+                            let ctx = playback.currentTrack.map { "Currently playing: \($0.title)" }
+                            vm.send(context: ctx)
+                        }
+                    }
             }
             .background(bubble)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
