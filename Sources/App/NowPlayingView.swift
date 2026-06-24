@@ -765,16 +765,6 @@ struct NowPlayingView: View {
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                    } else if playback.isLoadingLyrics {
-                        // Lyrics fetch in progress — keep spinner until they arrive
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(1.5)
-                            Spacer()
-                        }
-                        .padding(.top, 60)
                     } else {
                         // Fetch finished, nothing found
                         VStack(spacing: 12) {

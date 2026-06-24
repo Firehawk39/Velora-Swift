@@ -63,7 +63,7 @@ extension NavidromeClient {
                     }
                     self.saveOfflineMetadata()
                 }
-            } catch { AppLogger.shared.log("Error decoding albums: \(error, level: .error)") }
+            } catch { AppLogger.shared.log("Error decoding albums: \(error)", level: .error) }
         }.resume()
     }
 
@@ -107,7 +107,7 @@ extension NavidromeClient {
                     completion?(parsed)
                 }
             } catch {
-                AppLogger.shared.log("Error decoding artists: \(error, level: .error)")
+                AppLogger.shared.log("Error decoding artists: \(error)", level: .error)
                 DispatchQueue.main.async { completion?([]) }
             }
         }.resume()
@@ -218,7 +218,7 @@ extension NavidromeClient {
                     }
                 }
             } catch {
-                AppLogger.shared.log("Error decoding artist details: \(error, level: .error)")
+                AppLogger.shared.log("Error decoding artist details: \(error)", level: .error)
                 DispatchQueue.main.async { completion([], [], nil, nil) }
             }
         }.resume()
@@ -255,7 +255,7 @@ extension NavidromeClient {
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
-                AppLogger.shared.log("[Search] Network error: \(error.localizedDescription, level: .error)")
+                AppLogger.shared.log("[Search] Network error: \(error.localizedDescription)", level: .error)
                 DispatchQueue.main.async { completion([], [], []) }
                 return
             }
@@ -299,7 +299,7 @@ extension NavidromeClient {
                     completion(tracks, albums, artists)
                 }
             } catch {
-                AppLogger.shared.log("[Search] JSON decode error: \(error, level: .error)")
+                AppLogger.shared.log("[Search] JSON decode error: \(error)", level: .error)
                 DispatchQueue.main.async { completion([], [], []) }
             }
         }.resume()
@@ -323,7 +323,7 @@ extension NavidromeClient {
                     }
                     self.saveOfflineMetadata()
                 }
-            } catch { AppLogger.shared.log("Error decoding playlists: \(error, level: .error)") }
+            } catch { AppLogger.shared.log("Error decoding playlists: \(error)", level: .error) }
         }.resume()
     }
 
@@ -483,7 +483,7 @@ extension NavidromeClient {
                     }
                 }
             } catch {
-                AppLogger.shared.log("Error decoding search3.view at offset \(offset, level: .error): \(error)")
+                AppLogger.shared.log("Error decoding search3.view at offset \(offset): \(error)")
                 DispatchQueue.main.async { completion(allSongsSoFar) }
             }
         }.resume()
@@ -510,7 +510,7 @@ extension NavidromeClient {
 
         URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
             guard let tempLocation = tempLocation, error == nil else {
-                AppLogger.shared.log("Failed to download cover art for \(id, level: .error): \(error?.localizedDescription ?? "Unknown error")")
+                AppLogger.shared.log("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
                 return
             }
             do {
@@ -519,7 +519,7 @@ extension NavidromeClient {
                 }
                 try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
             } catch {
-                AppLogger.shared.log("Failed to save cover art for \(id, level: .error): \(error)")
+                AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
             }
         }.resume()
     }
@@ -574,7 +574,7 @@ extension NavidromeClient {
         guard await NetworkMonitor.shared.isConnected else { return nil }
 
         // Clean up title/artist for better matching (remove feat, remaster tags)
-        let cleanTitle = title.replacingOccurrences(of: "\\s*\\([^)]*\\)", with: "", options: .regularExpression)
+        let cleanTitle = title.replacingOccurrences(of: "\\s*\([^)]*\\)", with: "", options: .regularExpression)
                               .replacingOccurrences(of: "\\s*\\[[^]]*\\]", with: "", options: .regularExpression)
                               .trimmingCharacters(in: .whitespaces)
 
@@ -631,7 +631,7 @@ extension NavidromeClient {
                 }
             }
         } catch {
-            AppLogger.shared.log("[LRCLIB] Fetch error: \(error.localizedDescription, level: .error)")
+            AppLogger.shared.log("[LRCLIB] Fetch error: \(error.localizedDescription)", level: .error)
             return nil
         }
         return nil
@@ -663,7 +663,7 @@ extension NavidromeClient {
         ]) else { return }
         URLSession.shared.dataTask(with: url) { [weak self] _, _, error in
             if let error = error {
-                AppLogger.shared.log("Scrobble error: \(error, level: .error)")
+                AppLogger.shared.log("Scrobble error: \(error)", level: .error)
             } else if submission {
                 DispatchQueue.main.async {
                     guard let self = self else { return }
@@ -702,7 +702,6 @@ extension NavidromeClient {
             return
         }
         flushPendingScrobbles() // Flush any scrobbles queued while offline
-        fetchRecentlyPlayed()
         fetchAlbums()
         fetchArtists()
         fetchPlaylists()
