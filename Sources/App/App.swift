@@ -69,7 +69,7 @@ struct VeloraApp: App {
 
         var error: Unmanaged<CFError>?
         if !CTFontManagerRegisterGraphicsFont(font, &error) {
-            AppLogger.shared.log("❌ Error registering font: \(error!.takeUnretainedValue(, level: .error))")
+            AppLogger.shared.log("❌ Error registering font: \(error!.takeUnretainedValue())", level: .error)
         }
     }
 }
