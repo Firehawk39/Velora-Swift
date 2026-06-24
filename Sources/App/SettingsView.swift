@@ -104,15 +104,6 @@ struct SettingsView: View {
             .disabled(!isValidUrl(serverAddress))
             .padding(.top, 28)
 
-            // Settings shortcut (matches web)
-            Button(action: { withAnimation { step = .client } }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "gearshape").font(.system(size: 18))
-                    Text("Settings").font(.system(size: 18, weight: .medium))
-                }
-                .foregroundColor(Color(hex: "#9ca3af"))
-            }
-            .padding(.top, 28)
         }
         .padding(.horizontal, 24)
         .transition(.asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .leading)).combined(with: .opacity))

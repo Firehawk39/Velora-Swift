@@ -415,11 +415,11 @@ extension NavidromeClient {
 
         if let existing = playlists.first(where: { $0.name == "Lossless" }) {
             updatePlaylist(id: existing.id, songIdsToAdd: flacIds) { _ in
-                AppLogger.shared.log("Synced \(flacIds.count, level: .info) tracks to existing Lossless playlist.")
+                AppLogger.shared.log("Synced \(flacIds.count) tracks to existing Lossless playlist.", level: .info)
             }
         } else {
             createPlaylist(name: "Lossless", songIds: flacIds) { success in
-                if success { AppLogger.shared.log("Created new Lossless playlist with \(flacIds.count, level: .info) tracks.") }
+                if success { AppLogger.shared.log("Created new Lossless playlist with \(flacIds.count) tracks.", level: .info) }
             }
         }
     }
