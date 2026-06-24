@@ -574,8 +574,8 @@ extension NavidromeClient {
         guard await NetworkMonitor.shared.isConnected else { return nil }
 
         // Clean up title/artist for better matching (remove feat, remaster tags)
-        let cleanTitle = title.replacingOccurrences(of: "\\s*\([^)]*\\)", with: "", options: .regularExpression)
-                              .replacingOccurrences(of: "\\s*\\[[^]]*\\]", with: "", options: .regularExpression)
+        let cleanTitle = title.replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
+                              .replacingOccurrences(of: #"\s*\[[^\]]*\]"#, with: "", options: .regularExpression)
                               .trimmingCharacters(in: .whitespaces)
 
         let cleanArtist = artist.components(separatedBy: " feat.").first?
