@@ -45,6 +45,7 @@ def init_db():
             bpm REAL,
             key TEXT,
             danceability REAL,
+            tags TEXT,
             embedding BLOB
         )
     ''')

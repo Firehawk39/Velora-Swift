@@ -18,18 +18,18 @@ struct ContentView: View {
 
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150.0 } // Increased threshold to avoid overflow on 10.25" screens
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 } // iPhone SE, Mini, etc.
-    var isLandscape: Bool { 
+    var isLandscape: Bool {
         if UIDevice.current.userInterfaceIdiom == .pad {
             return UIScreen.main.bounds.width > UIScreen.main.bounds.height
         }
-        return vSizeClass == .compact 
+        return vSizeClass == .compact
     }
 
-    var headerHeight: CGFloat { 
+    var headerHeight: CGFloat {
         if ScreenTier.isSmall && !isLandscape {
             return 70
         }
-        return UIScreen.main.bounds.width < 768 ? 72 : 80 
+        return UIScreen.main.bounds.width < 768 ? 72 : 80
     }
 
     @AppStorage("velora_username") var username: String = ""
@@ -61,9 +61,9 @@ struct ContentView: View {
                     isDarkMode: isDarkMode,
                     toggleDark: { isDarkMode.toggle() },
                     onAction: {
-                        withAnimation {
-                            selectedArtistId = nil
-                            selectedArtistName = nil
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            artistStack.removeAll()
+                            artistDetailOffset = 0
                         }
                     }
                 )
@@ -72,14 +72,13 @@ struct ContentView: View {
                 .offset(y: ((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
                 .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
                 .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
-                .zIndex(300) 
-                
+                .zIndex(300)
+
                 artistDetailOverlay
                     .zIndex(200)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea()
-
 
             // ── Layer 5: Profile menu dropdown ──────────────────────
             if showProfileMenu {
@@ -132,15 +131,18 @@ struct ContentView: View {
         .preferredColorScheme((isDarkMode || activeTab == "now-playing") ? .dark : .light)
         .statusBarHidden(true)
         .hidePersistentSystemOverlays()
-        .onAppear { 
+        .onAppear {
             SyncManager.shared.configure(client: client, playback: playback)
-            autoLogin() 
+            autoLogin()
         }
         .onChange(of: activeTab) { _ in
-            withAnimation { 
-                isIdle = false 
-                selectedArtistId = nil
-                selectedArtistName = nil
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                isIdle = false
+                artistDetailOffset = UIScreen.main.bounds.width
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+                artistStack.removeAll()
+                artistDetailOffset = 0
             }
         }
         .fullScreenCover(isPresented: $showSettings) {
@@ -149,8 +151,9 @@ struct ContentView: View {
         }
     }
 
-    @State private var selectedArtistId: String? = nil
-    @State private var selectedArtistName: String? = nil
+    // MARK: — Artist navigation back-stack
+    // Each entry is a (id, name) pair. The overlay always shows the last element.
+    @State private var artistStack: [(id: String, name: String)] = []
 
     @ViewBuilder
     private var pageContent: some View {
@@ -159,8 +162,7 @@ struct ContentView: View {
             case "home":
                 HomeView(onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = id
-                        selectedArtistName = name
+                        artistStack.append((id: id, name: name))
                     }
                 }, onSeeAll: {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -170,8 +172,7 @@ struct ContentView: View {
             case "library":
                 LibraryView(onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = id
-                        selectedArtistName = name
+                        artistStack.append((id: id, name: name))
                     }
                 })
             case "settings":
@@ -179,8 +180,7 @@ struct ContentView: View {
             case "search":
                 SearchView(onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = id
-                        selectedArtistName = name
+                        artistStack.append((id: id, name: name))
                     }
                 })
             case "velora":
@@ -188,8 +188,7 @@ struct ContentView: View {
             case "now-playing":
                 NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle) { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = id
-                        selectedArtistName = name
+                        artistStack.append((id: id, name: name))
                     }
                 }
             default:
@@ -205,46 +204,63 @@ struct ContentView: View {
             }
         }
     }
-    
+
     @State private var artistDetailOffset: CGFloat = 0
 
     @ViewBuilder
     private var artistDetailOverlay: some View {
-        if let id = selectedArtistId, let name = selectedArtistName {
+        if let entry = artistStack.last {
             ArtistDetailView(
-                artistId: id,
-                artistName: name,
+                artistId: entry.id,
+                artistName: entry.name,
                 onArtistClick: { nextId, nextName in
+                    // Push onto back-stack — preserves full history
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = nextId
-                        selectedArtistName = nextName
+                        artistStack.append((id: nextId, name: nextName))
                         artistDetailOffset = 0
                     }
                 },
                 onPlay: { track, ctx in playback.playTrack(track, context: ctx) },
                 onBack: {
+                    // Pop back to previous artist in stack
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        selectedArtistId = nil
-                        selectedArtistName = nil
+                        if artistStack.count > 1 {
+                            artistStack.removeLast()
+                        } else {
+                            artistStack.removeAll()
+                        }
                         artistDetailOffset = 0
                     }
                 }
             )
-            .id(id)
+            .id(entry.id)
             .background(isDarkMode ? Color.black : Color.white)
             .offset(x: artistDetailOffset)
-            .gesture(
-                DragGesture()
+            // Edge-only swipe-to-dismiss: only fires when drag starts within 30pt of
+            // the left edge, matching iOS native back-swipe zone. This prevents
+            // conflicts with horizontal ScrollViews inside ArtistDetailView.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 10, coordinateSpace: .global)
                     .onChanged { value in
-                        if value.translation.width > 0 {
+                        let startX = value.startLocation.x
+                        let isEdgeSwipe = startX < 30
+                        let isHorizontalDrag = abs(value.translation.width) > abs(value.translation.height)
+                        if isEdgeSwipe && isHorizontalDrag && value.translation.width > 0 {
                             artistDetailOffset = value.translation.width
                         }
                     }
                     .onEnded { value in
-                        if value.translation.width > 100 || value.velocity.width > 300 {
+                        let startX = value.startLocation.x
+                        let isEdgeSwipe = startX < 30
+                        let isHorizontalDrag = abs(value.translation.width) > abs(value.translation.height)
+                        if isEdgeSwipe && isHorizontalDrag &&
+                           (value.translation.width > 100 || value.velocity.width > 300) {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                selectedArtistId = nil
-                                selectedArtistName = nil
+                                if artistStack.count > 1 {
+                                    artistStack.removeLast()
+                                } else {
+                                    artistStack.removeAll()
+                                }
                                 artistDetailOffset = 0
                             }
                         } else {
@@ -263,17 +279,17 @@ struct ContentView: View {
         var savedOnlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url") ?? ""
         var savedUser = UserDefaults.standard.string(forKey: "velora_username") ?? ""
         var connMode = UserDefaults.standard.integer(forKey: "velora_connection_mode")
-        
+
         // Keychain Fallback for app reinstalls (UserDefaults wiped, but Keychain survives)
         if savedUrl.isEmpty || savedUser.isEmpty {
             if let data = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
                let bundle = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: data) {
-                
+
                 savedUrl = bundle.serverUrl
                 savedOnlineUrl = bundle.onlineServerUrl
                 savedUser = bundle.username
                 connMode = bundle.connectionMode
-                
+
                 // Restore to UserDefaults seamlessly
                 UserDefaults.standard.set(bundle.serverUrl, forKey: "velora_server_url")
                 UserDefaults.standard.set(bundle.onlineServerUrl, forKey: "velora_online_server_url")
@@ -281,20 +297,20 @@ struct ContentView: View {
                 UserDefaults.standard.set(bundle.connectionMode, forKey: "velora_connection_mode")
             }
         }
-        
+
         let isOnline = (connMode == 1)
-        
+
         // If there are no saved credentials, do not log in automatically.
         // Instead, show the settings wizard (login screen) on fresh install.
         guard !savedUrl.isEmpty, !savedUser.isEmpty else {
             showSettings = true
             return
         }
-        
+
         // Retrieve the password securely from Keychain
         if let passData = KeychainHelper.shared.read(service: "velora-password", account: savedUser),
            let savedPass = String(data: passData, encoding: .utf8) {
-            
+
             let finalUrl = isOnline ? savedOnlineUrl : savedUrl
             client.configure(url: finalUrl, user: savedUser, pass: savedPass)
             client.loadOfflineMetadata()

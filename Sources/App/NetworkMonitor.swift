@@ -24,7 +24,7 @@ final class NetworkMonitor: ObservableObject {
     private init() {
         // Run an initial evaluation immediately
         evaluateConnectionState()
-        
+
         monitor.pathUpdateHandler = { [weak self] path in
             let connected = (path.status == .satisfied)
             Task { @MainActor in
@@ -34,7 +34,7 @@ final class NetworkMonitor: ObservableObject {
         }
         monitor.start(queue: monitorQueue)
     }
-    
+
     /// Re-evaluates isConnected based on both physical connection and user's forced offline setting
     func evaluateConnectionState() {
         let mode = UserDefaults.standard.integer(forKey: "velora_connection_mode")

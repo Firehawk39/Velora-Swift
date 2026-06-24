@@ -22,7 +22,7 @@ func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
     // Try extracting the real ID from a server URL for local lookup
     let resolvedId = extractArtId(from: id)
     let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(resolvedId).jpg")
-    
+
     if FileManager.default.fileExists(atPath: localUrl.path) {
         if let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
            let size = attr[.size] as? Int64, size > 0 {
@@ -33,7 +33,25 @@ func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
             // Fall through to return the serverUrl. If offline, AsyncImage will gracefully fail.
         }
     }
-    
+
+    return serverUrl.flatMap { URL(string: $0) }
+}
+
+func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
+    let resolvedId = extractArtId(from: id)
+    let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(resolvedId).jpg")
+
+    if FileManager.default.fileExists(atPath: localUrl.path) {
+        if let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
+           let size = attr[.size] as? Int64, size > 0 {
+            return localUrl // Valid local image
+        } else {
+            // It's a corrupted 0-byte marker
+            try? FileManager.default.removeItem(at: localUrl) // Self-heal by deleting it
+            // Fall through to return the serverUrl.
+        }
+    }
+
     return serverUrl.flatMap { URL(string: $0) }
 }
 
@@ -45,10 +63,10 @@ struct Artist: Identifiable, Codable, Sendable {
     var albumCount: Int?
     var coverArt: String?
     var created: String?
-    
+
     // Convenience computed URL
-    var coverArtUrl: URL? { resolveCoverArtUrl(id: id, serverUrl: coverArt) }
-    
+    var coverArtUrl: URL? { resolveArtistPortraitUrl(id: id, serverUrl: coverArt) }
+
     var allNames: [String] {
         var temp = name
         let textDelimiters = [" feat.", " ft.", " featuring "]
@@ -58,7 +76,7 @@ struct Artist: Identifiable, Codable, Sendable {
         let list = temp.components(separatedBy: CharacterSet(charactersIn: "&,")).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         return list.isEmpty ? [name] : list
     }
-    
+
     var primaryName: String {
         return allNames.first ?? name
     }
@@ -73,7 +91,7 @@ struct Album: Identifiable, Codable, Sendable {
     let duration: Int?
     let coverArt: String?
     var created: String?
-    
+
     var coverArtUrl: URL? { resolveCoverArtUrl(id: coverArt ?? id, serverUrl: coverArt) }
 }
 
@@ -92,19 +110,19 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
     let suffix: String?
     let track: Int?
     let discNumber: Int?
-    
-    var coverArtUrl: URL? { 
+
+    var coverArtUrl: URL? {
         let artId = coverArt ?? albumId ?? id.components(separatedBy: ".").first ?? id
         return resolveCoverArtUrl(id: artId, serverUrl: coverArt)
     }
-    
+
     var durationFormatted: String {
         guard let duration = duration else { return "0:00" }
         let minutes = duration / 60
         let seconds = duration % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
-    
+
     var allArtists: [String] {
         guard let artist = artist else { return ["Unknown Artist"] }
         var temp = artist
@@ -115,7 +133,7 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
         let list = temp.components(separatedBy: CharacterSet(charactersIn: "&,")).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         return list.isEmpty ? [artist] : list
     }
-    
+
     var primaryArtist: String {
         return allArtists.first ?? artist ?? "Unknown Artist"
     }
@@ -130,7 +148,6 @@ struct Playlist: Identifiable, Codable, Sendable {
     var created: String?
 }
 
-
 // MARK: - Authentication Helpers
 
 struct SubsonicAuth {
@@ -140,7 +157,7 @@ struct SubsonicAuth {
         let hash = Insecure.MD5.hash(data: data)
         return hash.map { String(format: "%02x", $0) }.joined()
     }
-    
+
     static func generateSalt() -> String {
         let characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         return String((0..<10).map { _ in characters.randomElement()! })

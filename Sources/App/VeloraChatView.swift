@@ -53,9 +53,16 @@ final class VeloraChatViewModel: ObservableObject {
         var request = URLRequest(url: base.appendingPathComponent("chat/message"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+        
         request.timeoutInterval = 60
 
-        var body: [String: Any] = ["message": prompt]
+        let history = messages.prefix(upTo: index).map {
+            ["role": $0.isUser ? "user" : "assistant", "content": $0.text]
+        }
+        var body: [String: Any] = ["messages": Array(history)]
         if let ctx = context { body["context"] = ctx }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 

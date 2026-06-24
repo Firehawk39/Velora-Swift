@@ -7,11 +7,11 @@ struct ArtistDetailView: View {
     let onArtistClick: (String, String) -> Void
     let onPlay: (Track, [Track]) -> Void
     let onBack: () -> Void
-    
+
     @EnvironmentObject var client: NavidromeClient
     @Environment(\.horizontalSizeClass) var hSizeClass
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
-    
+
     @State private var topSongs: [Track] = []
     @State private var favoriteSongs: [Track] = []
     @State private var albums: [Album] = []
@@ -19,23 +19,23 @@ struct ArtistDetailView: View {
     @State private var relatedArtists: [Artist] = []
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
-    
+
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1150 }
     var isCompact: Bool { hSizeClass == .compact }
-    
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
-            
+
             ArtistBackdropView(artistId: artistId, artistName: artistName, isDarkMode: isDarkMode, client: client)
                 .frame(height: isCompact ? 400 : 600)
                 .ignoresSafeArea()
-            
+
             ScrollView {
                 VStack(spacing: 0) {
                     heroSection
-                    
+
                     VStack(alignment: .leading, spacing: 48) {
                         // Main Two-Column Section
                         if isCompact {
@@ -48,15 +48,15 @@ struct ArtistDetailView: View {
                             HStack(alignment: .top, spacing: 64) {
                                 mostFavoriteSection
                                     .frame(maxWidth: 350)
-                                
+
                                 songsByArtistSection
                             }
                             .padding(.horizontal, 48)
                         }
-                        
+
                         discographySection
                         aboutSection
-                        
+
                         if !relatedArtists.isEmpty {
                             fansAlsoLikeSection
                         }
@@ -72,10 +72,10 @@ struct ArtistDetailView: View {
                 self.scrollOffset = value
             }
             .coordinateSpace(name: "scroll")
-            
+
             // Header
             headerOverlay
-            
+
             // Back
             if isCompact {
                 backButton
@@ -85,7 +85,7 @@ struct ArtistDetailView: View {
             fetchArtistData()
         }
     }
-    
+
     private var headerOverlay: some View {
         let opacity = min(1, max(0, (-scrollOffset - 300) / 50))
         return HStack {
@@ -104,24 +104,24 @@ struct ArtistDetailView: View {
         )
         .zIndex(100)
     }
-    
-    private var heroNameSize: CGFloat { 
+
+    private var heroNameSize: CGFloat {
         if isLargeCanvas { return 20.0 }
         if ScreenTier.isPhone { return ScreenTier.isSE ? 18 : 24 }
         return 16.0
     }
-    
+
     private var heroSection: some View {
         Group {
             if isCompact {
                 VStack(spacing: ScreenTier.isSE ? 16 : 24) {
                     artistLogo(size: ScreenTier.isSE ? 120 : 140)
-                    
+
                     VStack(spacing: 6) {
                         artistLabel
                         artistNameText(size: ScreenTier.isSE ? 24 : 28)
                     }
-                    
+
                     playAllButton
                         .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95)
                 }
@@ -139,22 +139,22 @@ struct ArtistDetailView: View {
                         }
                         .padding(.leading, 0)
                         .padding(.top, 20)
-                        
+
                         HStack {
                             Spacer()
                             artistLogo(size: 220)
                             Spacer()
                         }
                     }
-                    
+
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
                             artistLabel
                             artistNameText(size: 36)
                         }
-                        
+
                         Spacer()
-                        
+
                         playAllButton
                             .padding(.bottom, 8)
                     }
@@ -167,19 +167,19 @@ struct ArtistDetailView: View {
         .padding(.top, isCompact ? 60 : 160)
         .padding(.bottom, 32)
     }
-    
+
     private func artistLogo(size: CGFloat) -> some View {
         ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
             .id("portrait-\(artistId)")
     }
-    
+
     private var artistLabel: some View {
         Text("ARTIST")
             .kerning(2)
             .font(.system(size: 12, weight: .black))
             .foregroundColor(.gray)
     }
-    
+
     private func artistNameText(size: CGFloat) -> some View {
         Text(artistName)
             .kerning(-2)
@@ -187,7 +187,7 @@ struct ArtistDetailView: View {
             .foregroundColor(isDarkMode ? .white : .black)
             .multilineTextAlignment(.leading)
     }
-    
+
     private var playAllButton: some View {
         Button(action: {
             if !topSongs.isEmpty {
@@ -206,25 +206,25 @@ struct ArtistDetailView: View {
             .clipShape(Capsule())
         }
     }
-    
+
     private var mostFavoriteSection: some View {
         VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
             Text("Most Favourite")
                 .font(.system(size: 14, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
-            
+
             if let track = favoriteSongs.first ?? topSongs.first {
                 Button(action: { onPlay(track, topSongs) }) {
                     VStack(alignment: .leading, spacing: 12) {
                         SongArtworkView(track: track, isDarkMode: isDarkMode, height: isCompact ? 200 : 240)
                             .shadow(color: .black.opacity(isDarkMode ? 0.25 : 0.1), radius: 15, x: 0, y: 8)
-                        
+
                         VStack(alignment: .leading, spacing: 4) {
                             Text(track.title)
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(isDarkMode ? .white : .black)
                                 .lineLimit(1)
-                            
+
                             Text(track.album ?? "Unknown Album")
                                 .font(.system(size: 12))
                                 .foregroundColor(.gray)
@@ -236,13 +236,13 @@ struct ArtistDetailView: View {
             }
         }
     }
-    
+
     private var songsByArtistSection: some View {
         VStack(alignment: .leading, spacing: ScreenTier.isPhone ? 12 : 16) {
             Text("Songs by \(artistName)")
                 .font(.system(size: ScreenTier.isPhone ? 14 : 16, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
-            
+
             if isCompact {
                 VStack(spacing: 10) {
                     ForEach(topSongs.prefix(5)) { track in
@@ -258,26 +258,26 @@ struct ArtistDetailView: View {
             }
         }
     }
-    
+
     private func trackRow(_ track: Track) -> some View {
         Button(action: { onPlay(track, topSongs) }) {
             HStack(spacing: 16) {
                 SongArtworkView(track: track, isDarkMode: isDarkMode, size: 56)
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(track.title)
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(isDarkMode ? .white : .black)
                         .lineLimit(1)
-                    
+
                     Text(track.album ?? "Unknown Album")
                         .font(.system(size: 12))
                         .foregroundColor(.gray)
                         .lineLimit(1)
                 }
-                
+
                 Spacer()
-                
+
                 Text(track.durationFormatted)
                     .font(.system(size: 14))
                     .foregroundColor(.gray)
@@ -288,14 +288,14 @@ struct ArtistDetailView: View {
         }
         .buttonStyle(PlainButtonStyle())
     }
-    
+
     private var discographySection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("Discography")
                 .font(.system(size: 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .padding(.horizontal, isCompact ? 24 : 48)
-            
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 24) {
                     ForEach(albums) { album in
@@ -307,14 +307,14 @@ struct ArtistDetailView: View {
             }
         }
     }
-    
+
     private var fansAlsoLikeSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("Fans also like")
                 .font(.system(size: 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .padding(.horizontal, isCompact ? 24 : 48)
-            
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 24) {
                     ForEach(relatedArtists) { artist in
@@ -328,14 +328,14 @@ struct ArtistDetailView: View {
             }
         }
     }
-    
+
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("About")
                 .font(.system(size: 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .padding(.horizontal, isCompact ? 24 : 48)
-            
+
             if let bio = biography {
                 Text(bio)
                     .font(.system(size: 14))
@@ -344,7 +344,7 @@ struct ArtistDetailView: View {
             }
         }
     }
-    
+
     private var backButton: some View {
         Button(action: onBack) {
             Image(systemName: "chevron.left")
@@ -358,7 +358,7 @@ struct ArtistDetailView: View {
         .padding(.top, 60)
         .zIndex(110)
     }
-    
+
     private func fetchArtistData() {
         isLoading = true
         client.fetchArtistData(artistId: artistId) { tracks, albums, bio, mbid in
@@ -366,11 +366,11 @@ struct ArtistDetailView: View {
                 self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
                 self.favoriteSongs = tracks.filter { $0.isStarred }
                 self.albums = albums
-                
+
                 // Check network bio first, fallback to MusicBrainz offline cache
                 self.biography = bio ?? MusicBrainzManager.shared.getArtistBiography(for: self.artistName)
                 self.isLoading = false
-                
+
                 client.fetchArtists { artists in
                     DispatchQueue.main.async {
                         self.relatedArtists = Array(artists.shuffled().prefix(6)).filter { $0.id != artistId }
@@ -381,8 +381,6 @@ struct ArtistDetailView: View {
     }
 }
 
-
-
 // MARK: - Dedicated Subviews to prevent flickering
 
 struct ArtistPortraitView: View {
@@ -390,11 +388,11 @@ struct ArtistPortraitView: View {
     let size: CGFloat
     let client: NavidromeClient
     let isDarkMode: Bool
-    
+
     var body: some View {
         let fallbackUrl = client.getCoverArtUrl(id: artistId)
-        let resolvedUrl = resolveCoverArtUrl(id: artistId, serverUrl: fallbackUrl)
-        
+        let resolvedUrl = resolveArtistPortraitUrl(id: artistId, serverUrl: fallbackUrl)
+
         SelfHealingAsyncImage(url: resolvedUrl) { img in
             img.resizable()
                 .scaledToFill()
@@ -412,7 +410,7 @@ struct SongArtworkView: View {
     let isDarkMode: Bool
     var size: CGFloat? = nil
     var height: CGFloat? = nil
-    
+
     var body: some View {
         if size == nil && height == nil {
             Color.clear
@@ -448,13 +446,13 @@ struct ArtistBackdropView: View {
     let artistName: String
     let isDarkMode: Bool
     let client: NavidromeClient
-    
+
     var body: some View {
         ZStack {
             // Plain background color
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
-            
+
             // The "Radiating Glow" behind the portrait
             GeometryReader { proxy in
                 ZStack {
@@ -473,7 +471,7 @@ struct ArtistBackdropView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, proxy.size.height * 0.35) // Centered behind the portrait location
-                
+
                 // Top-to-Bottom Vignette for readability
                 LinearGradient(
                     gradient: Gradient(colors: [

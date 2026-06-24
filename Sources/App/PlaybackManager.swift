@@ -18,7 +18,7 @@ struct LyricLine: Hashable {
 final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @MainActor static var shared: PlaybackManager?
     @MainActor static var sharedBackgroundCompletion: (() -> Void)?
-    
+
     @Published var currentTrack: Track?
     @Published var playbackSessionId: UUID = UUID()
     @Published var isPlaying: Bool = false
@@ -38,27 +38,27 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     @Published var downloadedTrackIds = Set<String>()
     @Published var failedDownloadIds = Set<String>()
     @Published var activeDownloadCount = 0
-    
+
     // Playback History for correct 'Previous' behavior
     private var playbackHistory: [Int] = []
     private var isNavigatingHistory = false
-    
+
     // Scrobble tracking
     @Published var hasScrobbledCurrentTrack: Bool = false
-    
+
     private var integrityManager = IntegrityManager.shared
     private var integrityCancellable: Any?
-    
+
     func isDownloaded(_ trackId: String) -> Bool {
         return downloadedTrackIds.contains(trackId)
     }
-    
+
     func checkFileSystemForTrack(_ trackId: String) -> Bool {
         if isDownloaded(trackId) { return true }
-        
+
         let tracksDir = VeloraStorage.tracks
         let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
-        
+
         for ext in audioExtensions {
             let path = tracksDir.appendingPathComponent("\(trackId).\(ext)").path
             if FileManager.default.fileExists(atPath: path) {
@@ -67,54 +67,54 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         return false
     }
-    
+
     func filterOffline(_ tracks: [Track]) -> [Track] {
         return tracks.filter { isDownloaded($0.id) }
     }
-    
+
     enum RepeatMode {
         case off, one, all
     }
-    
+
     enum DownloadPriority {
         case high    // Currently playing album/playlist — inserted at front of queue
         case normal  // Bulk sync, manual background downloads
     }
-    
+
     @Published var downloadProgress: [String: Double] = [:]
     @Published var downloadETAs: [String: String] = [:]
     @Published var pausedDownloadIds = Set<String>()
-    
+
     private var downloadQueue: [Track] = []
     private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
     private var maxConcurrentDownloads: Int {
-        UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0 
+        UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0
             ? 5 : UserDefaults.standard.integer(forKey: "velora_download_concurrency")
     }
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
     private let maxRetries = 3
-    
+
     private var player: AVPlayer?
     private var secondaryPlayer: AVPlayer?
     private var artworkRetryCount = 0
     private var nextArtworkRetryTime: Date? = nil
-    
+
     private var timeObserver: Any?
     private var playerItemObserver: Any?
     @Published var currentArtworkTrackId: String? = nil
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil
     private var seekTimer: Timer?
-    
+
     var client: NavidromeClient
-    
+
     private lazy var downloadSession: URLSession = {
         let serverUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
         let isLocalNetwork = serverUrl.contains("192.168.") || serverUrl.contains("10.") || serverUrl.contains("172.") || serverUrl.contains(".local") || serverUrl.contains("localhost") || serverUrl.contains("127.0.0.1")
-        
+
         let configuration: URLSessionConfiguration
         if isLocalNetwork {
             // iOS 15 Background Daemon is blocked from accessing Local Network IPs.
@@ -123,36 +123,36 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         } else {
             configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
         }
-        
+
         // Maximize connections to the same host for faster concurrent downloads
         configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
         return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
     }()
-    
+
     init(client: NavidromeClient) {
         self.client = client
         super.init()
         PlaybackManager.shared = self
         configureAudioSession()
         setupRemoteCommandCenter()
-        
+
         // Bind to IntegrityManager's indexed IDs
         self.downloadedTrackIds = integrityManager.downloadedIds
         // Use a simple sink or notification to keep it in sync
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in }
-        
+
         loadDownloadedTracks()
-        
+
         // Listen for app termination to clear now playing info
         NotificationCenter.default.addObserver(self, selector: #selector(handleTerminate), name: UIApplication.willTerminateNotification, object: nil)
     }
-    
+
     @objc private func handleTerminate() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         player?.pause()
         cancelAllDownloads()
     }
-    
+
     func cancelAllDownloads() {
         for task in activeDownloadTasksByTrackId.values {
             task.cancel()
@@ -166,38 +166,38 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             self.activeDownloadCount = 0
         }
     }
-    
+
     // MARK: - Audio Session
-    
+
     private func configureAudioSession() {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .duckOthers])
             try AVAudioSession.sharedInstance().setActive(true)
-            
+
             // Gold Standard: Handle Audio Interruptions (e.g., phone calls)
             NotificationCenter.default.addObserver(self,
                                                    selector: #selector(handleInterruption),
                                                    name: AVAudioSession.interruptionNotification,
                                                    object: AVAudioSession.sharedInstance())
-            
+
             // Gold Standard: Handle Route Changes (e.g., headphones unplugged)
             NotificationCenter.default.addObserver(self,
                                                    selector: #selector(handleRouteChange),
                                                    name: AVAudioSession.routeChangeNotification,
                                                    object: AVAudioSession.sharedInstance())
-            
+
         } catch {
-            print("Failed to configure audio session: \(error)")
+            AppLogger.shared.log("Failed to configure audio session: \(error, level: .error)")
         }
     }
-    
+
     @objc private func handleInterruption(notification: Notification) {
         guard let userInfo = notification.userInfo,
               let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
             return
         }
-        
+
         switch type {
         case .began:
             // Interruption began, take appropriate actions
@@ -221,14 +221,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             break
         }
     }
-    
+
     @objc private func handleRouteChange(notification: Notification) {
         guard let userInfo = notification.userInfo,
               let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
             return
         }
-        
+
         switch reason {
         case .oldDeviceUnavailable:
             // e.g., headphones pulled out
@@ -240,15 +240,43 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         default: break
         }
     }
-    
+
     // MARK: - Playback Controls
-    
+
+    private func fireAITelemetry(for track: Track) {
+        guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
+              var components = URLComponents(string: serverStr) else { return }
+        components.port = 8000
+        components.path = "/api/v1/telemetry/event"
+        guard let url = components.url else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let apiKey = UserDefaults.standard.string(forKey: "velora_api_key") ?? "velora-dev-key"
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+
+        let contextStr = "\(track.title) by \(track.artist ?? "Unknown Artist")"
+        let body: [String: Any] = [
+            "event_type": "play",
+            "track_id": track.id,
+            "context": contextStr
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        Task {
+            _ = try? await URLSession.shared.data(for: request)
+        }
+    }
+
     /// Play a single track, optionally with a full queue context
     func playTrack(_ track: Track, context: [Track] = []) {
         // Clear history when starting a new context (e.g., clicking a new album/playlist)
         playbackHistory.removeAll()
         isNavigatingHistory = false
         
+        fireAITelemetry(for: track)
+
         if !context.isEmpty {
             self.queue = context
             self.unshuffledQueue = context
@@ -259,10 +287,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             self.unshuffledQueue = [track]
             self.queueIndex = 0
         }
-        
+
         loadAndPlay(track: track)
     }
-    
+
     private func getLocalAudioUrl(for trackId: String) -> URL? {
         let tracksDir = VeloraStorage.tracks
         let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
@@ -283,7 +311,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             guard let streamUrl = client.getStreamUrl(id: track.id) else { return }
             urlToPlay = streamUrl
         }
-        
+
         // Cleanup previous observer
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
@@ -293,7 +321,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             NotificationCenter.default.removeObserver(itemObserver)
             playerItemObserver = nil
         }
-        
+
         let playerItem = AVPlayerItem(url: urlToPlay)
         self.player = AVPlayer(playerItem: playerItem)
         self.currentTrack = track
@@ -307,13 +335,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.currentSyncedLyrics = nil
         self.currentPrimaryColor = .black
         self.currentPalette = [.black, .black, .black, .black, .black]
-        
+
         // Immediately clear backdrop to prevent ghosting on slow networks
         self.currentArtworkTrackId = nil
         FanartManager.shared.currentBackdrop = nil
-        
+
         let isOnline = NetworkMonitor.shared.isConnected
-        
+
         // Fetch lyrics — works offline too (returns disk-cached lyrics)
         client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
             DispatchQueue.main.async {
@@ -332,12 +360,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         }
-        
+
         FanartManager.shared.fetchBackdrop(for: track.allArtists)
-        
+
         player?.play()
         self.isPlaying = true
-        
+
         // Track progress — capture player instance to prevent stale-observer race condition
         guard let capturedPlayer = player else { return }
         timeObserver = capturedPlayer.addPeriodicTimeObserver(
@@ -350,14 +378,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                       self.player === capturedPlayer,  // Only the ACTIVE player may update progress
                       let item = capturedPlayer.currentItem,
                       item.duration.isNumeric else { return }
-                
+
                 self.progress = time.seconds
                 self.duration = item.duration.seconds
                 self.updateNowPlayingInfo()
-                
-                // Scrobble at 50% or 4 minutes (240s)
+
+                // Scrobble / Add to recently played at 30% completion
                 if !self.hasScrobbledCurrentTrack, self.duration > 0 {
-                    if self.progress >= (self.duration * 0.5) || self.progress >= 240 {
+                    if self.progress >= (self.duration * 0.3) {
                         self.hasScrobbledCurrentTrack = true
                         if NetworkMonitor.shared.isConnected {
                             self.client.scrobble(id: track.id, submission: true)
@@ -366,7 +394,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         }
-        
+
         // Auto-advance to next track when done
         playerItemObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -375,12 +403,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
-                
+
                 if let track = self.currentTrack, !self.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
                     self.hasScrobbledCurrentTrack = true
                     self.client.scrobble(id: track.id, submission: true)
                 }
-                
+
                 switch self.repeatMode {
                 case .one:
                     self.loadAndPlay(track: self.queue[self.queueIndex])
@@ -396,14 +424,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         }
-        
+
         // Mark as "Now Playing" on server (only when online)
         if isOnline {
             client.scrobble(id: track.id, submission: false)
         }
-        
+
         updateNowPlayingInfo()
-        
+
         if isOnline {
             prefetchNextTracks()
             prewarmNextTrack()
@@ -412,7 +440,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
-    
     private func boostCurrentContextDownloads() {
         // Move tracks from the current playback queue to the front of the download queue
         let currentQueueIds = Set(queue.map { $0.id })
@@ -420,7 +447,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             .filter { currentQueueIds.contains($0.element.id) }
             .map { $0.offset }
             .reversed() // Reverse to maintain stable indices during removal
-        
+
         var boosted: [Track] = []
         for idx in matchingIndices {
             boosted.insert(downloadQueue.remove(at: idx), at: 0)
@@ -439,31 +466,31 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private func prewarmNextTrack() {
         // Prewarming and crossfading have been removed per user request.
     }
-    
+
     private func prefetchNextTracks() {
         let prefetchCount = 3
         let start = queueIndex + 1
         let end = min(start + prefetchCount, queue.count)
-        
+
         guard start < end else { return }
-        
+
         for i in start..<end {
             let track = queue[i]
             let artist = track.artist ?? ""
             let delay = Double(i - start) * 1.5 // Stagger by 1.5s per track to respect MB rate limits (1 req/s)
-            
+
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                
+
                 // 1. Prefetch Backdrop Silently
                 await FanartManager.shared.downloadBackdropSilently(for: track.allArtists)
-                
+
                 // 2. Prefetch Metadata Silently
                 await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
             }
         }
     }
-    
+
     func togglePlayPause() {
         if isPlaying {
             player?.pause()
@@ -473,24 +500,24 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         isPlaying.toggle()
         updateNowPlayingInfo()
     }
-    
+
     func skipForward() {
         guard !queue.isEmpty else { return }
-        
+
         // Save current index to history before moving forward
         if !isNavigatingHistory {
             playbackHistory.append(queueIndex)
             // Limit history size to 100 entries
             if playbackHistory.count > 100 { playbackHistory.removeFirst() }
         }
-        
+
         let nextIndex = (queueIndex + 1) % queue.count
-        
+
         isNavigatingHistory = false
         queueIndex = nextIndex
         loadAndPlay(track: queue[queueIndex])
     }
-    
+
     func toggleRepeatMode() {
         switch repeatMode {
         case .off: repeatMode = .all
@@ -498,7 +525,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         case .one: repeatMode = .off
         }
     }
-    
+
     func skipBackward() {
         // If more than 3 seconds in, restart the current song
         if progress > 3 {
@@ -518,12 +545,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
     }
-    
+
     func seek(to time: Double) {
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
         player?.seek(to: cmTime)
     }
-    
+
     private func startContinuousSeek(forward: Bool) {
         stopContinuousSeek()
         // Immediate seek
@@ -536,41 +563,41 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
     }
-    
+
     private func stopContinuousSeek() {
         seekTimer?.invalidate()
         seekTimer = nil
     }
-    
+
     // MARK: - Remote Control Center
-    
+
     func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
-        
+
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.togglePlayPause() }
             return .success
         }
-        
+
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.togglePlayPause() }
             return .success
         }
-        
+
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.skipForward() }
             return .success
         }
-        
+
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor in self?.skipBackward() }
             return .success
         }
-        
+
         commandCenter.seekForwardCommand.isEnabled = true
         commandCenter.seekForwardCommand.addTarget { [weak self] event in
             guard let self = self, let seekEvent = event as? MPSeekCommandEvent else { return .commandFailed }
@@ -583,7 +610,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
             return .success
         }
-        
+
         commandCenter.seekBackwardCommand.isEnabled = true
         commandCenter.seekBackwardCommand.addTarget { [weak self] event in
             guard let self = self, let seekEvent = event as? MPSeekCommandEvent else { return .commandFailed }
@@ -596,7 +623,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
             return .success
         }
-        
+
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [10.0]
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
@@ -604,7 +631,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self.seek(to: self.progress + event.interval) }
             return .success
         }
-        
+
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [10.0]
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
@@ -612,7 +639,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self.seek(to: self.progress - event.interval) }
             return .success
         }
-        
+
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
@@ -620,10 +647,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return .success
         }
     }
-    
+
     private func updateNowPlayingInfo() {
         guard let track = currentTrack else { return }
-        
+
         var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
         nowPlayingInfo[MPMediaItemPropertyTitle] = track.title
         nowPlayingInfo[MPMediaItemPropertyArtist] = track.artist ?? ""
@@ -631,9 +658,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = progress
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-        
+
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
-        
+
         // Asynchronously load artwork for the Control Center:
         // - Cancel any in-flight download for a previous track
         // - Track downloadingArtworkTrackId separately from currentArtworkTrackId so a
@@ -642,9 +669,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if let retryTime = nextArtworkRetryTime, Date() < retryTime {
                 return
             }
-            
+
             let artworkUrl = track.coverArtUrl
-            
+
             if let url = artworkUrl {
                 if !url.isFileURL && !NetworkMonitor.shared.isConnected {
                     return
@@ -715,7 +742,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                             MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
                             self.currentPrimaryColor = extractedColor
                             self.currentPalette = extractedPalette
-                            
+
                             // If this was a successful self-healing attempt after a failure, force the UI to refresh
                             if self.currentArtworkTrackId != track.id {
                                 self.playbackSessionId = UUID()
@@ -733,13 +760,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
     }
-    
+
     private func parseLRC(_ lyrics: String) -> [LyricLine] {
         var result: [LyricLine] = []
         let lines = lyrics.components(separatedBy: .newlines)
-        
+
         let wordTagRegex = try? NSRegularExpression(pattern: "<(\\d+):(\\d+\\.\\d+)>\\s*([^<]+)")
-        
+
         for line in lines {
             guard line.hasPrefix("["), let bracketEnd = line.firstIndex(of: "]") else { continue }
             let timeString = String(line[line.index(after: line.startIndex)..<bracketEnd])
@@ -747,13 +774,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             let parts = timeString.components(separatedBy: ":")
             guard parts.count >= 2, let min = Double(parts[0]), let sec = Double(parts[1]) else { continue }
             let time = min * 60 + sec
-            
+
             var lyricWords: [LyricWord] = []
-            
+
             if let regex = wordTagRegex, rawText.contains("<") {
                 let nsRange = NSRange(rawText.startIndex..<rawText.endIndex, in: rawText)
                 let matches = regex.matches(in: rawText, range: nsRange)
-                
+
                 for match in matches {
                     if match.numberOfRanges == 4,
                        let minRange = Range(match.range(at: 1), in: rawText),
@@ -761,55 +788,55 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                        let textRange = Range(match.range(at: 3), in: rawText),
                        let wMin = Double(rawText[minRange]),
                        let wSec = Double(rawText[secRange]) {
-                        
+
                         let wTime = wMin * 60 + wSec
                         let wText = String(rawText[textRange]).trimmingCharacters(in: .whitespaces)
                         lyricWords.append(LyricWord(time: wTime, text: wText))
                     }
                 }
             }
-            
+
             let plainText = rawText.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
-            
+
             if !plainText.isEmpty {
                 result.append(LyricLine(time: time, text: plainText, words: lyricWords))
             }
         }
         return result.sorted { $0.time < $1.time }
     }
-    
-    // MARK: - Offline Downloads Management
-    
-    
 
-    
+    // MARK: - Offline Downloads Management
+
     func loadDownloadedTracks() {
         // Optimization: Use IntegrityManager's index if it's already populated
         if !integrityManager.downloadedIds.isEmpty {
             self.downloadedTrackIds = integrityManager.downloadedIds
             return
         }
-        
+
         let tracksDirectory = VeloraStorage.tracks
-        do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil)
-            
-            // Rebuild index from disk (First run or recovery)
-            integrityManager.rebuildIndex(from: fileURLs)
-            
-            DispatchQueue.main.async {
+        Task {
+            do {
+                // Perform the directory contents scanning on a background thread to prevent UI freezing
+                let fileURLs = try await Task.detached(priority: .userInitiated) {
+                    try FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil)
+                }.value
+
+                // Rebuild the index asynchronously on a background context
+                await integrityManager.rebuildIndex(from: fileURLs)
+
                 self.downloadedTrackIds = self.integrityManager.downloadedIds
                 self.objectWillChange.send()
+            } catch {
+                AppLogger.shared.log("Error loading downloaded tracks: \(error, level: .error)")
             }
-        } catch {
-            print("Error loading downloaded tracks: \(error)")
         }
     }
-    
+
     func refreshDownloadedTracks() {
         loadDownloadedTracks()
     }
-    
+
     func deleteDownload(trackId: String) {
         // 1. Cancel active download if in progress
         if let task = activeDownloadTasksByTrackId[trackId] {
@@ -822,7 +849,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         // Also remove from pending queue
         downloadQueue.removeAll { $0.id == trackId }
-        
+
         // 2. Delete the file from disk
         if let fileName = integrityManager.getFileName(for: trackId) {
             let filePath = VeloraStorage.tracks.appendingPathComponent(fileName)
@@ -838,13 +865,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         }
-        
+
         // 3. Unregister from index
         integrityManager.unregisterDownload(trackId: trackId)
         downloadedTrackIds.remove(trackId)
         failedDownloadIds.remove(trackId)
         objectWillChange.send()
-        
+
         AppLogger.shared.log("Deleted download for track \(trackId)", level: .info)
     }
 
@@ -861,7 +888,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if isDownloaded(track.id) { deleteDownload(trackId: track.id) }
         }
     }
-    
+
     /// Returns (downloaded, total) count for an album
     func albumDownloadStatus(albumId: String) -> (downloaded: Int, total: Int) {
         let tracks = client.allSongs.filter { $0.albumId == albumId }
@@ -874,14 +901,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let downloaded = tracks.filter { isDownloaded($0.id) }.count
         return (downloaded, tracks.count)
     }
-    
+
     func downloadAlbum(albumId: String) {
         let tracks = client.allSongs.filter { $0.albumId == albumId }
         for track in tracks {
             downloadTrack(track)
         }
     }
-    
+
     func downloadPlaylist(playlistId: String) {
         client.fetchPlaylistTracks(playlistId: playlistId) { tracks in
             DispatchQueue.main.async {
@@ -891,21 +918,21 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
     }
-    
+
     func downloadTrack(_ track: Track, priority: DownloadPriority = .normal) {
         AppLogger.shared.log("downloadTrack requested for \(track.id) - \(track.title)", level: .debug)
-        
+
         // Can't download without network
         guard NetworkMonitor.shared.isConnected else {
             AppLogger.shared.log("downloadTrack skipped for \(track.id) — offline", level: .info)
             return
         }
-        
+
         // 1. Check if already downloaded
         if checkFileSystemForTrack(track.id) {
-            return 
+            return
         }
-        
+
         // 2. TOGGLE LOGIC: Check if it's already active (Downloading or Paused)
         if let existingTask = activeDownloadTasksByTrackId[track.id] {
             if pausedDownloadIds.contains(track.id) {
@@ -919,17 +946,17 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
             return
         }
-        
+
         // 3. Add to queue if not already there
-        if downloadProgress[track.id] != nil { 
-            return 
+        if downloadProgress[track.id] != nil {
+            return
         }
-        
+
         // Mark as queued immediately
         DispatchQueue.main.async {
             self.downloadProgress[track.id] = 0.0
         }
-        
+
         switch priority {
         case .high:
             // Insert at front (after any already-active items)
@@ -939,17 +966,17 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         processQueue()
     }
-    
+
     private func processQueue() {
         AppLogger.shared.log("processQueue() - active: \(activeDownloadCount)/\(maxConcurrentDownloads), queue: \(downloadQueue.count)", level: .debug)
         guard activeDownloadCount < maxConcurrentDownloads, !downloadQueue.isEmpty else { return }
-        
+
         let track = downloadQueue.removeFirst()
         activeDownloadCount += 1
-        
+
         let streamUrl = client.getStreamUrl(id: track.id)
-        
-        guard let url = streamUrl else { 
+
+        guard let url = streamUrl else {
             AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
             DispatchQueue.main.async {
                 self.failedDownloadIds.insert(track.id)
@@ -957,9 +984,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 self.activeDownloadCount -= 1
                 self.processQueue()
             }
-            return 
+            return
         }
-        
+
         AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
         let task = downloadSession.downloadTask(with: url)
         task.taskDescription = "\(track.id)|\(track.suffix?.lowercased() ?? "mp3")"
@@ -967,7 +994,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
         downloadStartTimes[track.id] = Date()
         task.resume()
-        
+
         // Trigger cover art download alongside the track
         let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
         // Extract the real ID from a server URL if needed (e.g., "https://...?id=al-123" → "al-123")
@@ -981,31 +1008,30 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             cleanArtId = rawArtId
         }
         client.downloadCoverArt(id: cleanArtId)
-        
+
         // Trigger lyrics fetch alongside the track for offline use
         client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { _ in }
     }
 
-    
     // MARK: - URLSessionDownloadDelegate
-    
+
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        
+
         let now = Date()
-        
+
         Task { @MainActor in
             self.downloadProgress[trackId] = progress
-            
+
             if let start = self.downloadStartTimes[trackId] {
                 let elapsed = now.timeIntervalSince(start)
                 if elapsed > 1.0 && progress > 0.05 {
                     let speed = Double(totalBytesWritten) / elapsed // bytes/sec
                     let remainingBytes = Double(totalBytesExpectedToWrite - totalBytesWritten)
                     let remainingTime = remainingBytes / speed
-                    
+
                     if remainingTime > 3600 {
                         self.downloadETAs[trackId] = String(format: "%dh remaining", Int(remainingTime / 3600))
                     } else if remainingTime > 60 {
@@ -1017,21 +1043,21 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
     }
-    
+
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
         let suffix = String(desc[desc.index(after: separatorIdx)...])
-        
+
         let downloadsDir = VeloraStorage.tracks
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
-        
+
         do {
             if FileManager.default.fileExists(atPath: destinationUrl.path) {
                 try FileManager.default.removeItem(at: destinationUrl)
             }
-            
-            // iOS 15 Sandbox Fix: Copy the file instead of moving it to avoid "Operation not permitted" 
+
+            // iOS 15 Sandbox Fix: Copy the file instead of moving it to avoid "Operation not permitted"
             // when modifying the system-owned temporary directory.
             do {
                 try FileManager.default.copyItem(at: location, to: destinationUrl)
@@ -1040,10 +1066,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 let data = try Data(contentsOf: location)
                 try data.write(to: destinationUrl)
             }
-            
+
             let attributes = try FileManager.default.attributesOfItem(atPath: destinationUrl.path)
             let fileSize = attributes[.size] as? Int64 ?? 0
-            
+
             Task { @MainActor in
                 if fileSize < 1024 {
                      AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is corrupted. Retrying.", level: .error)
@@ -1075,24 +1101,24 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         } catch {
-            print("Failed to move downloaded file: \(error.localizedDescription)")
+            AppLogger.shared.log("Failed to move downloaded file: \(error.localizedDescription, level: .error)")
             Task { @MainActor in
                 self.failedDownloadIds.insert(trackId)
                 self.downloadProgress.removeValue(forKey: trackId)
                 self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
             }
         }
-        // Removed: downloadTasks.removeValue(forKey: downloadTask.taskIdentifier) 
+        // Removed: downloadTasks.removeValue(forKey: downloadTask.taskIdentifier)
         // We now only remove in didCompleteWithError to ensure the ID is available there.
     }
-    
+
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let desc = task.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
-        
+
         Task { @MainActor in
             self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
-            
+
             if let error = error {
                 let nsError = error as NSError
                 if nsError.code != NSURLErrorCancelled {
@@ -1121,7 +1147,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             self.processQueue()
         }
     }
-    
+
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         Task { @MainActor in
             PlaybackManager.sharedBackgroundCompletion?()
@@ -1129,13 +1155,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             IntegrityManager.shared.saveIndex()
         }
     }
-    
+
     func downloadAll(tracks: [Track]) {
         for track in tracks {
             downloadTrack(track)
         }
     }
-    
+
     func resetDownloadState() {
         AppLogger.shared.log("Resetting download state.", level: .info)
         downloadQueue.removeAll()
@@ -1148,7 +1174,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         failedDownloadIds.removeAll()
         pausedDownloadIds.removeAll()
     }
-    
+
     func toggleShuffle() {
         isShuffle.toggle()
         if isShuffle {
@@ -1157,7 +1183,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             restoreUnshuffledQueue()
         }
     }
-    
+
     private func applyShuffle() {
         guard !queue.isEmpty else { return }
         let current = queue[queueIndex]
@@ -1169,7 +1195,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         queue = newQueue
         queueIndex = 0
     }
-    
+
     private func restoreUnshuffledQueue() {
         guard !unshuffledQueue.isEmpty else { return }
         let current = queue[queueIndex]
@@ -1188,21 +1214,21 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     private func distributedShuffle(tracks: [Track]) -> [Track] {
         guard tracks.count > 1 else { return tracks }
-        
+
         // 1. Group tracks by artist
         var grouped: [String: [Track]] = [:]
         for track in tracks {
             let key = track.artist ?? "Unknown Artist"
             grouped[key, default: []].append(track)
         }
-        
+
         var scoredTracks: [(track: Track, score: Double)] = []
-        
+
         // 2. Assign spaced-out scores to each track
         for (_, group) in grouped {
             let shuffledGroup = group.shuffled()
             let increment = 1.0 / Double(shuffledGroup.count)
-            
+
             for (index, track) in shuffledGroup.enumerated() {
                 // Perfect spacing + random jitter
                 let baseScore = Double(index) * increment
@@ -1211,13 +1237,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 scoredTracks.append((track: track, score: finalScore))
             }
         }
-        
+
         // 3. Sort by score
         return scoredTracks.sorted { $0.score < $1.score }.map { $0.track }
     }
 
-
-    
     private func setupObservers(for item: AVPlayerItem, track: Track) {
         // Capture the player instance so stale observers from a previous item
         // cannot update progress/duration after the player has been replaced.
@@ -1248,7 +1272,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         }
-        
+
         playerItemObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -1256,12 +1280,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         ) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
-                
+
                 if let t = self.currentTrack, !self.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
                     self.hasScrobbledCurrentTrack = true
                     self.client.scrobble(id: t.id, submission: true)
                 }
-                
+
                 switch self.repeatMode {
                 case .one:
                     self.player?.seek(to: .zero)
@@ -1272,7 +1296,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
     }
-    
+
     private func fetchMetadata(for track: Track) {
         // Lyrics work offline (returns disk-cached lyrics)
         client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
@@ -1292,10 +1316,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         }
-        
+
         FanartManager.shared.fetchBackdrop(for: track.allArtists)
     }
-    
+
 }
 
 extension UIColor {
@@ -1335,16 +1359,16 @@ extension UIImage {
         self.draw(in: CGRect(origin: .zero, size: size))
         let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
-        
+
         guard let cgImage = resizedImage?.cgImage else { return [.black, .black, .black, .black, .black] }
-        
+
         let width = cgImage.width
         let height = cgImage.height
         let bytesPerPixel = 4
         let bytesPerRow = bytesPerPixel * width
         var rawData = [UInt8](repeating: 0, count: height * bytesPerRow)
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        
+
         guard let context = CGContext(
             data: &rawData,
             width: width,
@@ -1354,12 +1378,12 @@ extension UIImage {
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
         ) else { return [.black, .black, .black, .black, .black] }
-        
+
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        
+
         // 2. Count color frequencies using a quantization bucket (5 bits per channel)
         var colorCounts: [Int: (r: Int, g: Int, b: Int, count: Int)] = [:]
-        
+
         for y in 0..<height {
             for x in 0..<width {
                 let offset = (y * bytesPerRow) + (x * bytesPerPixel)
@@ -1367,14 +1391,14 @@ extension UIImage {
                 let g = Int(rawData[offset + 1])
                 let b = Int(rawData[offset + 2])
                 let a = Int(rawData[offset + 3])
-                
+
                 if a > 127 { // Only consider mostly opaque pixels
                     // Quantize to 32 levels per channel (15-bit color precision for bucketing)
                     let qr = r >> 3
                     let qg = g >> 3
                     let qb = b >> 3
                     let key = (qr << 10) | (qg << 5) | qb
-                    
+
                     if let existing = colorCounts[key] {
                         colorCounts[key] = (existing.r + r, existing.g + g, existing.b + b, existing.count + 1)
                     } else {
@@ -1383,7 +1407,7 @@ extension UIImage {
                 }
             }
         }
-        
+
         // 3. Average the colors in each bucket and convert to UIColor, sorted by frequency
         let frequentColors = colorCounts.values.sorted { $0.count > $1.count }.map { bucket -> UIColor in
             return UIColor(
@@ -1393,7 +1417,7 @@ extension UIImage {
                 alpha: 1.0
             )
         }
-        
+
         // Helper to compute color distance
         func distance(from c1: UIColor, to c2: UIColor) -> CGFloat {
             var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
@@ -1405,15 +1429,15 @@ extension UIImage {
             let db = b1 - b2
             return sqrt(dr*dr + dg*dg + db*db)
         }
-        
+
         var distinctColors: [UIColor] = []
         for color in frequentColors {
             var brightness: CGFloat = 0
             color.getHue(nil, saturation: nil, brightness: &brightness, alpha: nil)
-            
+
             // Skip extremely dark/bright colors for gradient aesthetics, unless it's the only color left
             if (brightness < 0.1 || brightness > 0.9) && distinctColors.count > 0 { continue }
-            
+
             // Ensure color is visually distinct from already selected colors
             let isDistinct = distinctColors.allSatisfy { distance(from: color, to: $0) > 0.20 }
             if isDistinct || distinctColors.isEmpty {
@@ -1421,7 +1445,7 @@ extension UIImage {
                 if distinctColors.count >= count { break }
             }
         }
-        
+
         // Fallback: fill remaining slots with the most frequent colors if we couldn't find enough distinct ones
         if distinctColors.count < count {
             for color in frequentColors {
@@ -1431,7 +1455,7 @@ extension UIImage {
                 }
             }
         }
-        
+
         // Final fallback if image was empty or pure transparent
         if distinctColors.isEmpty {
             if let firstDominant = dominantColor() {
@@ -1442,22 +1466,22 @@ extension UIImage {
         }
         while distinctColors.count < count {
             let baseColor = distinctColors[0]
-            
+
             // To pad the palette without introducing new color families,
             // we create analogous and monochromatic variations using tiny hue shifts
-            // and alternating brightness/saturation adjustments. This is the 
+            // and alternating brightness/saturation adjustments. This is the
             // golden standard approach used to preserve the album's tonal identity.
             let step = CGFloat(distinctColors.count)
             let isEven = distinctColors.count % 2 == 0
-            
+
             // A micro-shift in hue (0.02 is ~7 degrees) creates natural "analogous" colors
             let hueShift = isEven ? 0.02 * step : -0.02 * step
             let saturationShift = isEven ? -0.05 * step : 0.05 * step
             let brightnessShift = isEven ? 0.08 * step : -0.08 * step
-            
+
             distinctColors.append(baseColor.adjustColor(hue: hueShift, saturation: saturationShift, brightness: brightnessShift))
         }
-        
+
         return distinctColors
     }
 }

@@ -1,19 +1,18 @@
 import Foundation
 import SwiftUI
 
-@MainActor
-final class AppLogger: ObservableObject {
+final class AppLogger: @unchecked Sendable, ObservableObject {
     static let shared = AppLogger()
-    
+
     struct LogEntry: Identifiable {
         let id = UUID()
         let timestamp = Date()
         let message: String
         let level: LogLevel
-        
+
         enum LogLevel {
             case debug, info, warning, error
-            
+
             var color: Color {
                 switch self {
                 case .debug: return .gray
@@ -24,13 +23,13 @@ final class AppLogger: ObservableObject {
             }
         }
     }
-    
-    @Published var logs: [LogEntry] = []
-    
+
+    @MainActor @Published var logs: [LogEntry] = []
+
     private init() {}
-    
+
     func log(_ message: String, level: LogEntry.LogLevel = .debug) {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.logs.append(LogEntry(message: message, level: level))
             if self.logs.count > 1000 {
                 self.logs.removeFirst(self.logs.count - 1000)

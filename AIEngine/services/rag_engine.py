@@ -13,25 +13,28 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Global processor instance so we don't reload the 2GB model on every chat
-_processor = None
+# We now use the singleton from audio_processor
 
 def get_text_embedding(text: str) -> list:
-    global _processor
     if not ML_AVAILABLE:
         return [0.0] * 512
         
-    if _processor is None:
-        _processor = AudioProcessor()
+    try:
+        from services.audio_processor import get_audio_processor
+        processor = get_audio_processor()
+    except Exception as e:
+        logger.error(f"Failed to load audio processor: {e}")
+        return [0.0] * 512
         
-    if not _processor.model:
+    if not processor.model:
         return [0.0] * 512
         
     try:
-        inputs = _processor.processor(text=text, return_tensors="pt", padding=True)
-        inputs = {k: v.to(_processor.device) for k, v in inputs.items()}
+        inputs = processor.processor(text=text, return_tensors="pt", padding=True)
+        inputs = {k: v.to(processor.device) for k, v in inputs.items()}
         
         with torch.no_grad():
-            text_features = _processor.model.get_text_features(**inputs)
+            text_features = processor.model.get_text_features(**inputs)
             
         embedding = torch.nn.functional.normalize(text_features, p=2, dim=1)
         return embedding[0].cpu().tolist()
@@ -50,6 +53,7 @@ def perform_vector_search(query: str, limit: int = 3) -> list:
     cursor = conn.cursor()
     
     try:
+        # Fetch more candidates to rerank
         cursor.execute(
             """
             SELECT track_id, distance
@@ -58,44 +62,72 @@ def perform_vector_search(query: str, limit: int = 3) -> list:
             ORDER BY distance
             LIMIT ?
             """,
-            (embedding_bytes, limit)
+            (embedding_bytes, limit * 5)
         )
         
-        results = cursor.fetchall()
+        vec_results = cursor.fetchall()
         
-        # Hydrate with metadata from the standard tracks table
-        hydrated_results = []
-        for row in results:
+        # Hydrate with metadata and perform 60/40 Hybrid Weighting
+        candidates = []
+        for row in vec_results:
             track_id = row['track_id']
             distance = row['distance']
             
-            cursor.execute("SELECT bpm, key FROM tracks WHERE track_id = ?", (track_id,))
+            cursor.execute("SELECT bpm, key, tags FROM tracks WHERE track_id = ?", (track_id,))
             meta = cursor.fetchone()
             
             if meta:
-                hydrated_results.append({
+                tags = meta['tags'] or ""
+                
+                # Basic text matching for the 40% manual tag score
+                tag_score = 0.0
+                query_words = query.lower().split()
+                tags_lower = tags.lower()
+                
+                matches = sum(1 for w in query_words if len(w) > 3 and w in tags_lower)
+                if matches > 0:
+                    tag_score = min(1.0, matches * 0.5)
+                    
+                # Normalize vector distance (0 to 2 for cosine/L2 typically) into a 0 to 1 score where 1 is best
+                vector_score = max(0.0, 1.0 - (distance / 2.0))
+                
+                # 60/40 Hybrid Weighting formula
+                final_score = (0.6 * vector_score) + (0.4 * tag_score)
+                
+                candidates.append({
                     "track_id": track_id,
                     "bpm": meta['bpm'],
                     "key": meta['key'],
-                    "distance": distance
+                    "tags": tags,
+                    "distance": distance,  # raw vector distance for debug/context
+                    "final_score": final_score
                 })
         
-        return hydrated_results
+        # Sort by final hybrid score descending
+        candidates.sort(key=lambda x: x['final_score'], reverse=True)
+        return candidates[:limit]
     except Exception as e:
         logger.error(f"Vector search failed: {e}")
         return []
     finally:
         conn.close()
 
-async def perform_rag_and_generate(prompt: str, context: str | None, system_prompt: str) -> AsyncGenerator[str, None]:
+async def perform_rag_and_generate(messages: list[dict], context: str | None, system_prompt: str) -> AsyncGenerator[str, None]:
     """
-    1. Embeds the user's prompt (and context).
+    1. Embeds the user's latest prompt (and context).
     2. Searches sqlite-vec for similar tracks.
     3. Injects the results into the system prompt.
-    4. Calls Ollama.
+    4. Calls Ollama with the full conversation history.
     """
     
-    search_query = prompt
+    # Extract the latest user message for vector search
+    latest_user_msg = ""
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            latest_user_msg = msg.get("content", "")
+            break
+            
+    search_query = latest_user_msg
     if context:
         search_query += f" (Context: {context})"
         
@@ -112,5 +144,5 @@ async def perform_rag_and_generate(prompt: str, context: str | None, system_prom
         
     augmented_system_prompt = system_prompt + rag_context
     
-    async for chunk in generate_chat_stream(prompt, augmented_system_prompt):
+    async for chunk in generate_chat_stream(messages, augmented_system_prompt):
         yield chunk

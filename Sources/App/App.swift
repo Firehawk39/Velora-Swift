@@ -14,16 +14,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct VeloraApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    
+
     init() {
         // Migrate data from Documents/ to Application Support/VeloraData/ (one-time)
         VeloraStorage.migrateFromDocumentsIfNeeded()
         VeloraStorage.ensureDirectories()
-        
+
         registerCustomFonts()
         setupURLCache()
     }
-    
+
     private func setupURLCache() {
         // Configure a robust cache for album arts and metadata
         // 50 MB in-memory, 500 MB on-disk
@@ -32,22 +32,22 @@ struct VeloraApp: App {
                              diskPath: "velora_media_cache")
         URLCache.shared = cache
     }
-    
+
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
     }
-    
+
     private func registerCustomFonts() {
         // Find the font URL - searching main bundle and common sub-bundles
         let fontName = "Stardom-Regular"
         let fontExt = "otf"
-        
+
         var url: URL? = nil
-        
+
         url = Bundle.main.url(forResource: fontName, withExtension: fontExt)
-        
+
         if url == nil {
             // In some environments, resources are in a separate .bundle folder
             let possibleBundleNames = ["AppModule_AppModule", "AppModule", "Velora"]
@@ -59,17 +59,17 @@ struct VeloraApp: App {
                 }
             }
         }
-        
+
         guard let fontUrl = url,
               let fontDataProvider = CGDataProvider(url: fontUrl as CFURL),
               let font = CGFont(fontDataProvider) else {
-            print("❌ Failed to find or load Stardom-Regular.otf in main or module bundle.")
+            AppLogger.shared.log("❌ Failed to find or load Stardom-Regular.otf in main or module bundle.", level: .error)
             return
         }
-        
+
         var error: Unmanaged<CFError>?
         if !CTFontManagerRegisterGraphicsFont(font, &error) {
-            print("❌ Error registering font: \(error!.takeUnretainedValue())")
+            AppLogger.shared.log("❌ Error registering font: \(error!.takeUnretainedValue(, level: .error))")
         }
     }
 }
