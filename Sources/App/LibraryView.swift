@@ -206,11 +206,9 @@ struct LibraryView: View {
                                   .accessibilityLabel("Sync All Library")
                               }
                         }
+                        .padding(.horizontal, hPad)
+                        .padding(.bottom, 20)
                     }
-                }
-                .padding(.horizontal, hPad)
-                .padding(.bottom, 20)
-            }
 
             ScrollView(showsIndicators: false) {
                 Group {
