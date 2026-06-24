@@ -11,7 +11,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install Python 3.11 and bootstrap pip for Python 3.11 specifically.
 # NOTE: python3-pip on Ubuntu 22.04 installs pip for Python 3.10 (OS default).
 # We use python3.11 -m ensurepip to guarantee pip targets Python 3.11.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -f /etc/apt/sources.list.d/cuda*.list && \
+    rm -f /etc/apt/sources.list.d/nvidia*.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-dev \
     python3.11-venv \
