@@ -34,6 +34,12 @@ struct ContentView: View {
 
     @AppStorage("velora_username") var username: String = ""
 
+    private var isHeaderHidden: Bool {
+        (isIdle && activeTab == "now-playing") ||
+        (activeTab == "now-playing" && playback.isLyricsMode) ||
+        !artistStack.isEmpty
+    }
+
     init() {
         let clientInstance = NavidromeClient()
         let playbackInstance = PlaybackManager(client: clientInstance)
@@ -68,10 +74,10 @@ struct ContentView: View {
                     }
                 )
                 .padding(.top, 14)
-                .opacity(((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? 0 : 1)
-                .offset(y: ((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)) ? -100 : 0)
-                .allowsHitTesting(!((isIdle && activeTab == "now-playing") || (activeTab == "now-playing" && playback.isLyricsMode)))
-                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isIdle)
+                .opacity(isHeaderHidden ? 0 : 1)
+                .offset(y: isHeaderHidden ? -100 : 0)
+                .allowsHitTesting(!isHeaderHidden)
+                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isHeaderHidden)
                 .zIndex(300)
 
                 artistDetailOverlay
