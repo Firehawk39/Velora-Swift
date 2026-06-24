@@ -187,7 +187,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                                                    object: AVAudioSession.sharedInstance())
 
         } catch {
-            AppLogger.shared.log("Failed to configure audio session: \(error, level: .error)")
+            AppLogger.shared.log("Failed to configure audio session: \(error)", level: .error)
         }
     }
 
@@ -828,7 +828,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 self.downloadedTrackIds = self.integrityManager.downloadedIds
                 self.objectWillChange.send()
             } catch {
-                AppLogger.shared.log("Error loading downloaded tracks: \(error, level: .error)")
+                AppLogger.shared.log("Error loading downloaded tracks: \(error)", level: .error)
             }
         }
     }
@@ -1101,7 +1101,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
         } catch {
-            AppLogger.shared.log("Failed to move downloaded file: \(error.localizedDescription, level: .error)")
+            AppLogger.shared.log("Failed to move downloaded file: \(error.localizedDescription)", level: .error)
             Task { @MainActor in
                 self.failedDownloadIds.insert(trackId)
                 self.downloadProgress.removeValue(forKey: trackId)

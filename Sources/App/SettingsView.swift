@@ -2,7 +2,7 @@ import SwiftUI
 
 // 3-step wizard matching the web app exactly:
 // Step 1: Server URL  →  Step 2: Username + Password  →  (Optional) Step 3: Display name
-enum SettingsStep { case server, login, client }
+enum SettingsStep { case server, login }
 
 @MainActor
 struct SettingsView: View {
@@ -54,7 +54,6 @@ struct SettingsView: View {
                 switch step {
                 case .server: serverStep
                 case .login:  loginStep
-                case .client: clientStep
                 }
 
                 Spacer()
@@ -926,7 +925,9 @@ struct AppSettingsView: View {
         if statusTimer == nil {
             fetchAIStatus() // initial fetch
             statusTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-                fetchAIStatus()
+                Task { @MainActor in
+                    fetchAIStatus()
+                }
             }
         }
     }
