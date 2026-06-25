@@ -12,9 +12,9 @@ try:
     import torchaudio
     from transformers import AutoProcessor, ClapModel
     ML_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     ML_AVAILABLE = False
-    logging.warning("Heavy ML dependencies (torch, transformers, essentia) are not fully installed.")
+    logging.warning(f"Heavy ML dependencies (torch, transformers, essentia) are not fully installed. Error: {e}")
 
 logger = logging.getLogger(__name__)
 

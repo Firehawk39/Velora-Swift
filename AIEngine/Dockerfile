@@ -13,6 +13,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # We use python3.11 -m ensurepip to guarantee pip targets Python 3.11.
 RUN rm -f /etc/apt/sources.list.d/cuda*.list && \
     rm -f /etc/apt/sources.list.d/nvidia*.list && \
+    apt-get update && apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
     apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3.11-dev \

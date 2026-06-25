@@ -4,10 +4,52 @@ import UIKit
 
 // MARK: - Data Models
 
+enum MessageSegment: Identifiable {
+    case text(String)
+    case playAction(trackId: String)
+    var id: UUID { UUID() }
+}
+
 struct VeloraChatMessage: Identifiable {
     let id = UUID()
     let isUser: Bool
     var text: String
+    
+    var segments: [MessageSegment] {
+        var result: [MessageSegment] = []
+        let pattern = "\\[PLAY:\\s*([^]]+)\\]"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return [.text(text)]
+        }
+        
+        let nsString = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
+        
+        var currentIndex = 0
+        for match in matches {
+            if match.range.location > currentIndex {
+                let textPart = nsString.substring(with: NSRange(location: currentIndex, length: match.range.location - currentIndex))
+                if !textPart.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    result.append(.text(textPart.trimmingCharacters(in: .whitespacesAndNewlines)))
+                }
+            }
+            let trackId = nsString.substring(with: match.range(at: 1))
+            result.append(.playAction(trackId: trackId.trimmingCharacters(in: .whitespacesAndNewlines)))
+            currentIndex = match.range.location + match.range.length
+        }
+        
+        if currentIndex < nsString.length {
+            let remainder = nsString.substring(from: currentIndex)
+            if !remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || matches.isEmpty {
+                // Only keep raw spaces if there are no matches at all, otherwise trim
+                let finalStr = matches.isEmpty ? remainder : remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !finalStr.isEmpty {
+                    result.append(.text(finalStr))
+                }
+            }
+        }
+        return result
+    }
 }
 
 // MARK: - ViewModel
@@ -89,11 +131,78 @@ final class VeloraChatViewModel: ObservableObject {
     private struct StreamChunk: Decodable { let content: String }
 }
 
+// MARK: - TrackChipView
+
+struct TrackChipView: View {
+    let trackId: String
+    @EnvironmentObject var playback: PlaybackManager
+    @EnvironmentObject var client: NavidromeClient
+    
+    private var track: Track? {
+        client.allSongs.first(where: { $0.id == trackId })
+    }
+    
+    var body: some View {
+        if let track = track {
+            Button {
+                playback.play(track: track)
+            } label: {
+                HStack(spacing: 12) {
+                    AsyncImage(url: URL(string: track.coverArt ?? "")) { phase in
+                        switch phase {
+                        case .empty:
+                            Rectangle().fill(Color.gray.opacity(0.3))
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        case .failure:
+                            Rectangle().fill(Color.gray.opacity(0.3))
+                        @unknown default:
+                            EmptyView()
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.title)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                        Text(track.artist)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.white.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.white)
+                }
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        } else {
+            Text("[Track Not Found]")
+                .font(.system(size: 14))
+                .foregroundColor(.red)
+        }
+    }
+}
+
 // MARK: - View
 
 struct VeloraChatView: View {
     @StateObject private var vm = VeloraChatViewModel()
     @EnvironmentObject var playback: PlaybackManager
+    @EnvironmentObject var client: NavidromeClient
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
     @State private var scrollID: UUID? = nil
 
@@ -102,39 +211,62 @@ struct VeloraChatView: View {
     private var bubble: Color { isDarkMode ? Color.white.opacity(0.08) : Color.black.opacity(0.06) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer().frame(height: 100)
+        ZStack {
+            // Solid background for performance
+            bg.ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                Spacer().frame(height: 100)
 
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(vm.messages, id: \.id) { msg in
-                            HStack(alignment: .bottom, spacing: 0) {
-                                if msg.isUser { Spacer(minLength: 60) }
-                                Text(msg.text.isEmpty && !msg.isUser ? "▍" : msg.text)
-                                    .font(.system(size: 16))
-                                    .foregroundColor(fg)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(bubble)
-                                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                if !msg.isUser { Spacer(minLength: 60) }
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 20) {
+                            ForEach(vm.messages, id: \.id) { msg in
+                                HStack(alignment: .bottom, spacing: 0) {
+                                    if msg.isUser { Spacer(minLength: 40) }
+                                    
+                                    VStack(alignment: msg.isUser ? .trailing : .leading, spacing: 8) {
+                                        ForEach(msg.segments) { segment in
+                                            switch segment {
+                                            case .text(let text):
+                                                Text(text.isEmpty && !msg.isUser ? "▍" : text)
+                                                    .font(.system(size: 16))
+                                                    .foregroundColor(fg)
+                                                    .padding(.horizontal, 16)
+                                                    .padding(.vertical, 12)
+                                                    .background(msg.isUser ? Color.accentColor : bubble)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                                            case .playAction(let trackId):
+                                                TrackChipView(trackId: trackId)
+                                                    .frame(maxWidth: 250)
+                                            }
+                                        }
+                                    }
+                                    
+                                    if !msg.isUser { Spacer(minLength: 40) }
+                                }
+                                .id(msg.id)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
                             }
-                            .id(msg.id)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 20)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 20)
+                    .contentShape(Rectangle()) // Fix for the tap gesture intercept
+                    .scrollDismissesKeyboard(.interactively)
+                    .onTapGesture {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .onChange(of: vm.messages.count, perform: { _ in
+                        guard let last = vm.messages.last else { return }
+                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    })
                 }
-                .onChange(of: vm.messages.count, perform: { _ in
-                    guard let last = vm.messages.last else { return }
-                    withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                })
-            }
 
-            inputBar
+                inputBar
+            }
+            .background(Color.clear)
         }
-        .background(Color.clear)
     }
 
     private var inputBar: some View {
@@ -143,7 +275,7 @@ struct VeloraChatView: View {
                 if vm.inputText.isEmpty {
                     Text("Ask Velora...")
                         .font(.system(size: 16))
-                        .foregroundColor(.gray)
+                        .foregroundColor(fg.opacity(0.5))
                         .padding(.top, 14)
                         .padding(.leading, 18)
                         .allowsHitTesting(false)
@@ -160,6 +292,7 @@ struct VeloraChatView: View {
                             vm.inputText.removeLast()
                             let ctx = playback.currentTrack.map { "Currently playing: \($0.title)" }
                             vm.send(context: ctx)
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                         }
                     }
             }
@@ -176,7 +309,7 @@ struct VeloraChatView: View {
                     .font(.system(size: 34))
                     .foregroundColor(
                         vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? .gray : fg
+                            ? fg.opacity(0.3) : .accentColor
                     )
             }
             .disabled(vm.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
