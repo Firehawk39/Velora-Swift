@@ -132,8 +132,13 @@ struct HomeView: View {
             .padding(.top, 4)
         }
         .refreshable {
-            client.fetchAlbums()
-            client.fetchArtists()
+            await client.fetchAlbums()
+            await client.fetchArtists()
+        }
+        .onAppear {
+            if !client.isConfigured {
+                showingSettings = true
+            }
         }
     }
 }

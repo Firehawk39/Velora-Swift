@@ -227,7 +227,7 @@ struct NowPlayingView: View {
         guard !isQueueOpen && !playback.isLyricsMode else { return }
 
         idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 // Golden standard: ONE animation context drives the entire view tree.
                 // blendDuration: if the user taps during this dissolve, the reverse
                 // animation blends in smoothly instead of snapping.
@@ -829,7 +829,7 @@ struct NowPlayingView: View {
         if let artistId = track.artistId {
             isFetchingArtistInfo = true
             playback.client.fetchArtistInfo(artistId: artistId) { bio, mbid in
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     // Check if we haven't skipped to another track in the meantime
                     guard self.playback.currentTrack?.id == track.id else { return }
 

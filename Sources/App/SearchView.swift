@@ -114,7 +114,7 @@ struct SearchView: View {
                     self.client.allSongs.contains { $0.artistId == artist.id && self.playback.isDownloaded($0.id) }
                 }
 
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     guard self.searchGeneration == myGeneration else { return }
                     self.tracks = Array(foundTracks.prefix(20))
                     self.albums = Array(foundAlbums.prefix(10))
