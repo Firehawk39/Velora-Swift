@@ -145,7 +145,7 @@ struct TrackChipView: View {
     var body: some View {
         if let track = track {
             Button {
-                playback.play(track: track)
+                playback.loadAndPlay(track: track)
             } label: {
                 HStack(spacing: 12) {
                     AsyncImage(url: URL(string: track.coverArt ?? "")) { phase in
@@ -168,7 +168,7 @@ struct TrackChipView: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(.white)
                             .lineLimit(1)
-                        Text(track.artist)
+                        Text(track.artist ?? "Unknown Artist")
                             .font(.system(size: 13, weight: .regular))
                             .foregroundColor(.white.opacity(0.7))
                             .lineLimit(1)
@@ -253,7 +253,7 @@ struct VeloraChatView: View {
                         .padding(.bottom, 20)
                     }
                     .contentShape(Rectangle()) // Fix for the tap gesture intercept
-                    .scrollDismissesKeyboard(.interactively)
+                    // .scrollDismissesKeyboard(.interactively)
                     .onTapGesture {
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
