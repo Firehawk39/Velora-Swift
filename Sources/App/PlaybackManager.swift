@@ -90,7 +90,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadStartTimes: [String: Date] = [:]
     private var maxConcurrentDownloads: Int {
         UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0
-            ? 15 : UserDefaults.standard.integer(forKey: "velora_download_concurrency")
+            ? 5 : UserDefaults.standard.integer(forKey: "velora_download_concurrency")
     }
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID

@@ -356,7 +356,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_connection_mode") private var connectionMode: Int = 0
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
-    @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 15
+    @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @State private var showLogs: Bool = false
     
     // AI Ingestion State
@@ -716,7 +716,7 @@ struct AppSettingsView: View {
                             Slider(value: Binding(
                                 get: { Double(downloadConcurrency) },
                                 set: { downloadConcurrency = Int($0) }
-                            ), in: 1...50, step: 1)
+                            ), in: 1...15, step: 1)
                             .accentColor(accentBg)
                             
                             Text("Higher values speed up downloads but may slow down your server or drain battery.")
