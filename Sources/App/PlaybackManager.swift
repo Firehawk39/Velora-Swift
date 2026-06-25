@@ -301,7 +301,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         return nil
     }
 
-    private func loadAndPlay(track: Track) {
+    func loadAndPlay(track: Track) {
         let urlToPlay: URL
         if let localUrl = getLocalAudioUrl(for: track.id) {
             urlToPlay = localUrl
