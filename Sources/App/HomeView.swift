@@ -132,8 +132,8 @@ struct HomeView: View {
             .padding(.top, 4)
         }
         .refreshable {
-            await client.fetchAlbums()
-            await client.fetchArtists()
+            client.fetchAlbums()
+            client.fetchArtists()
         }
     }
 }
