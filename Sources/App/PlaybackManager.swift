@@ -622,7 +622,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return .success
         }
 
-        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.isEnabled = false
         commandCenter.skipForwardCommand.preferredIntervals = [10.0]
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
             guard let self = self, let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
@@ -630,7 +630,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return .success
         }
 
-        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.isEnabled = false
         commandCenter.skipBackwardCommand.preferredIntervals = [10.0]
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
             guard let self = self, let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
