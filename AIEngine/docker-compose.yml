@@ -3,8 +3,8 @@ services:
     build: .
     container_name: velora-ai-engine
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # Use host networking so the container can directly access localhost:11434 (Ollama)
+    network_mode: "host"
     volumes:
       # Save the sqlite-vec database in the unified data folder
       - /home/tony/Velora_AI/db:/app/data
@@ -13,11 +13,9 @@ services:
       # Mount your existing Navidrome music folder (Read-Only)
       - /home/tony/navidrome/music:/music:ro
     environment:
-      # Connect to the native Ollama installation running on your Ubuntu Host
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434/api
-    # This is required for host.docker.internal to work natively on Ubuntu Linux
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # Connect directly to localhost since we are on the host network
+      - OLLAMA_BASE_URL=http://localhost:11434/api
+
     # GPU Passthrough configuration for PyTorch
     deploy:
       resources:
