@@ -703,7 +703,7 @@ extension NavidromeClient {
         UserDefaults.standard.removeObject(forKey: pendingScrobblesKey)
     }
 
-    func reportNowPlaying(id: String) { scrobble(id: id, submission: false) }
+    func reportNowPlaying(track: Track) { scrobble(track: track, submission: false) }
 
     // MARK: - Batch Fetch
 

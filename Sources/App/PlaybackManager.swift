@@ -399,11 +399,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self else { return }
+                guard let manager = self else { return }
 
-                if let track = self.currentTrack, !self.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
-                    self.hasScrobbledCurrentTrack = true
-                    self.client.scrobble(id: track.id, submission: true)
+                if let track = manager.currentTrack, !manager.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
+                    manager.hasScrobbledCurrentTrack = true
+                    manager.client.scrobble(track: track, submission: true)
                 }
 
                 switch self.repeatMode {
@@ -424,7 +424,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         // Mark as "Now Playing" on server (only when online)
         if isOnline {
-            client.scrobble(id: track.id, submission: false)
+            client.scrobble(track: track, submission: false)
         }
 
         updateNowPlayingInfo()
@@ -1251,7 +1251,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 guard let self = self,
                       let capturedPlayer = capturedPlayer,
                       self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                      let currentItem = capturedPlayer.currentItem,
+                      let currentItem = capturedPlayer?.currentItem,
                       currentItem.duration.isNumeric else { return }
 
                 self.progress = time.seconds
@@ -1263,7 +1263,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     if self.progress >= (self.duration * 0.5) || self.progress >= 240 {
                         self.hasScrobbledCurrentTrack = true
                         if NetworkMonitor.shared.isConnected {
-                            self.client.scrobble(id: track.id, submission: true)
+                            self.client.scrobble(track: track, submission: true)
                         }
                     }
                 }
@@ -1280,7 +1280,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
                 if let t = self.currentTrack, !self.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
                     self.hasScrobbledCurrentTrack = true
-                    self.client.scrobble(id: t.id, submission: true)
+                    self.client.scrobble(track: t, submission: true)
                 }
 
                 switch self.repeatMode {
