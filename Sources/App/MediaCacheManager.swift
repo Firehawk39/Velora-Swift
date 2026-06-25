@@ -18,7 +18,8 @@ final class BackdropManager: ObservableObject {
     }
 
     func fetchBackdrop(for artist: String, artistId: String? = nil) {
-        let fileName = sanitizeFileName(artist) + ".jpg"
+        let key = (artistId != nil && !artistId!.isEmpty) ? artistId! : sanitizeFileName(artist)
+        let fileName = key + ".jpg"
         let fileUrl = cacheDirectory.appendingPathComponent(fileName)
 
         // 1. Check Local Cache
