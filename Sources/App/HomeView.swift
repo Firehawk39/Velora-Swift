@@ -135,11 +135,6 @@ struct HomeView: View {
             await client.fetchAlbums()
             await client.fetchArtists()
         }
-        .onAppear {
-            if !client.isConfigured {
-                showingSettings = true
-            }
-        }
     }
 }
 
