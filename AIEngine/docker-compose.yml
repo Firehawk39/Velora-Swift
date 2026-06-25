@@ -16,6 +16,8 @@ services:
     environment:
       # Connect directly to localhost since we are on the host network
       - OLLAMA_BASE_URL=http://localhost:11434/api
+      # Use the user's specific locally downloaded model
+      - VELORA_MODEL=gemma4:e4b
 
     # GPU Passthrough configuration for PyTorch
     deploy:
