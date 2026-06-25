@@ -17,23 +17,23 @@ extension NavidromeClient {
         URLSession.shared.dataTask(with: request) { data, _, error in
             if let error = error {
                 let desc = error.localizedDescription
-                DispatchQueue.main.async { completion(false, desc) }
+                Task { @MainActor in completion(false, desc) }
                 return
             }
             guard let data = data else {
-                DispatchQueue.main.async { completion(false, "No data received.") }
+                Task { @MainActor in completion(false, "No data received.") }
                 return
             }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 if decoded.subsonicResponse?.status == "ok" {
-                    DispatchQueue.main.async { completion(true, nil) }
+                    Task { @MainActor in completion(true, nil) }
                 } else {
                     let msg = decoded.subsonicResponse?.error?.message ?? "Authentication failed."
-                    DispatchQueue.main.async { completion(false, msg) }
+                    Task { @MainActor in completion(false, msg) }
                 }
             } catch {
-                DispatchQueue.main.async { completion(false, "Failed to parse server response.") }
+                Task { @MainActor in completion(false, "Failed to parse server response.") }
             }
         }.resume()
     }
@@ -51,7 +51,7 @@ extension NavidromeClient {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let items = decoded.subsonicResponse?.albumList?.album ?? decoded.subsonicResponse?.albumList2?.album ?? []
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.albums = items.map { sub in
                         var a = Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
@@ -80,7 +80,7 @@ extension NavidromeClient {
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                DispatchQueue.main.async { completion?([]) }
+                Task { @MainActor in completion?([]) }
                 return
             }
             do {
@@ -97,7 +97,7 @@ extension NavidromeClient {
                     }
                 }
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { completion?([]); return }
                     let parsed = rawArtists.map { raw in
                         Artist(id: raw.id, name: raw.name, coverArt: self.getCoverArtUrl(id: raw.id))
@@ -108,7 +108,7 @@ extension NavidromeClient {
                 }
             } catch {
                 AppLogger.shared.log("Error decoding artists: \(error)", level: .error)
-                DispatchQueue.main.async { completion?([]) }
+                Task { @MainActor in completion?([]) }
             }
         }.resume()
     }
@@ -120,14 +120,14 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                DispatchQueue.main.async { completion([]) }
+                Task { @MainActor in completion([]) }
                 return
             }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawSongs = decoded.subsonicResponse?.album?.song ?? []
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawSongs.map { s in
                         var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
@@ -143,7 +143,7 @@ extension NavidromeClient {
                     completion(tracks)
                 }
             } catch {
-                DispatchQueue.main.async { completion([]) }
+                Task { @MainActor in completion([]) }
             }
         }.resume()
     }
@@ -167,7 +167,7 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                DispatchQueue.main.async { completion([], [], nil, nil) }
+                Task { @MainActor in completion([], [], nil, nil) }
                 return
             }
             do {
@@ -175,7 +175,7 @@ extension NavidromeClient {
                 let subsonicArtist = decoded.subsonicResponse?.artist
                 let albumsData = subsonicArtist?.album ?? []
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { completion([], [], nil, nil); return }
 
                     let albums = albumsData.map { a -> Album in
@@ -219,7 +219,7 @@ extension NavidromeClient {
                 }
             } catch {
                 AppLogger.shared.log("Error decoding artist details: \(error)", level: .error)
-                DispatchQueue.main.async { completion([], [], nil, nil) }
+                Task { @MainActor in completion([], [], nil, nil) }
             }
         }.resume()
     }
@@ -229,7 +229,7 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil, nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                DispatchQueue.main.async { completion(nil, nil) }
+                Task { @MainActor in completion(nil, nil) }
                 return
             }
             do {
@@ -237,9 +237,9 @@ extension NavidromeClient {
                 let info = decoded.subsonicResponse?.artistInfo ?? decoded.subsonicResponse?.artistInfo2
                 let biography = info?.biography
                 let musicBrainzId = info?.musicBrainzId
-                DispatchQueue.main.async { completion(biography, musicBrainzId) }
+                Task { @MainActor in completion(biography, musicBrainzId) }
             } catch {
-                DispatchQueue.main.async { completion(nil, nil) }
+                Task { @MainActor in completion(nil, nil) }
             }
         }.resume()
     }
@@ -256,12 +256,12 @@ extension NavidromeClient {
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
                 AppLogger.shared.log("[Search] Network error: \(error.localizedDescription)", level: .error)
-                DispatchQueue.main.async { completion([], [], []) }
+                Task { @MainActor in completion([], [], []) }
                 return
             }
             guard let data = data else {
                 AppLogger.shared.log("[Search] No data received from server", level: .info)
-                DispatchQueue.main.async { completion([], [], []) }
+                Task { @MainActor in completion([], [], []) }
                 return
             }
             do {
@@ -271,7 +271,7 @@ extension NavidromeClient {
                 let rawAlbums = r?.album ?? []
                 let rawArtists = r?.artist ?? []
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { completion([], [], []); return }
 
                     let tracks = rawSongs.map { s in
@@ -300,7 +300,7 @@ extension NavidromeClient {
                 }
             } catch {
                 AppLogger.shared.log("[Search] JSON decode error: \(error)", level: .error)
-                DispatchQueue.main.async { completion([], [], []) }
+                Task { @MainActor in completion([], [], []) }
             }
         }.resume()
     }
@@ -316,7 +316,7 @@ extension NavidromeClient {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawPlaylists = decoded.subsonicResponse?.playlists?.playlist ?? []
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.playlists = rawPlaylists.map { p in
                         Playlist(id: p.id, name: p.name, owner: p.owner, songCount: p.songCount, duration: p.duration, created: p.created)
@@ -332,14 +332,14 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "getPlaylist.view", params: ["id": playlistId]) else { completion([]); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                DispatchQueue.main.async { completion([]) }
+                Task { @MainActor in completion([]) }
                 return
             }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawTracks = decoded.subsonicResponse?.playlist?.entry ?? []
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawTracks.map { s in
                         var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
@@ -355,7 +355,7 @@ extension NavidromeClient {
                     completion(tracks)
                 }
             } catch {
-                DispatchQueue.main.async { completion([]) }
+                Task { @MainActor in completion([]) }
             }
         }.resume()
     }
@@ -370,7 +370,7 @@ extension NavidromeClient {
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
             let success = error == nil
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self = self else { completion(success); return }
                 if success { self.fetchPlaylists() }
                 completion(success)
@@ -385,7 +385,7 @@ extension NavidromeClient {
         }
         URLSession.shared.dataTask(with: url) { data, _, error in
             let success = error == nil
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self = self else { completion(success); return }
                 if success { self.fetchPlaylists() }
                 completion(success)
@@ -405,7 +405,7 @@ extension NavidromeClient {
 
         URLSession.shared.dataTask(with: url) { data, _, error in
             let success = error == nil
-            DispatchQueue.main.async { completion(success) }
+            Task { @MainActor in completion(success) }
         }.resume()
     }
 
@@ -453,7 +453,7 @@ extension NavidromeClient {
 
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                DispatchQueue.main.async { completion(allSongsSoFar) }
+                Task { @MainActor in completion(allSongsSoFar) }
                 return
             }
 
@@ -461,7 +461,7 @@ extension NavidromeClient {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let rawSongs = decoded.subsonicResponse?.searchResult3?.song ?? []
 
-                DispatchQueue.main.async { [weak self] in
+                Task { @MainActor [weak self] in
                     guard let self = self else { completion(allSongsSoFar); return }
                     let songs = rawSongs.map { s in
                         var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
@@ -484,7 +484,7 @@ extension NavidromeClient {
                 }
             } catch {
                 AppLogger.shared.log("Error decoding search3.view at offset \(offset): \(error)")
-                DispatchQueue.main.async { completion(allSongsSoFar) }
+                Task { @MainActor in completion(allSongsSoFar) }
             }
         }.resume()
     }
@@ -665,7 +665,7 @@ extension NavidromeClient {
             if let error = error {
                 AppLogger.shared.log("Scrobble error: \(error)", level: .error)
             } else if submission {
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     guard let self = self else { return }
                     if let track = self.allSongs.first(where: { $0.id == id }) {
                         self.recentlyPlayed.removeAll(where: { $0.id == id })
@@ -712,12 +712,12 @@ extension NavidromeClient {
 
     func fetchCoverArt(id: String, size: Int = 500, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         guard NetworkMonitor.shared.isConnected else {
-            DispatchQueue.main.async { completion(false) }
+            Task { @MainActor in completion(false) }
             return
         }
         let urlStr = getCoverArtUrl(id: id)
         guard let url = URL(string: urlStr) else {
-            DispatchQueue.main.async { completion(false) }
+            Task { @MainActor in completion(false) }
             return
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
@@ -726,27 +726,27 @@ extension NavidromeClient {
                 if let naData = "NA".data(using: .utf8) {
                     try? naData.write(to: localUrl)
                 }
-                DispatchQueue.main.async { completion(false) }
+                Task { @MainActor in completion(false) }
                 return
             }
             // Save to VeloraStorage
             do {
                 try data.write(to: localUrl)
-                DispatchQueue.main.async { completion(true) }
+                Task { @MainActor in completion(true) }
             } catch {
-                DispatchQueue.main.async { completion(false) }
+                Task { @MainActor in completion(false) }
             }
         }.resume()
     }
 
     func fetchArtist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         guard NetworkMonitor.shared.isConnected else {
-            DispatchQueue.main.async { completion(false) }
+            Task { @MainActor in completion(false) }
             return
         }
         let urlStr = getCoverArtUrl(id: id)
         guard let url = URL(string: urlStr) else {
-            DispatchQueue.main.async { completion(false) }
+            Task { @MainActor in completion(false) }
             return
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
@@ -755,15 +755,15 @@ extension NavidromeClient {
                 if let naData = "NA".data(using: .utf8) {
                     try? naData.write(to: localUrl)
                 }
-                DispatchQueue.main.async { completion(false) }
+                Task { @MainActor in completion(false) }
                 return
             }
             // Save to VeloraStorage
             do {
                 try data.write(to: localUrl)
-                DispatchQueue.main.async { completion(true) }
+                Task { @MainActor in completion(true) }
             } catch {
-                DispatchQueue.main.async { completion(false) }
+                Task { @MainActor in completion(false) }
             }
         }.resume()
     }
@@ -795,7 +795,7 @@ extension NavidromeClient {
     }
 
     func clearCache() {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.artists.removeAll()
             self.albums.removeAll()
             self.allSongs.removeAll()

@@ -65,7 +65,7 @@ struct SettingsView: View {
             let clientRef = client
             DispatchQueue.global(qos: .background).async {
                 let size = clientRef.getMediaCacheSize()
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.cacheSize = size
                 }
             }
@@ -215,7 +215,7 @@ struct SettingsView: View {
         
         // 2. Perform actual verification with server
         client.ping { success, errorMessage in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 if success {
                     status = .connected
                     
@@ -265,7 +265,7 @@ struct SettingsView: View {
             do {
                 let (data, _) = try await URLSession.shared.data(for: request)
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.aiTotalTracks = json["total_tracks"] as? Int ?? 0
                         self.aiProcessedTracks = json["processed_tracks"] as? Int ?? 0
                         self.isAISyncing = json["is_syncing"] as? Bool ?? false
@@ -840,7 +840,7 @@ struct AppSettingsView: View {
                 let clientRef = client
                 DispatchQueue.global(qos: .background).async {
                     let size = clientRef.getMediaCacheSize()
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.cacheSize = size
                     }
                 }
@@ -885,7 +885,7 @@ struct AppSettingsView: View {
             do {
                 _ = try await URLSession.shared.data(for: request)
                 AppLogger.shared.log("AI Scan All triggered successfully", level: .info)
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self.isAISyncing = true
                     self.startAIStatusPolling()
                 }
@@ -925,7 +925,7 @@ struct AppSettingsView: View {
             do {
                 let (data, _) = try await URLSession.shared.data(for: request)
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.aiTotalTracks = json["total_tracks"] as? Int ?? 0
                         self.aiProcessedTracks = json["processed_tracks"] as? Int ?? 0
                         self.isAISyncing = json["is_syncing"] as? Bool ?? false

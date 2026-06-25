@@ -160,7 +160,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         activeDownloadTasksByTrackId.removeAll()
         downloadQueue.removeAll()
         downloadTasks.removeAll()
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.downloadProgress.removeAll()
             self.pausedDownloadIds.removeAll()
             self.activeDownloadCount = 0
@@ -201,7 +201,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         switch type {
         case .began:
             // Interruption began, take appropriate actions
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isPlaying = false
                 self.player?.pause()
                 self.updateNowPlayingInfo()
@@ -210,7 +210,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                 if options.contains(.shouldResume) {
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.player?.play()
                         self.isPlaying = true
                         self.updateNowPlayingInfo()
@@ -232,7 +232,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         switch reason {
         case .oldDeviceUnavailable:
             // e.g., headphones pulled out
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isPlaying = false
                 self.player?.pause()
                 self.updateNowPlayingInfo()
@@ -342,7 +342,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         // Fetch lyrics — works offline too (returns disk-cached lyrics)
         client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
                         self.currentLyrics = lyrics
@@ -690,7 +690,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
                     // On failure, clear downloadingArtworkTrackId so the next tick can retry
                     if error != nil || data == nil {
-                        DispatchQueue.main.async {
+                        Task { @MainActor in
                             if self.downloadingArtworkTrackId == track.id {
                                 self.downloadingArtworkTrackId = nil
                                 self.artworkRetryCount += 1
@@ -702,7 +702,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     }
 
                     guard let data = data, let image = UIImage(data: data) else {
-                        DispatchQueue.main.async {
+                        Task { @MainActor in
                             if self.downloadingArtworkTrackId == track.id {
                                 self.downloadingArtworkTrackId = nil
                                 self.artworkRetryCount += 1
@@ -733,7 +733,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     let extractedColor = image.dominantColor() ?? .black
                     let extractedPalette = image.extractPalette(count: 5)
 
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         if self.currentTrack?.id == track.id {
                             var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
                             updatedInfo[MPMediaItemPropertyArtwork] = artwork
@@ -909,7 +909,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     func downloadPlaylist(playlistId: String) {
         client.fetchPlaylistTracks(playlistId: playlistId) { tracks in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 for track in tracks {
                     self.downloadTrack(track)
                 }
@@ -936,11 +936,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if pausedDownloadIds.contains(track.id) {
                 AppLogger.shared.log("Resuming download for \(track.id)", level: .info)
                 existingTask.resume()
-                DispatchQueue.main.async { self.pausedDownloadIds.remove(track.id) }
+                Task { @MainActor in self.pausedDownloadIds.remove(track.id) }
             } else {
                 AppLogger.shared.log("Pausing download for \(track.id)", level: .info)
                 existingTask.suspend()
-                DispatchQueue.main.async { self.pausedDownloadIds.insert(track.id) }
+                Task { @MainActor in self.pausedDownloadIds.insert(track.id) }
             }
             return
         }
@@ -951,7 +951,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
 
         // Mark as queued immediately
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.downloadProgress[track.id] = 0.0
         }
 
@@ -976,7 +976,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         guard let url = streamUrl else {
             AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.failedDownloadIds.insert(track.id)
                 self.downloadProgress.removeValue(forKey: track.id)
                 self.activeDownloadCount -= 1
@@ -1298,7 +1298,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private func fetchMetadata(for track: Track) {
         // Lyrics work offline (returns disk-cached lyrics)
         client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
                         self.currentLyrics = lyrics
