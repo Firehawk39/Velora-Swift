@@ -473,13 +473,10 @@ struct NowPlayingView: View {
 
     private func artworkSection(size: CGFloat) -> some View {
         ZStack {
-            AsyncImage(url: playback.currentTrack?.coverArtUrl) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    Color.white.opacity(0.1)
-                }
+            SelfHealingAsyncImage(url: playback.currentTrack?.coverArtUrl) { image in
+                image.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: {
+                Color.white.opacity(0.1)
             }
             .id(playback.playbackSessionId) // Force refresh on track change or manual replay
 
@@ -641,7 +638,7 @@ struct NowPlayingView: View {
                 let imageUrl: URL? = FileManager.default.fileExists(atPath: localUrl.path)
                     ? localUrl
                     : URL(string: playback.client.getCoverArtUrl(id: artistId))
-                AsyncImage(url: imageUrl) { img in
+                SelfHealingAsyncImage(url: imageUrl) { img in
                     img.resizable().scaledToFill()
                 } placeholder: {
                     Circle().fill(Color.white.opacity(0.1))
