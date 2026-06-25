@@ -359,7 +359,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
 
-        FanartManager.shared.fetchBackdrop(for: track.allArtists)
+        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId)
 
         player?.play()
         self.isPlaying = true
@@ -385,9 +385,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 if !self.hasScrobbledCurrentTrack, self.duration > 0 {
                     if self.progress >= (self.duration * 0.3) {
                         self.hasScrobbledCurrentTrack = true
-                        if NetworkMonitor.shared.isConnected {
-                            self.client.scrobble(id: track.id, submission: true)
-                        }
+                        // Fire the scrobble; the client handles offline queuing and instant local history update
+                        self.client.scrobble(track: track, submission: true)
                     }
                 }
             }
@@ -1315,7 +1314,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
 
-        FanartManager.shared.fetchBackdrop(for: track.allArtists)
+        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId)
     }
 
 }

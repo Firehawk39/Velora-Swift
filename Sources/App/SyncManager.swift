@@ -191,7 +191,7 @@ final class SyncManager: ObservableObject {
                                         }
                                     }
                                 }
-                                await fa.downloadBackdropSilently(for: artist.allNames, mbid: mbid)
+                                await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: mbid)
                                 await withCheckedContinuation { cont in
                                     Task { @MainActor in
                                         client.fetchArtist(id: artist.id) { _ in cont.resume() }

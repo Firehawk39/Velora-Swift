@@ -44,7 +44,7 @@ extension NavidromeClient {
     func fetchAlbums() {
         guard NetworkMonitor.shared.isConnected else { return }
         // Fetch up to 100 albums, sorted by newest, so the Home screen "Recently added albums" section is correct
-        guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "newest", "size": "100"]) else { return }
+        guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "recent", "size": "100"]) else { return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else { return }
             do {
@@ -641,16 +641,28 @@ extension NavidromeClient {
 
     private var pendingScrobblesKey: String { "velora_pending_scrobbles" }
 
-    func scrobble(id: String, submission: Bool) {
+    func scrobble(track: Track, submission: Bool) {
+        // ALWAYS update local history immediately, regardless of online/offline status
+        if submission {
+            Task { @MainActor in
+                self.recentlyPlayed.removeAll(where: { .id == track.id })
+                self.recentlyPlayed.insert(track, at: 0)
+                if self.recentlyPlayed.count > 15 {
+                    self.recentlyPlayed.removeLast()
+                }
+                self.saveOfflineMetadata()
+            }
+        }
+
         if NetworkMonitor.shared.isConnected {
-            sendScrobble(id: id, submission: submission)
+            sendScrobble(id: track.id, submission: submission)
         } else if submission {
             // Queue the submission for when we reconnect (nowPlaying pings are fire-and-forget, not worth queuing)
             var pending = UserDefaults.standard.stringArray(forKey: pendingScrobblesKey) ?? []
-            if !pending.contains(id) {
-                pending.append(id)
+            if !pending.contains(track.id) {
+                pending.append(track.id)
                 UserDefaults.standard.set(pending, forKey: pendingScrobblesKey)
-                AppLogger.shared.log("[Scrobble] Queued offline scrobble for track \(id)")
+                AppLogger.shared.log("[Scrobble] Queued offline scrobble for track \(track.id)")
             }
         }
     }

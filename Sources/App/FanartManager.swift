@@ -26,13 +26,13 @@ final class FanartManager: ObservableObject {
     private var currentArtistName: String?
 
     /// Synchronously checks if a backdrop exists in cache and returns it
-    func getCachedBackdrop(for artist: String) -> UIImage? {
-        let sanitized = sanitizeFileName(artist)
-        if let memoryCached = cachedArtistImages[sanitized] {
+    func getCachedBackdrop(for artist: String, artistId: String? = nil) -> UIImage? {
+        let key = getCacheKey(artistName: artist, artistId: artistId)
+        if let memoryCached = cachedArtistImages[key] {
             return memoryCached
         }
 
-        let fileName = sanitized + ".jpg"
+        let fileName = key + ".jpg"
         let fileUrl = self.backdropDir.appendingPathComponent(fileName)
 
         if FileManager.default.fileExists(atPath: fileUrl.path),
@@ -46,9 +46,9 @@ final class FanartManager: ObservableObject {
         return nil
     }
 
-    func hasBackdrop(for artist: String) -> Bool {
-        let sanitized = sanitizeFileName(artist)
-        let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
+    func hasBackdrop(for artist: String, artistId: String? = nil) -> Bool {
+        let key = getCacheKey(artistName: artist, artistId: artistId)
+        let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
 
@@ -58,14 +58,15 @@ final class FanartManager: ObservableObject {
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
 
-    func fetchBackdrop(for artists: [String], mbid: String? = nil) {
+    func fetchBackdrop(for artists: [String], artistId: String? = nil, mbid: String? = nil, allowNetwork: Bool = true) {
         guard !artists.isEmpty else { return }
         let primaryArtist = artists[0]
         let isNewArtist = self.currentArtistName != primaryArtist
 
         // 1. Check Cache Synchronously BEFORE nilling anything
-        for artist in artists {
-            if let cached = getCachedBackdrop(for: artist) {
+        for (index, artist) in artists.enumerated() {
+            let currentArtistId = (index == 0) ? artistId : nil
+            if let cached = getCachedBackdrop(for: artist, artistId: currentArtistId) {
                 AppLogger.shared.log("[Fanart] Cache hit for \(artist)")
                 self.currentArtistName = primaryArtist
                 // Use animation if it's a new artist, otherwise just set it
@@ -78,12 +79,11 @@ final class FanartManager: ObservableObject {
             }
 
             // Check for negative cache marker (0 byte file)
-            let sanitized = sanitizeFileName(artist)
-            let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
+            let key = getCacheKey(artistName: artist, artistId: currentArtistId)
+            let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
             if FileManager.default.fileExists(atPath: fileUrl.path),
                let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
                let size = attr[.size] as? Int64, size == 0 {
-
                 if NetworkMonitor.shared.isConnected {
                     // SELF-HEAL: Delete the marker and try fetching again since we are online.
                     try? FileManager.default.removeItem(at: fileUrl)
@@ -102,19 +102,19 @@ final class FanartManager: ObservableObject {
         fetchBackdropRecursive(artists: artists, index: 0, providedMbid: mbid)
     }
 
-    private func fetchBackdropRecursive(artists: [String], index: Int, providedMbid: String?) {
+    private func fetchBackdropRecursive(artists: [String], index: Int, artistId: String?, providedMbid: String?, allowNetwork: Bool) {
         guard index < artists.count else { return }
         let artist = artists[index]
         let primaryArtist = artists[0]
         let sanitized = sanitizeFileName(artist)
         let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
 
-        let alreadyFetching = activeBackdropFetches.contains(sanitized)
+        let alreadyFetching = activeBackdropFetches.contains(key)
         if alreadyFetching { return }
 
-        guard NetworkMonitor.shared.isConnected else { return }
+        guard allowNetwork, NetworkMonitor.shared.isConnected else { return }
 
-        activeBackdropFetches.insert(sanitized)
+        activeBackdropFetches.insert(key)
 
         let queryFanart: @MainActor @Sendable (String) -> Void = { resolvedMBID in
             AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
@@ -122,8 +122,8 @@ final class FanartManager: ObservableObject {
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url, isEmpty in
                 if let url = url {
                     AppLogger.shared.log("[Fanart] Found backdrop URL for \(artist)")
-                    self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, priority: URLSessionTask.highPriority) { image in
-                        self.activeBackdropFetches.remove(sanitized)
+                    self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, priority: URLSessionTask.highPriority) { image in
+                        self.activeBackdropFetches.remove(key)
                     }
                 } else {
                     if isEmpty {
@@ -132,8 +132,8 @@ final class FanartManager: ObservableObject {
                     } else {
                         AppLogger.shared.log("[Fanart] Fetch failed/rate-limited for \(artist)")
                     }
-                    self.activeBackdropFetches.remove(sanitized)
-                    self.fetchBackdropRecursive(artists: artists, index: index + 1, providedMbid: nil)
+                    self.activeBackdropFetches.remove(key)
+                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                 }
             }
         }
@@ -147,20 +147,20 @@ final class FanartManager: ObservableObject {
                     queryFanart(resolved)
                 } else {
                     try? Data().write(to: fileUrl)
-                    self.activeBackdropFetches.remove(sanitized)
-                    self.fetchBackdropRecursive(artists: artists, index: index + 1, providedMbid: nil)
+                    self.activeBackdropFetches.remove(key)
+                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                 }
             }
         }
     }
 
-    func downloadBackdropSilently(for artists: [String], mbid: String? = nil) async {
+    func downloadBackdropSilently(for artists: [String], artistId: String? = nil, mbid: String? = nil) async {
         guard !artists.isEmpty else { return }
         let primaryArtist = artists[0]
 
         for (index, artist) in artists.enumerated() {
-            let sanitized = sanitizeFileName(artist)
-            let fileUrl = backdropDir.appendingPathComponent(sanitized + ".jpg")
+            let key = getCacheKey(artistName: artist, artistId: index == 0 ? artistId : nil)
+        let fileUrl = backdropDir.appendingPathComponent(key + ".jpg")
 
             if fileManager.fileExists(atPath: fileUrl.path) {
                 if let attr = try? fileManager.attributesOfItem(atPath: fileUrl.path), let size = attr[.size] as? Int64, size > 0 {
@@ -170,12 +170,12 @@ final class FanartManager: ObservableObject {
                 continue // Current artist has marker, try next
             }
 
-            let alreadyFetching = activeBackdropFetches.contains(sanitized)
-            if !alreadyFetching { activeBackdropFetches.insert(sanitized) }
+            let alreadyFetching = activeBackdropFetches.contains(key)
+            if !alreadyFetching { activeBackdropFetches.insert(key) }
             if alreadyFetching { return }
 
-            guard NetworkMonitor.shared.isConnected else {
-                self.activeBackdropFetches.remove(sanitized)
+            guard allowNetwork, NetworkMonitor.shared.isConnected else {
+                self.activeBackdropFetches.remove(key)
                 return
             }
 
@@ -184,15 +184,15 @@ final class FanartManager: ObservableObject {
                     let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
                     self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist, priority: URLSessionTask.lowPriority) { url, isEmpty in
                         if let url = url {
-                            self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, priority: URLSessionTask.lowPriority) { _ in
-                                self.activeBackdropFetches.remove(sanitized)
+                            self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, priority: URLSessionTask.lowPriority) { _ in
+                                self.activeBackdropFetches.remove(key)
                                 continuation.resume(returning: true)
                             }
                         } else {
                             if isEmpty && NetworkMonitor.shared.isConnected {
                                 try? Data().write(to: fileUrl)
                             }
-                            self.activeBackdropFetches.remove(sanitized)
+                            self.activeBackdropFetches.remove(key)
                             continuation.resume(returning: false)
                         }
                     }
@@ -206,7 +206,7 @@ final class FanartManager: ObservableObject {
                             Task { @MainActor in query(resolved) }
                         } else {
                             if NetworkMonitor.shared.isConnected { try? Data().write(to: fileUrl) }
-                            self.activeBackdropFetches.remove(sanitized)
+                            self.activeBackdropFetches.remove(key)
                             continuation.resume(returning: false)
                         }
                     }
@@ -231,7 +231,7 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        guard NetworkMonitor.shared.isConnected else {
+        guard allowNetwork, NetworkMonitor.shared.isConnected else {
             completion(nil)
             return
         }
@@ -355,7 +355,7 @@ final class FanartManager: ObservableObject {
         return Int(truncatingIfNeeded: h)
     }
 
-    nonisolated private func downloadAndCache(from urlString: String, to localUrl: URL, primaryArtistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
+    nonisolated private func downloadAndCache(from urlString: String, to localUrl: URL, primaryArtistName: String, cacheKey: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil) }
             return
@@ -371,7 +371,7 @@ final class FanartManager: ObservableObject {
                 // CRITICAL: Even if this was a "silent" or background fetch,
                 // if the artist is the one we are currently viewing, update the UI!
                 DispatchQueue.main.async {
-                    self.cachedArtistImages[self.sanitizeFileName(primaryArtistName)] = image
+                    self.cachedArtistImages[cacheKey] = image
                     if self.currentArtistName == primaryArtistName {
                         withAnimation(.easeInOut(duration: 0.8)) {
                             self.currentBackdrop = image
@@ -387,7 +387,13 @@ final class FanartManager: ObservableObject {
         task.resume()
     }
 
-    nonisolated private func sanitizeFileName(_ name: String) -> String {
+    nonisolated private 
+    func getCacheKey(artistName: String, artistId: String? = nil) -> String {
+        if let aid = artistId, !aid.isEmpty { return aid }
+        return sanitizeFileName(artistName)
+    }
+
+    func sanitizeFileName(_ name: String) -> String {
         return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
             .components(separatedBy: .whitespaces).joined(separator: "_")
             .lowercased()
