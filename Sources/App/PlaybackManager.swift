@@ -89,8 +89,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
     private var maxConcurrentDownloads: Int {
-        // Return a high number to effectively remove the concurrency limit as requested
-        return 100
+        UserDefaults.standard.integer(forKey: "velora_download_concurrency") == 0
+            ? 15 : UserDefaults.standard.integer(forKey: "velora_download_concurrency")
     }
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
@@ -967,49 +967,48 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     private func processQueue() {
         AppLogger.shared.log("processQueue() - active: \(activeDownloadCount)/\(maxConcurrentDownloads), queue: \(downloadQueue.count)", level: .debug)
-        
-        while !downloadQueue.isEmpty {
-            let track = downloadQueue.removeFirst()
-            activeDownloadCount += 1
+        guard activeDownloadCount < maxConcurrentDownloads, !downloadQueue.isEmpty else { return }
 
-            let streamUrl = client.getStreamUrl(id: track.id)
+        let track = downloadQueue.removeFirst()
+        activeDownloadCount += 1
 
-            guard let url = streamUrl else {
-                AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
-                Task { @MainActor in
-                    self.failedDownloadIds.insert(track.id)
-                    self.downloadProgress.removeValue(forKey: track.id)
-                    self.activeDownloadCount -= 1
-                    self.processQueue()
-                }
-                continue
+        let streamUrl = client.getStreamUrl(id: track.id)
+
+        guard let url = streamUrl else {
+            AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
+            Task { @MainActor in
+                self.failedDownloadIds.insert(track.id)
+                self.downloadProgress.removeValue(forKey: track.id)
+                self.activeDownloadCount -= 1
+                self.processQueue()
             }
-
-            AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
-            let task = downloadSession.downloadTask(with: url)
-            task.taskDescription = "\(track.id)|\(track.suffix?.lowercased() ?? "mp3")"
-            downloadTasks[task.taskIdentifier] = track.id
-            activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
-            downloadStartTimes[track.id] = Date()
-            task.resume()
-
-            // Trigger cover art download alongside the track
-            let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-            // Extract the real ID from a server URL if needed (e.g., "https://...?id=al-123" → "al-123")
-            let cleanArtId: String
-            if rawArtId.contains("getCoverArt"),
-               let url = URL(string: rawArtId),
-               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-               let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
-                cleanArtId = idParam
-            } else {
-                cleanArtId = rawArtId
-            }
-            client.downloadCoverArt(id: cleanArtId)
-
-            // Trigger lyrics fetch alongside the track for offline use
-            client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { _ in }
+            return
         }
+
+        AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
+        let task = downloadSession.downloadTask(with: url)
+        task.taskDescription = "\(track.id)|\(track.suffix?.lowercased() ?? "mp3")"
+        downloadTasks[task.taskIdentifier] = track.id
+        activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
+        downloadStartTimes[track.id] = Date()
+        task.resume()
+
+        // Trigger cover art download alongside the track
+        let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+        // Extract the real ID from a server URL if needed (e.g., "https://...?id=al-123" → "al-123")
+        let cleanArtId: String
+        if rawArtId.contains("getCoverArt"),
+           let url = URL(string: rawArtId),
+           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
+            cleanArtId = idParam
+        } else {
+            cleanArtId = rawArtId
+        }
+        client.downloadCoverArt(id: cleanArtId)
+
+        // Trigger lyrics fetch alongside the track for offline use
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { _ in }
     }
 
     // MARK: - URLSessionDownloadDelegate

@@ -356,6 +356,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_connection_mode") private var connectionMode: Int = 0
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
+    @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 15
     @State private var showLogs: Bool = false
     
     // AI Ingestion State
@@ -700,6 +701,32 @@ struct AppSettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
                         }
+                        
+                        // Download Concurrency
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Download Concurrency")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(labelCol)
+                                Spacer()
+                                Text("\(downloadConcurrency) tracks")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(isDark ? .white : .black)
+                            }
+                            Slider(value: Binding(
+                                get: { Double(downloadConcurrency) },
+                                set: { downloadConcurrency = Int($0) }
+                            ), in: 1...50, step: 1)
+                            .accentColor(accentBg)
+                            
+                            Text("Higher values speed up downloads but may slow down your server or drain battery.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.gray)
+                        }
+                        .padding()
+                        .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                        .cornerRadius(16)
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         
                         // Velora AI Engine Section
                         VStack(alignment: .leading, spacing: 20) {
