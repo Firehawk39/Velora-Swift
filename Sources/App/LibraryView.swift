@@ -817,33 +817,17 @@ private struct PlaylistDetailView: View {
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
 
-            // Recent sort mode: Group by Album's newest track, then order by track sequence
-            let aAlbum = a.album ?? ""
-            let bAlbum = b.album ?? ""
-
-            let aMax = albumMaxDates[aAlbum] ?? ""
-            let bMax = albumMaxDates[bAlbum] ?? ""
-
-            if aMax != bMax {
-                return aMax > bMax // descending order
+            // Recent sort mode: Strictly by 'created' date descending, matching Navidrome WebUI
+            let aCreated = a.created ?? ""
+            let bCreated = b.created ?? ""
+            
+            if aCreated != bCreated {
+                return aCreated > bCreated
             }
+            
+            // Secondary sort: title if added at the exact same time
+            return a.title < b.title
 
-            // Secondary sort: Album name
-            if aAlbum != bAlbum {
-                return aAlbum < bAlbum
-            }
-
-            // Tertiary sort: Disc and Track number
-            let aDisc = a.discNumber ?? 1
-            let bDisc = b.discNumber ?? 1
-            if aDisc != bDisc {
-                return aDisc < bDisc
-            }
-            let aTrack = a.track ?? 0
-            let bTrack = b.track ?? 0
-            if aTrack != bTrack {
-                return aTrack < bTrack
-            }
 
             // Final fallback: Track title
             return a.title < b.title
