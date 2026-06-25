@@ -36,6 +36,18 @@ def get_text_embedding(text: str) -> list:
         with torch.no_grad():
             text_features = processor.model.get_text_features(**inputs)
             
+            # Depending on transformers version, this might return a tensor, or a BaseModelOutput
+            if hasattr(text_features, "text_embeds") and text_features.text_embeds is not None:
+                text_features = text_features.text_embeds
+            elif hasattr(text_features, "pooler_output") and text_features.pooler_output is not None:
+                text_features = text_features.pooler_output
+            elif isinstance(text_features, tuple):
+                text_features = text_features[0]
+                
+            # If it hasn't been projected yet (e.g. shape is 768 instead of 512)
+            if hasattr(processor.model, "text_projection") and text_features.shape[-1] != 512:
+                text_features = processor.model.text_projection(text_features)
+            
         embedding = torch.nn.functional.normalize(text_features, p=2, dim=1)
         return embedding[0].cpu().tolist()
     except Exception as e:
