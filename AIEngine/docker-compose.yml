@@ -3,6 +3,7 @@ services:
     build: .
     container_name: velora-ai-engine
     restart: unless-stopped
+    tty: true
     # Use host networking so the container can directly access localhost:11434 (Ollama)
     network_mode: "host"
     volumes:
