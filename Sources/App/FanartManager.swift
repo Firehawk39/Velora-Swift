@@ -39,7 +39,7 @@ final class FanartManager: ObservableObject {
            let data = try? Data(contentsOf: fileUrl),
            let image = UIImage(data: data) {
             DispatchQueue.main.async {
-                self.cachedArtistImages[sanitized] = image
+                self.cachedArtistImages[key] = image
             }
             return image
         }
@@ -99,14 +99,13 @@ final class FanartManager: ObservableObject {
             withAnimation(.easeInOut(duration: 0.4)) { self.currentBackdrop = nil }
         }
 
-        fetchBackdropRecursive(artists: artists, index: 0, providedMbid: mbid)
+        fetchBackdropRecursive(artists: artists, index: 0, artistId: artistId, providedMbid: mbid, allowNetwork: allowNetwork)
     }
 
     private func fetchBackdropRecursive(artists: [String], index: Int, artistId: String?, providedMbid: String?, allowNetwork: Bool) {
         guard index < artists.count else { return }
         let artist = artists[index]
         let primaryArtist = artists[0]
-        let sanitized = sanitizeFileName(artist)
         let key = getCacheKey(artistName: artist, artistId: index == 0 ? artistId : nil)
         let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
 
@@ -232,7 +231,7 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        guard allowNetwork, NetworkMonitor.shared.isConnected else {
+        guard NetworkMonitor.shared.isConnected else {
             completion(nil)
             return
         }
