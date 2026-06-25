@@ -645,7 +645,7 @@ extension NavidromeClient {
         // ALWAYS update local history immediately, regardless of online/offline status
         if submission {
             Task { @MainActor in
-                self.recentlyPlayed.removeAll(where: { .id == track.id })
+                self.recentlyPlayed.removeAll(where: { $0.id == track.id })
                 self.recentlyPlayed.insert(track, at: 0)
                 if self.recentlyPlayed.count > 15 {
                     self.recentlyPlayed.removeLast()

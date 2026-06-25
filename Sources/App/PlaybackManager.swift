@@ -369,7 +369,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         timeObserver = capturedPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
-        ) { [weak self, weak capturedPlayer] time in
+        ) { [weak self] time in
             MainActor.assumeIsolated {
                 guard let self = self,
                       let capturedPlayer = capturedPlayer,
@@ -406,17 +406,17 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     manager.client.scrobble(track: track, submission: true)
                 }
 
-                switch self.repeatMode {
+                switch manager.repeatMode {
                 case .one:
-                    self.loadAndPlay(track: self.queue[self.queueIndex])
+                    manager.loadAndPlay(track: manager.queue[manager.queueIndex])
                 case .all:
-                    self.skipForward()
+                    manager.skipForward()
                 case .off:
-                    if self.queueIndex < self.queue.count - 1 {
-                        self.skipForward()
+                    if manager.queueIndex < manager.queue.count - 1 {
+                        manager.skipForward()
                     } else {
-                        self.isPlaying = false
-                        self.player?.pause()
+                        manager.isPlaying = false
+                        manager.player?.pause()
                     }
                 }
             }
@@ -1246,12 +1246,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         timeObserver = player?.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
-        ) { [weak self, weak capturedPlayer] time in
+        ) { [weak self] time in
             Task { @MainActor in
                 guard let self = self,
                       let capturedPlayer = capturedPlayer,
                       self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                      let currentItem = capturedPlayer?.currentItem,
+                      let currentItem = capturedPlayer.currentItem,
                       currentItem.duration.isNumeric else { return }
 
                 self.progress = time.seconds

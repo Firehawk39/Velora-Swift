@@ -107,7 +107,8 @@ final class FanartManager: ObservableObject {
         let artist = artists[index]
         let primaryArtist = artists[0]
         let sanitized = sanitizeFileName(artist)
-        let fileUrl = self.backdropDir.appendingPathComponent(sanitized + ".jpg")
+        let key = getCacheKey(artistName: artist, artistId: index == 0 ? artistId : nil)
+        let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
 
         let alreadyFetching = activeBackdropFetches.contains(key)
         if alreadyFetching { return }
@@ -174,7 +175,7 @@ final class FanartManager: ObservableObject {
             if !alreadyFetching { activeBackdropFetches.insert(key) }
             if alreadyFetching { return }
 
-            guard allowNetwork, NetworkMonitor.shared.isConnected else {
+            guard NetworkMonitor.shared.isConnected else {
                 self.activeBackdropFetches.remove(key)
                 return
             }
