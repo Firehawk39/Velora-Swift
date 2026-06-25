@@ -248,26 +248,6 @@ struct SettingsView: View {
                 }
             }
         }
-        guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
-              var components = URLComponents(string: serverStr) else { return }
-        components.port = 8000
-        components.path = "/api/v1/ingestion/status"
-        guard let url = components.url else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-
-        Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(for: request)
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    Task { @MainActor in
-                    }
-                }
-            } catch {
-                AppLogger.shared.log("Failed to fetch AI Status: \(error.localizedDescription)", level: .error)
-            }
-        }
     }
 }
 
