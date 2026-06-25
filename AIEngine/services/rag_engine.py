@@ -58,9 +58,8 @@ def perform_vector_search(query: str, limit: int = 3) -> list:
             """
             SELECT track_id, distance
             FROM vec_tracks
-            WHERE embedding MATCH ?
+            WHERE embedding MATCH ? AND k = ?
             ORDER BY distance
-            LIMIT ?
             """,
             (embedding_bytes, limit * 5)
         )
