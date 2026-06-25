@@ -23,10 +23,6 @@ struct SettingsView: View {
     @State private var downloadingAll: Bool = false
     @State private var showLogs: Bool       = false
 
-    // AI Ingestion State
-    @State private var aiTotalTracks: Int = 0
-    @State private var aiProcessedTracks: Int = 0
-    @State private var isAISyncing: Bool = false
     @State private var statusTimer: Timer? = nil
     enum ConnStatus { case idle, connecting, connected, error }
 
@@ -266,9 +262,6 @@ struct SettingsView: View {
                 let (data, _) = try await URLSession.shared.data(for: request)
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     Task { @MainActor in
-                        self.aiTotalTracks = json["total_tracks"] as? Int ?? 0
-                        self.aiProcessedTracks = json["processed_tracks"] as? Int ?? 0
-                        self.isAISyncing = json["is_syncing"] as? Bool ?? false
                     }
                 }
             } catch {
@@ -359,10 +352,6 @@ struct AppSettingsView: View {
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @State private var showLogs: Bool = false
     
-    // AI Ingestion State
-    @State private var aiTotalTracks: Int = 0
-    @State private var aiProcessedTracks: Int = 0
-    @State private var isAISyncing: Bool = false
     @State private var statusTimer: Timer? = nil
 
     // Constants matching web app
@@ -728,72 +717,6 @@ struct AppSettingsView: View {
                         .cornerRadius(16)
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         
-                        // Velora AI Engine Section
-                        VStack(alignment: .leading, spacing: 20) {
-                            Text("Velora AI Engine")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(labelCol)
-                                .textCase(.uppercase)
-                                .padding(.leading, 4)
-                            
-                            VStack(alignment: .leading, spacing: 16) {
-                                Button(action: {
-                                    triggerAIIngestion()
-                                }) {
-                                    HStack {
-                                        Image(systemName: "arrow.triangle.2.circlepath")
-                                        Text("Sync Music to AI Engine")
-                                            .fontWeight(.medium)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: 54)
-                                    .background(accentBg.opacity(0.15))
-                                    .cornerRadius(12)
-                                    .foregroundColor(labelCol)
-                                }
-                                
-                                if aiTotalTracks > 0 {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        HStack {
-                                            Text("Sync Progress")
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(.gray)
-                                            Spacer()
-                                            Text("\(aiProcessedTracks) / \(aiTotalTracks)")
-                                                .font(.system(size: 14, weight: .bold))
-                                                .foregroundColor(isDark ? .white : .black)
-                                        }
-                                        
-                                        GeometryReader { geo in
-                                            ZStack(alignment: .leading) {
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(Color.gray.opacity(0.2))
-                                                    .frame(height: 8)
-                                                
-                                                let progress = CGFloat(aiProcessedTracks) / CGFloat(max(1, aiTotalTracks))
-                                                RoundedRectangle(cornerRadius: 4)
-                                                    .fill(labelCol)
-                                                    .frame(width: geo.size.width * progress, height: 8)
-                                                    .animation(.spring(), value: progress)
-                                            }
-                                        }
-                                        .frame(height: 8)
-                                        
-                                        if isAISyncing {
-                                            Text("Syncing in progress...")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.gray)
-                                        }
-                                    }
-                                    .padding(.top, 8)
-                                }
-                            }
-                            .padding()
-                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
-                            .cornerRadius(16)
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                        }
-
                         // Danger Zone
                         VStack(alignment: .leading, spacing: 20) {
                             Button(action: {
@@ -844,10 +767,8 @@ struct AppSettingsView: View {
                         self.cacheSize = size
                     }
                 }
-                startAIStatusPolling()
             }
             .onDisappear {
-                stopAIStatusPolling()
             }
         }
         .sheet(isPresented: $showLogs) {
@@ -870,46 +791,8 @@ struct AppSettingsView: View {
     }
     
     // MARK: - AI Ingestion Logic
-    private func triggerAIIngestion() {
-        guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
-              var components = URLComponents(string: serverStr) else { return }
-        components.port = 8000
-        components.path = "/api/v1/ingestion/scan_all"
-        guard let url = components.url else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        Task {
-            do {
-                _ = try await URLSession.shared.data(for: request)
-                AppLogger.shared.log("AI Scan All triggered successfully", level: .info)
-                Task { @MainActor in
-                    self.isAISyncing = true
-                    self.startAIStatusPolling()
-                }
-            } catch {
-                AppLogger.shared.log("Failed to trigger AI Scan: \(error.localizedDescription)", level: .error)
-            }
-        }
-    }
     
-    private func startAIStatusPolling() {
-        if statusTimer == nil {
-            fetchAIStatus() // initial fetch
-            statusTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-                Task { @MainActor in
-                    fetchAIStatus()
-                }
-            }
-        }
-    }
     
-    private func stopAIStatusPolling() {
-        statusTimer?.invalidate()
-        statusTimer = nil
-    }
     
     private func fetchAIStatus() {
         guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
@@ -926,9 +809,6 @@ struct AppSettingsView: View {
                 let (data, _) = try await URLSession.shared.data(for: request)
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     Task { @MainActor in
-                        self.aiTotalTracks = json["total_tracks"] as? Int ?? 0
-                        self.aiProcessedTracks = json["processed_tracks"] as? Int ?? 0
-                        self.isAISyncing = json["is_syncing"] as? Bool ?? false
                     }
                 }
             } catch {
