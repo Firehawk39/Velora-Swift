@@ -453,36 +453,6 @@ struct ArtistBackdropView: View {
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
 
-            // The "Radiating Glow" behind the portrait
-            GeometryReader { proxy in
-                ZStack {
-                    // Subtle multi-colored radiating glow
-                    RadialGradient(
-                        gradient: Gradient(colors: [
-                            Color.pink.opacity(isDarkMode ? 0.12 : 0.08),
-                            Color.blue.opacity(isDarkMode ? 0.08 : 0.05),
-                            Color.clear
-                        ]),
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: proxy.size.width * 0.4
-                    )
-                    .frame(width: proxy.size.width * 0.8, height: proxy.size.width * 0.8)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, proxy.size.height * 0.35) // Centered behind the portrait location
-
-                // Top-to-Bottom Vignette for readability
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        .black.opacity(0.4),
-                        .clear,
-                        isDarkMode ? Color.black : Color(hex: "#fafafa")
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
         }
     }
 }
