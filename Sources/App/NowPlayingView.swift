@@ -431,7 +431,6 @@ struct NowPlayingView: View {
             Image(systemName: "shuffle")
                 .font(.system(size: 16))
                 .foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
-                .frame(width: 52, height: 44) // large hit target
         }
         .accessibilityLabel("Shuffle")
         .hoverEffect()
@@ -469,7 +468,6 @@ struct NowPlayingView: View {
             Image(systemName: playback.repeatMode == .one ? "repeat.1" : "repeat")
                 .font(.system(size: 16))
                 .foregroundColor(playback.repeatMode == .off ? .white.opacity(0.5) : .accentColor)
-                .frame(width: 52, height: 44) // large hit target
         }
         .accessibilityLabel("Repeat Mode")
         .hoverEffect()
@@ -1093,7 +1091,7 @@ struct IsolatedProgressBarView: View {
                         }
                 )
             }
-            .frame(height: 28) // Tall invisible hit target — finger-friendly
+            .frame(height: 12) // Restored original height to prevent layout break on small screens
 
             if !playback.isLyricsMode {
                 HStack {
