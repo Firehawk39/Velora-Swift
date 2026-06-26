@@ -1038,7 +1038,7 @@ struct IsolatedProgressBarView: View {
 
     var progressFraction: Double {
         guard playback.duration > 0 else { return 0 }
-        return max(0, min(1, displayProgress / playback.duration))
+        return displayProgress / playback.duration
     }
 
     private func formatTime(_ t: Double) -> String {
@@ -1049,32 +1049,19 @@ struct IsolatedProgressBarView: View {
     var body: some View {
         VStack(spacing: 8) {
             GeometryReader { barGeo in
-                let trackHeight: CGFloat = isDragging ? 6 : 4
-                let thumbSize: CGFloat = isDragging ? 18 : 0
-                let thumbX = CGFloat(progressFraction) * barGeo.size.width
-
                 ZStack(alignment: .leading) {
-                    // Track background
-                    Capsule()
-                        .fill(Color.white.opacity(0.2))
-                        .frame(height: trackHeight)
+                    // Visual Bar (4pt height, centered vertically)
+                    ZStack(alignment: .leading) {
+                        Color.white.opacity(0.2)
 
-                    // Filled portion
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: max(0, thumbX), height: trackHeight)
-
-                    // Thumb — only visible while dragging
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: thumbSize, height: thumbSize)
-                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-                        .offset(x: max(0, thumbX - thumbSize / 2))
-                        .opacity(isDragging ? 1 : 0)
+                        Color.white
+                            .scaleEffect(x: CGFloat(progressFraction), y: 1.0, anchor: .leading)
+                            .animation(isDragging ? nil : .linear(duration: 0.1), value: progressFraction)
+                    }
+                    .frame(height: 4)
+                    .clipShape(Capsule())
                 }
-                .frame(maxHeight: .infinity)
-                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDragging)
-                // Large invisible hit target so fingers can grab anywhere easily
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
@@ -1091,7 +1078,7 @@ struct IsolatedProgressBarView: View {
                         }
                 )
             }
-            .frame(height: 12) // Restored original height to prevent layout break on small screens
+            .frame(height: 12)
 
             if !playback.isLyricsMode {
                 HStack {
