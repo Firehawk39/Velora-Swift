@@ -767,20 +767,9 @@ struct NowPlayingView: View {
                         }
                     } else {
                         // Fetch finished, nothing found
-                        VStack(spacing: 12) {
-                            Image(systemName: "music.note.list")
-                                .font(.system(size: 40))
-                                .foregroundColor(.white.opacity(0.2))
-                            Text("No lyrics available")
-                                .font(.system(size: 24, weight: .black))
-                                .foregroundColor(.white.opacity(0.4))
-                            Text("Lyrics could not be found for this track")
-                                .font(.system(size: 14))
-                                .foregroundColor(.white.opacity(0.25))
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 60)
+                        Text("Looking for lyrics...")
+                            .font(.system(size: 32, weight: .black))
+                            .foregroundColor(.white.opacity(0.4))
                     }
                 }
                 .padding(.top, 10)
