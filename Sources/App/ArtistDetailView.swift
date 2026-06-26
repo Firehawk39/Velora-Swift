@@ -25,7 +25,7 @@ struct ArtistDetailView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+            (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
 
             ArtistBackdropView(artistId: artistId, artistName: artistName, isDarkMode: isDarkMode, client: client)
@@ -99,7 +99,7 @@ struct ArtistDetailView: View {
         .frame(maxWidth: .infinity)
         .frame(height: 100)
         .background(
-            (isDarkMode ? Color.black : Color(hex: "#fafafa"))
+            (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                 .opacity(Double(opacity))
         )
         .zIndex(100)
@@ -450,7 +450,7 @@ struct ArtistBackdropView: View {
     var body: some View {
         ZStack {
             // Plain background color
-            (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
+            (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
 
         }

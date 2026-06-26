@@ -90,71 +90,25 @@ struct LibraryView: View {
                 Spacer()
 
                 // View Mode & Sort Mode Controls
-                HStack(spacing: isCompact ? 12 : 20) {
-                    // View Mode Menu
-                    Menu {
-                        Button(action: { viewMode = .grid }) {
-                            Label("Grid View", systemImage: "square.grid.2x2.fill")
-                        }
-                        Button(action: { viewMode = .list }) {
-                            Label("List View", systemImage: "list.bullet")
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: viewMode == .grid ? "square.grid.2x2.fill" : "list.bullet")
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10, weight: .bold))
-                        }
-                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                        .foregroundColor(isDarkMode ? .white : .black)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                HStack(spacing: isCompact ? 8 : 20) {
+                    // View Toggle
+                    Picker("View Mode", selection: $viewMode) {
+                        Image(systemName: "square.grid.2x2.fill").tag(ViewMode.grid)
+                        Image(systemName: "list.bullet").tag(ViewMode.list)
                     }
-                    .accessibilityLabel("View Options")
+                    .pickerStyle(.segmented)
+                    .frame(width: isCompact ? 70 : 100)
+                    .accessibilityLabel("Switch View Mode")
 
-                    // Offline Only Toggle
-                    let isForcedOffline = !network.isConnected
-                    Button(action: { showOfflineOnly.toggle() }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: isForcedOffline ? "wifi.slash" : (showOfflineOnly ? "checkmark.icloud.fill" : "icloud"))
-                            if !isCompact {
-                                Text(isForcedOffline ? "Offline Mode" : "Offline")
-                            }
-                        }
-                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                        .foregroundColor(isForcedOffline ? .white : (showOfflineOnly ? .red : (isDarkMode ? .white : .black)))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(isForcedOffline ? Color.red : (showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))))
+                    // Sort Toggle
+                    Picker("Sort Mode", selection: $sortMode) {
+                        Image(systemName: "textformat").tag(SortMode.alphabetical)
+                        Image(systemName: "clock.fill").tag(SortMode.recent)
+                        Image(systemName: "play.circle.fill").tag(SortMode.topPlayed)
                     }
-                    .accessibilityLabel("Offline Only Filter")
-                    .disabled(isForcedOffline)
-
-                    // Sort Mode Menu
-                    Menu {
-                        Button(action: { sortMode = .alphabetical }) {
-                            Label("Alphabetical", systemImage: "textformat")
-                        }
-                        Button(action: { sortMode = .recent }) {
-                            Label("Recently Added", systemImage: "clock.fill")
-                        }
-                        Button(action: { sortMode = .topPlayed }) {
-                            Label("Top Played", systemImage: "play.circle.fill")
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: sortMode == .alphabetical ? "textformat" : (sortMode == .recent ? "clock.fill" : "play.circle.fill"))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10, weight: .bold))
-                        }
-                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                        .foregroundColor(isDarkMode ? .white : .black)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
-                    }
-                    .accessibilityLabel("Sort Options")
+                    .pickerStyle(.segmented)
+                    .frame(width: isCompact ? 100 : 150)
+                    .accessibilityLabel("Switch Sort Mode")
                 }
 
                 // Shuffle & Download All for Songs
@@ -651,27 +605,17 @@ private struct SongListView: View {
             if sortMode == .alphabetical { return filtered.sorted { $0.title < $1.title } }
             if sortMode == .topPlayed { return filtered.sorted { ($0.playCount ?? 0) > ($1.playCount ?? 0) } }
             
-            // Recent: Group by album to keep track order intact, but sort albums by newest added.
-            // Loose tracks without an album get their own group so they interleave properly.
-            let grouped = Dictionary(grouping: filtered) { t -> String in
-                if let aid = t.albumId, !aid.isEmpty { return aid }
-                return t.id
-            }
-            
-            let sortedGroups = grouped.sorted { g1, g2 in
-                let max1 = g1.value.compactMap { $0.created }.max() ?? ""
-                let max2 = g2.value.compactMap { $0.created }.max() ?? ""
-                return max1 > max2
-            }
-            
-            return sortedGroups.flatMap { group in
-                group.value.sorted { a, b in
-                    let discA = a.discNumber ?? 1
-                    let discB = b.discNumber ?? 1
-                    if discA != discB { return discA < discB }
-                    return (a.track ?? 0) < (b.track ?? 0)
+            // Recent sort mode: Strictly by 'created' date descending, matching Navidrome WebUI
+            let sortedByRecent = filtered.sorted { a, b in
+                let aCreated = a.created ?? ""
+                let bCreated = b.created ?? ""
+                
+                if aCreated != bCreated {
+                    return aCreated > bCreated
                 }
+                return a.title < b.title
             }
+            return sortedByRecent
         }()
 
         if viewMode == .grid {
@@ -859,75 +803,27 @@ private struct PlaylistDetailView: View {
 
                 Spacer()
 
-                // View Mode Menu (Matching Songs style)
-                Menu {
-                    Button(action: { viewMode = .grid }) {
-                        Label("Grid", systemImage: "square.grid.2x2.fill")
+                // View Mode & Sort Mode Controls
+                HStack(spacing: isCompact ? 8 : 20) {
+                    // View Toggle
+                    Picker("View Mode", selection: $viewMode) {
+                        Image(systemName: "square.grid.2x2.fill").tag(ViewMode.grid)
+                        Image(systemName: "list.bullet").tag(ViewMode.list)
                     }
-                    Button(action: { viewMode = .list }) {
-                        Label("List", systemImage: "list.bullet")
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: viewMode == .grid ? "square.grid.2x2.fill" : "list.bullet")
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
-                    }
-                    .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                    .foregroundColor(isDarkMode ? .white : .black)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
-                }
+                    .pickerStyle(.segmented)
+                    .frame(width: isCompact ? 70 : 100)
+                    .accessibilityLabel("Switch View Mode")
 
-                // Offline Only Toggle (Matching Songs style)
-                Button(action: { showOfflineOnly.toggle() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: showOfflineOnly ? "checkmark.icloud.fill" : "icloud")
-                        if !isCompact {
-                            Text("Offline")
-                        }
+                    // Sort Toggle
+                    Picker("Sort Mode", selection: $sortMode) {
+                        Image(systemName: "textformat").tag(SortMode.alphabetical)
+                        Image(systemName: "clock.fill").tag(SortMode.recent)
+                        Image(systemName: "play.circle.fill").tag(SortMode.topPlayed)
                     }
-                    .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                    .foregroundColor(showOfflineOnly ? .red : (isDarkMode ? .white : .black))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(showOfflineOnly ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))))
+                    .pickerStyle(.segmented)
+                    .frame(width: isCompact ? 100 : 150)
+                    .accessibilityLabel("Switch Sort Mode")
                 }
-
-                // Sort Mode Menu (Matching Songs style)
-                Menu {
-                    Button(action: { sortMode = .alphabetical }) {
-                        Label("Alphabetical", systemImage: "textformat")
-                    }
-                    Button(action: { sortMode = .recent }) {
-                        Label("Recently Added", systemImage: "clock.fill")
-                    }
-                    Button(action: { sortMode = .topPlayed }) {
-                        Label("Top Played", systemImage: "play.circle.fill")
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: sortMode == .alphabetical ? "textformat" : (sortMode == .recent ? "clock.fill" : "play.circle.fill"))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .bold))
-                    }
-                    .font(.system(size: isCompact ? 14 : 16, weight: .medium))
-                    .foregroundColor(isDarkMode ? .white : .black)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
-                }
-
-                Button(action: { playback.shufflePlay(tracks: sorted) }) {
-                    Image(systemName: "shuffle")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Color.red)
-                        .clipShape(Circle())
-                }
-                .disabled(sorted.isEmpty)
             }
             .padding(.horizontal, hPad)
             .padding(.bottom, 20)

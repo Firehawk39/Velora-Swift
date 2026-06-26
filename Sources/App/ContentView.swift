@@ -242,6 +242,7 @@ struct ContentView: View {
             .id(entry.id)
             .background(isDarkMode ? Color.black : Color.white)
             .offset(x: artistDetailOffset)
+            .transition(.move(edge: .trailing))
             // Edge-only swipe-to-dismiss: only fires when drag starts within 30pt of
             // the left edge, matching iOS native back-swipe zone. This prevents
             // conflicts with horizontal ScrollViews inside ArtistDetailView.
@@ -276,7 +277,6 @@ struct ContentView: View {
                         }
                     }
             )
-            .transition(.move(edge: .trailing))
         }
     }
 
