@@ -92,19 +92,19 @@ struct LibraryView: View {
                 // View Mode & Sort Mode Controls
                 HStack(spacing: isCompact ? 8 : 20) {
                     // View Toggle
-                    Picker("View Mode", selection: $viewMode) {
-                        Image(systemName: "square.grid.2x2.fill").tag(ViewMode.grid)
-                        Image(systemName: "list.bullet").tag(ViewMode.list)
+                    Picker("View Mode", selection: $_viewModeRaw) {
+                        Image(systemName: "square.grid.2x2.fill").tag(ViewMode.grid.rawValue)
+                        Image(systemName: "list.bullet").tag(ViewMode.list.rawValue)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: isCompact ? 70 : 100)
                     .accessibilityLabel("Switch View Mode")
 
                     // Sort Toggle
-                    Picker("Sort Mode", selection: $sortMode) {
-                        Image(systemName: "textformat").tag(SortMode.alphabetical)
-                        Image(systemName: "clock.fill").tag(SortMode.recent)
-                        Image(systemName: "play.circle.fill").tag(SortMode.topPlayed)
+                    Picker("Sort Mode", selection: $_sortModeRaw) {
+                        Image(systemName: "textformat").tag(SortMode.alphabetical.rawValue)
+                        Image(systemName: "clock.fill").tag(SortMode.recent.rawValue)
+                        Image(systemName: "play.circle.fill").tag(SortMode.topPlayed.rawValue)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: isCompact ? 100 : 150)
@@ -806,19 +806,19 @@ private struct PlaylistDetailView: View {
                 // View Mode & Sort Mode Controls
                 HStack(spacing: isCompact ? 8 : 20) {
                     // View Toggle
-                    Picker("View Mode", selection: $viewMode) {
-                        Image(systemName: "square.grid.2x2.fill").tag(ViewMode.grid)
-                        Image(systemName: "list.bullet").tag(ViewMode.list)
+                    Picker("View Mode", selection: $_viewModeRaw) {
+                        Image(systemName: "square.grid.2x2.fill").tag(LibraryView.ViewMode.grid.rawValue)
+                        Image(systemName: "list.bullet").tag(LibraryView.ViewMode.list.rawValue)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: isCompact ? 70 : 100)
                     .accessibilityLabel("Switch View Mode")
 
                     // Sort Toggle
-                    Picker("Sort Mode", selection: $sortMode) {
-                        Image(systemName: "textformat").tag(SortMode.alphabetical)
-                        Image(systemName: "clock.fill").tag(SortMode.recent)
-                        Image(systemName: "play.circle.fill").tag(SortMode.topPlayed)
+                    Picker("Sort Mode", selection: $_sortModeRaw) {
+                        Image(systemName: "textformat").tag(LibraryView.SortMode.alphabetical.rawValue)
+                        Image(systemName: "clock.fill").tag(LibraryView.SortMode.recent.rawValue)
+                        Image(systemName: "play.circle.fill").tag(LibraryView.SortMode.topPlayed.rawValue)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: isCompact ? 100 : 150)
