@@ -1,8 +1,6 @@
 import logging
 import struct
-from typing import AsyncGenerator
 from database.db import get_db_connection, VEC_AVAILABLE
-from services.ollama_client import generate_chat_stream
 
 try:
     from services.audio_processor import AudioProcessor, ML_AVAILABLE
@@ -55,6 +53,19 @@ def get_text_embedding(text: str) -> list:
         return [0.0] * 512
 
 def perform_vector_search(query: str, limit: int = 3) -> list:
+    """
+    Searches the user's music library for tracks that sound similar to the text query.
+    Use this tool when the user asks for music recommendations, specific genres, or vibes.
+    
+    Args:
+        query: A descriptive string of the music the user wants (e.g. "upbeat electronic").
+        limit: The number of tracks to return. Defaults to 3.
+        
+    Returns:
+        A list of dictionaries containing the best matching tracks, including track_id, bpm, and key.
+        When recommending these tracks, you can seamlessly include them in your conversation.
+        If you want to play a track, output [PLAY: track_id] exactly.
+    """
     if not VEC_AVAILABLE:
         return []
         
@@ -122,38 +133,3 @@ def perform_vector_search(query: str, limit: int = 3) -> list:
         return []
     finally:
         conn.close()
-
-async def perform_rag_and_generate(messages: list[dict], context: str | None, system_prompt: str) -> AsyncGenerator[str, None]:
-    """
-    1. Embeds the user's latest prompt (and context).
-    2. Searches sqlite-vec for similar tracks.
-    3. Injects the results into the system prompt.
-    4. Calls Ollama with the full conversation history.
-    """
-    
-    # Extract the latest user message for vector search
-    latest_user_msg = ""
-    for msg in reversed(messages):
-        if msg.get("role") == "user":
-            latest_user_msg = msg.get("content", "")
-            break
-            
-    search_query = latest_user_msg
-    if context:
-        search_query += f" (Context: {context})"
-        
-    logger.info(f"Performing vector RAG for query: {search_query}")
-    results = perform_vector_search(search_query)
-    
-    rag_context = ""
-    if results:
-        rag_context = "\n\n[SYSTEM VECTOR DB RESULTS]\nHere are the closest matching tracks in the user's library right now:\n"
-        for r in results:
-            rag_context += f"- Track ID: {r['track_id']} | BPM: {r['bpm']:.1f} | Key: {r['key']} (Distance: {r['distance']:.4f})\n"
-        
-        rag_context += "\nYou can seamlessly recommend these tracks in your conversation based on the user's request. Do not expose the raw Track ID or Distance numbers to the user; just mention the songs casually."
-        
-    augmented_system_prompt = system_prompt + rag_context
-    
-    async for chunk in generate_chat_stream(messages, augmented_system_prompt):
-        yield chunk

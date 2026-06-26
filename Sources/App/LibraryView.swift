@@ -156,59 +156,57 @@ struct LibraryView: View {
                     }
                     .accessibilityLabel("Sort Options")
                 }
+
+                // Shuffle & Download All for Songs
+                if category == "songs" {
+                    HStack(spacing: 8) {
+                        Button(action: {
+                            playback.shufflePlay(tracks: client.allSongs)
+                        }) {
+                            Image(systemName: "shuffle")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 36, height: 36)
+                                .background(Color.red)
+                                .clipShape(Circle())
+                        }
+                        .accessibilityLabel("Shuffle Play All")
+
+                        HStack(spacing: 6) {
+                            if sync.isSyncingMedia && !sync.mediaEta.isEmpty {
+                                Text(sync.mediaEta)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.red)
+                            }
+
+                            Button(action: {
+                                if sync.isSyncingMedia {
+                                    sync.stopMediaSync()
+                                } else {
+                                    sync.startMediaSync()
+                                }
+                            }) {
+                                ZStack {
+                                    if sync.isSyncingMedia {
+                                        CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 2.5, accentColor: .red)
+                                    } else {
+                                        Image(systemName: "icloud.and.arrow.down.fill")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                }
+                                .frame(width: 36, height: 36)
+                                .background(sync.isSyncingMedia ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                                .clipShape(Circle())
+                            }
+                            .accessibilityLabel("Sync All Library")
+                        }
+                    }
+                }
             }
             .padding(.horizontal, hPad)
             .padding(.top, 8)
             .padding(.bottom, category == "songs" ? 8 : 20)
-
-            // Shuffle & Download All for Songs
-                    if category == "songs" {
-                        HStack(spacing: 8) {
-                            Button(action: {
-                                playback.shufflePlay(tracks: client.allSongs)
-                            }) {
-                                Image(systemName: "shuffle")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 36, height: 36)
-                                    .background(Color.red)
-                                    .clipShape(Circle())
-                            }
-                            .accessibilityLabel("Shuffle Play All")
-
-                             HStack(spacing: 6) {
-                                 if sync.isSyncingMedia && !sync.mediaEta.isEmpty {
-                                     Text(sync.mediaEta)
-                                         .font(.system(size: 10, weight: .medium))
-                                         .foregroundColor(.red)
-                                 }
-
-                                 Button(action: {
-                                      if sync.isSyncingMedia {
-                                          sync.stopMediaSync()
-                                      } else {
-                                          sync.startMediaSync()
-                                      }
-                                  }) {
-                                      ZStack {
-                                          if sync.isSyncingMedia {
-                                              CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 2.5, accentColor: .red)
-                                          } else {
-                                              Image(systemName: "icloud.and.arrow.down.fill")
-                                                  .font(.system(size: 14, weight: .bold))
-                                                  .foregroundColor(.white)
-                                          }
-                                      }
-                                      .frame(width: 36, height: 36)
-                                      .background(sync.isSyncingMedia ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
-                                      .clipShape(Circle())
-                                  }
-                                  .accessibilityLabel("Sync All Library")
-                              }
-                        }
-                        .padding(.horizontal, hPad)
-                        .padding(.bottom, 20)
-                    }
 
             ScrollView(showsIndicators: false) {
                 Group {
@@ -652,17 +650,8 @@ private struct SongListView: View {
         let sorted = filtered.sorted { a, b in
             if sortMode == .alphabetical { return a.title < b.title }
             if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-
-            // Recent sort mode: Strictly by 'created' date descending, matching Navidrome WebUI
-            let aCreated = a.created ?? ""
-            let bCreated = b.created ?? ""
-            
-            if aCreated != bCreated {
-                return aCreated > bCreated
-            }
-            
-            // Secondary sort: title if added at the exact same time
-            return a.title < b.title
+            // Recent: sort by file modification date, newest first
+            return (a.created ?? "") > (b.created ?? "")
         }
 
         if viewMode == .grid {

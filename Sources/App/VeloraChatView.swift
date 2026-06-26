@@ -7,7 +7,12 @@ import UIKit
 enum MessageSegment: Identifiable {
     case text(String)
     case playAction(trackId: String)
-    var id: UUID { UUID() }
+    var id: String {
+        switch self {
+        case .text(let t): return "text-\(t.hashValue)"
+        case .playAction(let id): return "play-\(id)"
+        }
+    }
 }
 
 struct VeloraChatMessage: Identifiable {
@@ -148,7 +153,7 @@ struct TrackChipView: View {
                 playback.loadAndPlay(track: track)
             } label: {
                 HStack(spacing: 12) {
-                    AsyncImage(url: URL(string: track.coverArt ?? "")) { phase in
+                    AsyncImage(url: track.coverArtUrl) { phase in
                         switch phase {
                         case .empty:
                             Rectangle().fill(Color.gray.opacity(0.3))
@@ -257,10 +262,10 @@ struct VeloraChatView: View {
                     .onTapGesture {
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
-                    .onChange(of: vm.messages.count, perform: { _ in
+                    .onChange(of: vm.messages.count) { _, _ in
                         guard let last = vm.messages.last else { return }
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                    })
+                    }
                 }
 
                 inputBar

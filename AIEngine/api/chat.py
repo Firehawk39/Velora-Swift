@@ -2,8 +2,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
-from services.memory_reader import build_system_prompt
-from services.rag_engine import perform_rag_and_generate
+import json
+
+from services.agent import agent
 
 router = APIRouter()
 
@@ -15,23 +16,36 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     context: Optional[str] = None
 
+async def stream_agent_response(prompt: str, message_history: list):
+    async with agent.run_stream(prompt, message_history=message_history) as result:
+        async for chunk in result.stream_text(delta=True):
+            yield f"data: {json.dumps({'content': chunk})}\n\n"
+        yield "data: [DONE]\n\n"
+
 @router.post("/message")
 async def send_chat_message(request: ChatRequest):
     """
-    Sends a message to the AI DJ. 
-    It reads the Obsidian memory files to construct the system prompt,
-    then streams the response back from the local Ollama instance.
+    Sends a message to the AI DJ via Pydantic AI agent.
     """
     if not request.messages:
         raise HTTPException(status_code=400, detail="Messages array cannot be empty.")
-        
-    system_prompt = build_system_prompt()
-    
-    # Convert Pydantic models to dicts before passing to RAG engine
-    messages_dicts = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-    
-    # Perform RAG to find similar songs and stream the response back in SSE format
+
+    current_msg = request.messages[-1].content
+    if request.context:
+        current_msg += f"\n\n[Context: {request.context}]"
+
+    # Build conversation history using pydantic-ai's message format.
+    # We import lazily here to avoid hard dependency on internal API changes.
+    from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart
+    history = []
+    for msg in request.messages[:-1]:
+        if msg.role == "user":
+            history.append(ModelRequest(parts=[UserPromptPart(content=msg.content)]))
+        elif msg.role in ("assistant", "model"):
+            history.append(ModelResponse(parts=[TextPart(content=msg.content)]))
+
     return StreamingResponse(
-        perform_rag_and_generate(messages_dicts, request.context, system_prompt),
+        stream_agent_response(current_msg, history),
         media_type="text/event-stream"
     )
+
