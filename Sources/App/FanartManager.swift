@@ -412,9 +412,10 @@ final class FanartManager: ObservableObject {
 
     nonisolated private func getMBID(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?) -> Void) {
         let primary = extractPrimaryArtist(artistName)
-        let encodedName = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let queryTerm = "artist:\"\(primary)\""
+        let encodedQuery = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         // Use exact name query to improve accuracy
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encodedName)\"&fmt=json"
+        let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encodedQuery)&fmt=json"
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil) }
             return
