@@ -262,7 +262,7 @@ struct VeloraChatView: View {
                     .onTapGesture {
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
-                    .onChange(of: vm.messages.count) { _, _ in
+                    .onChange(of: vm.messages.count) { _ in
                         guard let last = vm.messages.last else { return }
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
