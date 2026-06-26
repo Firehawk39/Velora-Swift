@@ -428,7 +428,10 @@ struct NowPlayingView: View {
     private var playbackControls: some View {
         // Shuffle
         Button { playback.toggleShuffle(); resetIdleTimer() } label: {
-            Image(systemName: "shuffle").font(.system(size: 16)).foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
+            Image(systemName: "shuffle")
+                .font(.system(size: 16))
+                .foregroundColor(playback.isShuffle ? Color(hex: "#60a5fa") : .white.opacity(0.5))
+                .frame(width: 52, height: 44) // large hit target
         }
         .accessibilityLabel("Shuffle")
         .hoverEffect()
@@ -466,10 +469,12 @@ struct NowPlayingView: View {
             Image(systemName: playback.repeatMode == .one ? "repeat.1" : "repeat")
                 .font(.system(size: 16))
                 .foregroundColor(playback.repeatMode == .off ? .white.opacity(0.5) : .accentColor)
+                .frame(width: 52, height: 44) // large hit target
         }
         .accessibilityLabel("Repeat Mode")
         .hoverEffect()
     }
+
 
     private func artworkSection(size: CGFloat) -> some View {
         ZStack {
@@ -1035,7 +1040,7 @@ struct IsolatedProgressBarView: View {
 
     var progressFraction: Double {
         guard playback.duration > 0 else { return 0 }
-        return displayProgress / playback.duration
+        return max(0, min(1, displayProgress / playback.duration))
     }
 
     private func formatTime(_ t: Double) -> String {
@@ -1046,19 +1051,32 @@ struct IsolatedProgressBarView: View {
     var body: some View {
         VStack(spacing: 8) {
             GeometryReader { barGeo in
-                ZStack(alignment: .leading) {
-                    // Visual Bar (4pt height, centered vertically)
-                    ZStack(alignment: .leading) {
-                        Color.white.opacity(0.2)
+                let trackHeight: CGFloat = isDragging ? 6 : 4
+                let thumbSize: CGFloat = isDragging ? 18 : 0
+                let thumbX = CGFloat(progressFraction) * barGeo.size.width
 
-                        Color.white
-                            .scaleEffect(x: CGFloat(progressFraction), y: 1.0, anchor: .leading)
-                            .animation(isDragging ? nil : .linear(duration: 0.1), value: progressFraction)
-                    }
-                    .frame(height: 4)
-                    .clipShape(Capsule())
+                ZStack(alignment: .leading) {
+                    // Track background
+                    Capsule()
+                        .fill(Color.white.opacity(0.2))
+                        .frame(height: trackHeight)
+
+                    // Filled portion
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(0, thumbX), height: trackHeight)
+
+                    // Thumb — only visible while dragging
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: thumbSize, height: thumbSize)
+                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                        .offset(x: max(0, thumbX - thumbSize / 2))
+                        .opacity(isDragging ? 1 : 0)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxHeight: .infinity)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isDragging)
+                // Large invisible hit target so fingers can grab anywhere easily
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 0)
@@ -1075,7 +1093,7 @@ struct IsolatedProgressBarView: View {
                         }
                 )
             }
-            .frame(height: 12)
+            .frame(height: 28) // Tall invisible hit target — finger-friendly
 
             if !playback.isLyricsMode {
                 HStack {
@@ -1090,3 +1108,4 @@ struct IsolatedProgressBarView: View {
         }
     }
 }
+
