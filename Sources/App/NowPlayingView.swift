@@ -767,7 +767,7 @@ struct NowPlayingView: View {
                         }
                     } else {
                         // Fetch finished, nothing found
-                        Text("Looking for lyrics...")
+                        Text("No Lyrics Available")
                             .font(.system(size: 32, weight: .black))
                             .foregroundColor(.white.opacity(0.4))
                     }
