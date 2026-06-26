@@ -647,12 +647,32 @@ private struct SongListView: View {
         let base = client.allSongs
         let filtered = showOfflineOnly ? playback.filterOffline(base) : base
 
-        let sorted = filtered.sorted { a, b in
-            if sortMode == .alphabetical { return a.title < b.title }
-            if sortMode == .topPlayed { return (a.playCount ?? 0) > (b.playCount ?? 0) }
-            // Recent: sort by file modification date, newest first
-            return (a.created ?? "") > (b.created ?? "")
-        }
+        let sorted: [Track] = {
+            if sortMode == .alphabetical { return filtered.sorted { $0.title < $1.title } }
+            if sortMode == .topPlayed { return filtered.sorted { ($0.playCount ?? 0) > ($1.playCount ?? 0) } }
+            
+            // Recent: Group by album to keep track order intact, but sort albums by newest added.
+            // Loose tracks without an album get their own group so they interleave properly.
+            let grouped = Dictionary(grouping: filtered) { t -> String in
+                if let aid = t.albumId, !aid.isEmpty { return aid }
+                return t.id
+            }
+            
+            let sortedGroups = grouped.sorted { g1, g2 in
+                let max1 = g1.value.compactMap { $0.created }.max() ?? ""
+                let max2 = g2.value.compactMap { $0.created }.max() ?? ""
+                return max1 > max2
+            }
+            
+            return sortedGroups.flatMap { group in
+                group.value.sorted { a, b in
+                    let discA = a.discNumber ?? 1
+                    let discB = b.discNumber ?? 1
+                    if discA != discB { return discA < discB }
+                    return (a.track ?? 0) < (b.track ?? 0)
+                }
+            }
+        }()
 
         if viewMode == .grid {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: isCompact ? 12 : 20), count: isCompact ? 3 : 6), spacing: isCompact ? 16 : 24) {
