@@ -90,25 +90,51 @@ struct LibraryView: View {
                 Spacer()
 
                 // View Mode & Sort Mode Controls
-                HStack(spacing: isCompact ? 8 : 20) {
+                HStack(spacing: isCompact ? 8 : 12) {
                     // View Toggle
-                    Picker("View Mode", selection: $_viewModeRaw) {
-                        Image(systemName: "square.grid.2x2.fill").tag(ViewMode.grid.rawValue)
-                        Image(systemName: "list.bullet").tag(ViewMode.list.rawValue)
+                    Menu {
+                        Button(action: { _viewModeRaw = ViewMode.grid.rawValue }) {
+                            Label("Grid", systemImage: "square.grid.2x2.fill")
+                        }
+                        Button(action: { _viewModeRaw = ViewMode.list.rawValue }) {
+                            Label("List", systemImage: "list.bullet")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: viewMode == .grid ? "square.grid.2x2.fill" : "list.bullet")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: isCompact ? 70 : 100)
-                    .accessibilityLabel("Switch View Mode")
 
                     // Sort Toggle
-                    Picker("Sort Mode", selection: $_sortModeRaw) {
-                        Image(systemName: "textformat").tag(SortMode.alphabetical.rawValue)
-                        Image(systemName: "clock.fill").tag(SortMode.recent.rawValue)
-                        Image(systemName: "play.circle.fill").tag(SortMode.topPlayed.rawValue)
+                    Menu {
+                        Button(action: { _sortModeRaw = SortMode.alphabetical.rawValue }) {
+                            Label("Alphabetical", systemImage: "textformat")
+                        }
+                        Button(action: { _sortModeRaw = SortMode.recent.rawValue }) {
+                            Label("Recently Added", systemImage: "clock.fill")
+                        }
+                        Button(action: { _sortModeRaw = SortMode.topPlayed.rawValue }) {
+                            Label("Top Played", systemImage: "play.circle.fill")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: sortMode == .alphabetical ? "textformat" : (sortMode == .recent ? "clock.fill" : "play.circle.fill"))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: isCompact ? 100 : 150)
-                    .accessibilityLabel("Switch Sort Mode")
                 }
 
                 // Shuffle & Download All for Songs
@@ -804,25 +830,51 @@ private struct PlaylistDetailView: View {
                 Spacer()
 
                 // View Mode & Sort Mode Controls
-                HStack(spacing: isCompact ? 8 : 20) {
+                HStack(spacing: isCompact ? 8 : 12) {
                     // View Toggle
-                    Picker("View Mode", selection: $_viewModeRaw) {
-                        Image(systemName: "square.grid.2x2.fill").tag(LibraryView.ViewMode.grid.rawValue)
-                        Image(systemName: "list.bullet").tag(LibraryView.ViewMode.list.rawValue)
+                    Menu {
+                        Button(action: { _viewModeRaw = LibraryView.ViewMode.grid.rawValue }) {
+                            Label("Grid", systemImage: "square.grid.2x2.fill")
+                        }
+                        Button(action: { _viewModeRaw = LibraryView.ViewMode.list.rawValue }) {
+                            Label("List", systemImage: "list.bullet")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: viewMode == .grid ? "square.grid.2x2.fill" : "list.bullet")
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: isCompact ? 70 : 100)
-                    .accessibilityLabel("Switch View Mode")
 
                     // Sort Toggle
-                    Picker("Sort Mode", selection: $_sortModeRaw) {
-                        Image(systemName: "textformat").tag(LibraryView.SortMode.alphabetical.rawValue)
-                        Image(systemName: "clock.fill").tag(LibraryView.SortMode.recent.rawValue)
-                        Image(systemName: "play.circle.fill").tag(LibraryView.SortMode.topPlayed.rawValue)
+                    Menu {
+                        Button(action: { _sortModeRaw = LibraryView.SortMode.alphabetical.rawValue }) {
+                            Label("Alphabetical", systemImage: "textformat")
+                        }
+                        Button(action: { _sortModeRaw = LibraryView.SortMode.recent.rawValue }) {
+                            Label("Recently Added", systemImage: "clock.fill")
+                        }
+                        Button(action: { _sortModeRaw = LibraryView.SortMode.topPlayed.rawValue }) {
+                            Label("Top Played", systemImage: "play.circle.fill")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: sortMode == .alphabetical ? "textformat" : (sortMode == .recent ? "clock.fill" : "play.circle.fill"))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .font(.system(size: isCompact ? 14 : 16, weight: .medium))
+                        .foregroundColor(isDarkMode ? .white : .black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: isCompact ? 100 : 150)
-                    .accessibilityLabel("Switch Sort Mode")
                 }
             }
             .padding(.horizontal, hPad)
