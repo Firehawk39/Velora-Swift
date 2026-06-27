@@ -143,12 +143,17 @@ struct LibraryView: View {
                         Button(action: {
                             playback.shufflePlay(tracks: client.allSongs)
                         }) {
-                            Image(systemName: "shuffle")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 36, height: 36)
-                                .background(Color.red)
-                                .clipShape(Circle())
+                            HStack(spacing: 6) {
+                                Image(systemName: "shuffle")
+                                    .font(.system(size: 14, weight: .bold))
+                                Text("Shuffle")
+                                    .font(.system(size: 14, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .frame(height: 36)
+                            .background(Color.red)
+                            .clipShape(Capsule())
                         }
                         .accessibilityLabel("Shuffle Play All")
 
