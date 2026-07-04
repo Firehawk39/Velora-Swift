@@ -38,6 +38,10 @@ def add_dynamic_prompt() -> str:
     return build_system_prompt()
 
 # Register tools here after agent is created to avoid circular imports.
-# Imported purely for side effects (registering the tool on the agent).
-from services.rag_engine import perform_vector_search  # noqa: E402
+from services.rag_engine import perform_vector_search
+from services.tools import get_recent_history, search_library, update_memory
+
 agent.tool(perform_vector_search)
+agent.tool(get_recent_history)
+agent.tool(search_library)
+agent.tool(update_memory)

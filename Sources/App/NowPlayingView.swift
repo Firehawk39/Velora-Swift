@@ -15,7 +15,6 @@ struct NowPlayingView: View {
     @State private var isDragging   = false
     @State private var artistBiography: String? = nil
     @State private var isFetchingArtistInfo: Bool = false
-    @State private var lyricsLoadFailed: Bool = false
     @State private var dragProgress: Double = 0
     @State private var idleTimer: Timer? = nil
     @State private var showPlayPauseHint: Bool = false
@@ -286,6 +285,19 @@ struct NowPlayingView: View {
                             .foregroundColor(.white.opacity(0.6))
                             .lineLimit(1)
                             .multilineTextAlignment(.center)
+                            
+                        if playback.currentTrack?.suffix?.lowercased() == "flac" {
+                            HStack(spacing: 4) {
+                                Image(systemName: "waveform")
+                                Text("Lossless")
+                            }
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.15))
+                            .cornerRadius(4)
+                        }
                     }
                     .padding(.horizontal, 24)
                 }
@@ -364,10 +376,25 @@ struct NowPlayingView: View {
                                 .foregroundColor(.white)
                                 .lineLimit(2)
 
-                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                .font(.system(size: tabletArtistSize, weight: .bold))
-                                .foregroundColor(.white.opacity(0.8))
-                                .lineLimit(1)
+                            HStack(spacing: 8) {
+                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                    .font(.system(size: tabletArtistSize, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .lineLimit(1)
+                                    
+                                if playback.currentTrack?.suffix?.lowercased() == "flac" {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "waveform")
+                                        Text("Lossless")
+                                    }
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.white.opacity(0.15))
+                                    .cornerRadius(4)
+                                }
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -382,7 +409,7 @@ struct NowPlayingView: View {
                 // Controls Section
                 if !isIdle && !playback.isLyricsMode {
                     HStack(alignment: .center) {
-                        // 1. Left Section (Empty now)
+                        // 1. Left Section
                         HStack {
                             Spacer()
                         }
@@ -518,9 +545,6 @@ struct NowPlayingView: View {
                         showPlayPauseHint = false
                     }
                 }
-            } else {
-                // When not idle, regular tap might do something else or nothing
-                // For now, let's just make it do nothing to keep the "secret" feel
             }
         }
     }
@@ -801,7 +825,7 @@ struct NowPlayingView: View {
         return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
     }
 
-    // renderLyricLine removed — replaced by LyricLineView struct below
+
     private func refreshMetadata() {
         guard let track = playback.currentTrack else { return }
 

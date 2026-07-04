@@ -7,10 +7,12 @@ import UIKit
 enum MessageSegment: Identifiable {
     case text(String)
     case playAction(trackId: String)
+    case queueAction(trackId: String)
     var id: String {
         switch self {
         case .text(let t): return "text-\(t.hashValue)"
         case .playAction(let id): return "play-\(id)"
+        case .queueAction(let id): return "queue-\(id)"
         }
     }
 }
@@ -22,7 +24,7 @@ struct VeloraChatMessage: Identifiable {
     
     var segments: [MessageSegment] {
         var result: [MessageSegment] = []
-        let pattern = "\\[PLAY:\\s*([^]]+)\\]"
+        let pattern = "\\[(PLAY|QUEUE):\\s*([^]]+)\\]"
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return [.text(text)]
         }
@@ -38,8 +40,15 @@ struct VeloraChatMessage: Identifiable {
                     result.append(.text(textPart.trimmingCharacters(in: .whitespacesAndNewlines)))
                 }
             }
-            let trackId = nsString.substring(with: match.range(at: 1))
-            result.append(.playAction(trackId: trackId.trimmingCharacters(in: .whitespacesAndNewlines)))
+            let actionType = nsString.substring(with: match.range(at: 1))
+            let trackId = nsString.substring(with: match.range(at: 2)).trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if actionType == "PLAY" {
+                result.append(.playAction(trackId: trackId))
+            } else {
+                result.append(.queueAction(trackId: trackId))
+            }
+            
             currentIndex = match.range.location + match.range.length
         }
         
@@ -140,6 +149,7 @@ final class VeloraChatViewModel: ObservableObject {
 
 struct TrackChipView: View {
     let trackId: String
+    var isQueue: Bool = false
     @EnvironmentObject var playback: PlaybackManager
     @EnvironmentObject var client: NavidromeClient
     
@@ -150,7 +160,11 @@ struct TrackChipView: View {
     var body: some View {
         if let track = track {
             Button {
-                playback.loadAndPlay(track: track)
+                if isQueue {
+                    playback.queue(track: track)
+                } else {
+                    playback.loadAndPlay(track: track)
+                }
             } label: {
                 HStack(spacing: 12) {
                     AsyncImage(url: track.coverArtUrl) { phase in
@@ -179,7 +193,7 @@ struct TrackChipView: View {
                             .lineLimit(1)
                     }
                     Spacer()
-                    Image(systemName: "play.circle.fill")
+                    Image(systemName: isQueue ? "text.append" : "play.circle.fill")
                         .font(.system(size: 28))
                         .foregroundColor(.white)
                 }
@@ -242,7 +256,10 @@ struct VeloraChatView: View {
                                                     .background(msg.isUser ? Color.accentColor : bubble)
                                                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                                             case .playAction(let trackId):
-                                                TrackChipView(trackId: trackId)
+                                                TrackChipView(trackId: trackId, isQueue: false)
+                                                    .frame(maxWidth: 250)
+                                            case .queueAction(let trackId):
+                                                TrackChipView(trackId: trackId, isQueue: true)
                                                     .frame(maxWidth: 250)
                                             }
                                         }
