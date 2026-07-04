@@ -161,7 +161,7 @@ struct TrackChipView: View {
         if let track = track {
             Button {
                 if isQueue {
-                    playback.queue(track: track)
+                    playback.queue.append(track)
                 } else {
                     playback.loadAndPlay(track: track)
                 }
