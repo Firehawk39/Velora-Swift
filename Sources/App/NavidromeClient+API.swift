@@ -768,11 +768,13 @@ extension NavidromeClient {
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 // Write a 0-byte poison marker so SyncManager stops endlessly re-fetching this missing asset.
                 // 'Repair Sync' will still detect it, delete it, and correctly re-attempt downloading it.
+                try? FileManager.default.createDirectory(at: localUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? Data().write(to: localUrl)
                 Task { @MainActor in completion(false) }
                 return
             }
             do {
+                try FileManager.default.createDirectory(at: localUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: localUrl)
                 Task { @MainActor in completion(true) }
             } catch {
@@ -797,11 +799,13 @@ extension NavidromeClient {
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 // Write a 0-byte poison marker so SyncManager stops endlessly re-fetching this missing asset.
                 // 'Repair Sync' will still detect it, delete it, and correctly re-attempt downloading it.
+                try? FileManager.default.createDirectory(at: localUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? Data().write(to: localUrl)
                 Task { @MainActor in completion(false) }
                 return
             }
             do {
+                try FileManager.default.createDirectory(at: localUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: localUrl)
                 Task { @MainActor in completion(true) }
             } catch {
