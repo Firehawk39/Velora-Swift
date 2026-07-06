@@ -4,7 +4,6 @@ import SwiftUI
 struct LibraryView: View {
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var playback: PlaybackManager
-    @EnvironmentObject var sync: SyncManager
     @ObservedObject var network = NetworkMonitor.shared
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
@@ -168,35 +167,7 @@ struct LibraryView: View {
                         }
                         .accessibilityLabel("Shuffle Play All")
 
-                        HStack(spacing: 6) {
-                            if sync.isSyncingMedia && !sync.mediaEta.isEmpty {
-                                Text(sync.mediaEta)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.red)
-                            }
-
-                            Button(action: {
-                                if sync.isSyncingMedia {
-                                    sync.stopMediaSync()
-                                } else {
-                                    sync.startMediaSync()
-                                }
-                            }) {
-                                ZStack {
-                                    if sync.isSyncingMedia {
-                                        CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 2.5, accentColor: .red)
-                                    } else {
-                                        Image(systemName: "icloud.and.arrow.down.fill")
-                                            .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(.white)
-                                    }
-                                }
-                                .frame(width: 36, height: 36)
-                                .background(sync.isSyncingMedia ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
-                                .clipShape(Circle())
-                            }
-                            .accessibilityLabel("Sync All Library")
-                        }
+                        LibrarySyncButtonView(isDarkMode: isDarkMode)
                     }
                 }
             }
@@ -1060,6 +1031,43 @@ private struct PlaylistDetailView: View {
                     Label("Download", systemImage: "arrow.down.circle")
                 }
             }
+        }
+    }
+}
+
+struct LibrarySyncButtonView: View {
+    @EnvironmentObject var sync: SyncManager
+    let isDarkMode: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if sync.isSyncingMedia && !sync.mediaEta.isEmpty {
+                Text(sync.mediaEta)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.red)
+            }
+
+            Button(action: {
+                if sync.isSyncingMedia {
+                    sync.stopMediaSync()
+                } else {
+                    sync.startMediaSync()
+                }
+            }) {
+                ZStack {
+                    if sync.isSyncingMedia {
+                        CircularProgressView(progress: sync.mediaProgress, size: 24, strokeWidth: 2.5, accentColor: .red)
+                    } else {
+                        Image(systemName: "icloud.and.arrow.down.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .background(sync.isSyncingMedia ? Color.red.opacity(0.1) : (isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05)))
+                .clipShape(Circle())
+            }
+            .accessibilityLabel("Sync All Library")
         }
     }
 }

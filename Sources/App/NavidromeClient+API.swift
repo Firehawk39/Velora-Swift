@@ -608,14 +608,22 @@ extension NavidromeClient {
                 .trimmingCharacters(in: .whitespaces) ?? stripped
         }()
 
-        guard let encodedTitle  = cleanTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let encodedArtist = cleanArtist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
-        else { return nil }
+        var getComponents = URLComponents(string: "https://lrclib.net/api/get")
+        getComponents?.queryItems = [
+            URLQueryItem(name: "track_name", value: cleanTitle),
+            URLQueryItem(name: "artist_name", value: cleanArtist),
+            URLQueryItem(name: "duration", value: String(Int(duration)))
+        ]
+
+        var searchComponents = URLComponents(string: "https://lrclib.net/api/search")
+        searchComponents?.queryItems = [
+            URLQueryItem(name: "track_name", value: cleanTitle),
+            URLQueryItem(name: "artist_name", value: cleanArtist)
+        ]
 
         do {
             // 1. Exact GET — only when we have a real duration (duration=0 always 404s on LRCLIB)
-            if duration > 0,
-               let getUrl = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)&duration=\(Int(duration))") {
+            if duration > 0, let getUrl = getComponents?.url {
                 var req = URLRequest(url: getUrl)
                 req.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
                 req.timeoutInterval = 8.0
@@ -628,7 +636,7 @@ extension NavidromeClient {
             }
 
             // 2. Search fallback — separate params give LRCLIB much better matching than a combined blob
-            guard let searchUrl = URL(string: "https://lrclib.net/api/search?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
+            guard let searchUrl = searchComponents?.url else {
                 return nil
             }
             var searchReq = URLRequest(url: searchUrl)
@@ -665,7 +673,8 @@ extension NavidromeClient {
     func scrobble(track: Track, submission: Bool) {
         // ALWAYS update local history immediately, regardless of online/offline status
         if submission {
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 self.recentlyPlayed.removeAll(where: { $0.id == track.id })
                 self.recentlyPlayed.insert(track, at: 0)
                 if self.recentlyPlayed.count > 15 {
@@ -838,7 +847,8 @@ extension NavidromeClient {
     }
 
     func clearCache() {
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
             self.artists.removeAll()
             self.albums.removeAll()
             self.allSongs.removeAll()

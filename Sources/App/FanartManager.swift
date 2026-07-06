@@ -6,7 +6,7 @@ final class FanartManager: ObservableObject {
     static let shared = FanartManager()
 
     @Published var currentBackdrop: UIImage? = nil
-    @Published var cachedArtistImages: [String: UIImage] = [:]
+    private let imageCache = NSCache<NSString, UIImage>()
 
     private let fileManager = FileManager.default
     private let backdropDir: URL
@@ -28,7 +28,7 @@ final class FanartManager: ObservableObject {
     /// Synchronously checks if a backdrop exists in cache and returns it
     func getCachedBackdrop(for artist: String, artistId: String? = nil) -> UIImage? {
         let key = getCacheKey(artistName: artist, artistId: artistId)
-        if let memoryCached = cachedArtistImages[key] {
+        if let memoryCached = imageCache.object(forKey: key as NSString) {
             return memoryCached
         }
 
@@ -38,9 +38,7 @@ final class FanartManager: ObservableObject {
         if FileManager.default.fileExists(atPath: fileUrl.path),
            let data = try? Data(contentsOf: fileUrl),
            let image = UIImage(data: data) {
-            DispatchQueue.main.async {
-                self.cachedArtistImages[key] = image
-            }
+            self.imageCache.setObject(image, forKey: key as NSString)
             return image
         }
         return nil
@@ -371,7 +369,7 @@ final class FanartManager: ObservableObject {
                 // CRITICAL: Even if this was a "silent" or background fetch,
                 // if the artist is the one we are currently viewing, update the UI!
                 DispatchQueue.main.async {
-                    self.cachedArtistImages[cacheKey] = image
+                    self.imageCache.setObject(image, forKey: cacheKey as NSString)
                     if self.currentArtistName == primaryArtistName {
                         withAnimation(.easeInOut(duration: 0.8)) {
                             self.currentBackdrop = image

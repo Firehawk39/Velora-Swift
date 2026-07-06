@@ -108,7 +108,7 @@ final class NavidromeClient: ObservableObject {
         let copyAllSongs = self.allSongs
         let copyRecentlyPlayed = self.recentlyPlayed
 
-        pendingSaveTask = Task {
+        pendingSaveTask = Task.detached(priority: .background) {
             // Debounce by 1 second to bundle concurrent network fetch calls
             do {
                 try await Task.sleep(nanoseconds: 1_000_000_000)
