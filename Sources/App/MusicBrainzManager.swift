@@ -57,7 +57,6 @@ final class MusicBrainzManager: ObservableObject {
     /// Called once at init — runs synchronously on a background thread via Task.detached.
     private func rebuildCacheFromDisk() {
         let dir = self.metadataDir
-        let cacheFile = self.cacheFile
 
         Task.detached(priority: .background) { [weak self] in
             let fm = FileManager.default
