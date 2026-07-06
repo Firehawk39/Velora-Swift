@@ -385,7 +385,7 @@ final class FanartManager: ObservableObject {
         task.resume()
     }
 
-    nonisolated private 
+    nonisolated
     func getCacheKey(artistName: String, artistId: String? = nil) -> String {
         if let aid = artistId, !aid.isEmpty { return aid }
         return sanitizeFileName(artistName)

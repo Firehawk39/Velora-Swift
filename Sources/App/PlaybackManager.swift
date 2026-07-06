@@ -781,9 +781,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
             var lyricWords: [LyricWord] = []
 
-            if let regex = wordTagRegex, rawText.contains("<") {
+            if rawText.contains("<") {
                 let nsRange = NSRange(rawText.startIndex..<rawText.endIndex, in: rawText)
-                let matches = regex.matches(in: rawText, range: nsRange)
+                let matches = wordTagRegex.matches(in: rawText, range: nsRange)
 
                 for match in matches {
                     if match.numberOfRanges == 4,
