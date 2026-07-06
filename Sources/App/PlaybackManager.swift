@@ -340,23 +340,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         let isOnline = NetworkMonitor.shared.isConnected
 
-        // Fetch lyrics — works offline too (returns disk-cached lyrics)
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
+        // Fetch lyrics — works offline (returns disk-cached lyrics)
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { [weak self] lyrics in
             Task { @MainActor in
-                if self.currentTrack?.id == track.id {
-                    if let lyrics = lyrics {
-                        self.currentLyrics = lyrics
-                        // Detect LRC format: any line starting with [MM:SS.xx]
-                        if lyrics.range(of: #"\[\d+:\d+\.\d+\]"#, options: .regularExpression) != nil {
-                            self.currentSyncedLyrics = self.parseLRC(lyrics)
-                        } else {
-                            self.currentSyncedLyrics = nil
-                        }
-                    } else {
-                        self.currentLyrics = nil
-                        self.currentSyncedLyrics = nil
-                    }
-                }
+                self?.applyLyrics(lyrics, for: track)
             }
         }
 
@@ -758,11 +745,31 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
+    // Compiled once — applied in parseLRC and applyLyrics
+    private static let lrcTimestampRegex = try! NSRegularExpression(pattern: #"\[\d+:\d+\.\d+\]"#)
+    private static let wordTagRegex = try! NSRegularExpression(pattern: "<(\\d+):(\\d+\\.\\d+)>\\s*([^<]+)")
+
+    /// Single source of truth for applying a lyrics payload to the current track.
+    @MainActor
+    private func applyLyrics(_ lyrics: String?, for track: Track) {
+        guard currentTrack?.id == track.id else { return }
+        if let lyrics = lyrics {
+            currentLyrics = lyrics
+            let range = NSRange(lyrics.startIndex..<lyrics.endIndex, in: lyrics)
+            currentSyncedLyrics = Self.lrcTimestampRegex.firstMatch(in: lyrics, range: range) != nil
+                ? parseLRC(lyrics)
+                : nil
+        } else {
+            currentLyrics = nil
+            currentSyncedLyrics = nil
+        }
+    }
+
     private func parseLRC(_ lyrics: String) -> [LyricLine] {
         var result: [LyricLine] = []
         let lines = lyrics.components(separatedBy: .newlines)
 
-        let wordTagRegex = try? NSRegularExpression(pattern: "<(\\d+):(\\d+\\.\\d+)>\\s*([^<]+)")
+        let wordTagRegex = Self.wordTagRegex
 
         for line in lines {
             guard line.hasPrefix("["), let bracketEnd = line.firstIndex(of: "]") else { continue }
@@ -1295,23 +1302,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     private func fetchMetadata(for track: Track) {
-        // Lyrics work offline (returns disk-cached lyrics)
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { lyrics in
+        // Fetch lyrics — works offline (returns disk-cached lyrics)
+        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { [weak self] lyrics in
             Task { @MainActor in
-                if self.currentTrack?.id == track.id {
-                    if let lyrics = lyrics {
-                        self.currentLyrics = lyrics
-                        // Detect LRC format: any line starting with [MM:SS.xx]
-                        if lyrics.range(of: #"\[\d+:\d+\.\d+\]"#, options: .regularExpression) != nil {
-                            self.currentSyncedLyrics = self.parseLRC(lyrics)
-                        } else {
-                            self.currentSyncedLyrics = nil
-                        }
-                    } else {
-                        self.currentLyrics = nil
-                        self.currentSyncedLyrics = nil
-                    }
-                }
+                self?.applyLyrics(lyrics, for: track)
             }
         }
 
