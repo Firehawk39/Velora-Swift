@@ -346,7 +346,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
                         self.currentLyrics = lyrics
-                        if lyrics.contains("[00:") || lyrics.contains("[01:") || lyrics.contains("[02:") {
+                        // Detect LRC format: any line starting with [MM:SS.xx]
+                        if lyrics.range(of: #"\[\d+:\d+\.\d+\]"#, options: .regularExpression) != nil {
                             self.currentSyncedLyrics = self.parseLRC(lyrics)
                         } else {
                             self.currentSyncedLyrics = nil
@@ -1300,7 +1301,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 if self.currentTrack?.id == track.id {
                     if let lyrics = lyrics {
                         self.currentLyrics = lyrics
-                        if lyrics.contains("[00:") || lyrics.contains("[01:") || lyrics.contains("[02:") {
+                        // Detect LRC format: any line starting with [MM:SS.xx]
+                        if lyrics.range(of: #"\[\d+:\d+\.\d+\]"#, options: .regularExpression) != nil {
                             self.currentSyncedLyrics = self.parseLRC(lyrics)
                         } else {
                             self.currentSyncedLyrics = nil
