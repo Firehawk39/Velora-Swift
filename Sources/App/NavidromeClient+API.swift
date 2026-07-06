@@ -582,69 +582,81 @@ extension NavidromeClient {
     nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double) async -> String? {
         guard await NetworkMonitor.shared.isConnected else { return nil }
 
-        // Clean up title/artist for better matching (remove feat, remaster tags)
-        let cleanTitle = title.replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
-                              .replacingOccurrences(of: #"\s*\[[^\]]*\]"#, with: "", options: .regularExpression)
-                              .trimmingCharacters(in: .whitespaces)
+        // Strip (Remaster), [Live Version], etc. from title
+        let cleanTitle = title
+            .replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s*\[[^\]]*\]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
 
-        let cleanArtist = artist.components(separatedBy: " feat.").first?
-                                .components(separatedBy: " ft.").first?
-                                .components(separatedBy: " & ").first?
-                                .components(separatedBy: ",").first?
-                                .trimmingCharacters(in: .whitespaces) ?? artist
+        // Strip feat./ft./featuring artists (case-insensitive), then take primary artist
+        let cleanArtist: String = {
+            let featPattern = try? NSRegularExpression(
+                pattern: #"\s+(feat\.|ft\.|featuring)\s+.*"#,
+                options: .caseInsensitive
+            )
+            let range = NSRange(artist.startIndex..<artist.endIndex, in: artist)
+            let stripped: String
+            if let m = featPattern?.firstMatch(in: artist, range: range),
+               let mRange = Range(m.range, in: artist) {
+                stripped = String(artist[artist.startIndex..<mRange.lowerBound])
+            } else {
+                stripped = artist
+            }
+            return stripped
+                .components(separatedBy: CharacterSet(charactersIn: ",&"))
+                .first?
+                .trimmingCharacters(in: .whitespaces) ?? stripped
+        }()
 
-        guard let encodedTitle = cleanTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let encodedArtist = cleanArtist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let getUrl = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)&duration=\(Int(duration))") else {
-            return nil
-        }
-
-        var request = URLRequest(url: getUrl)
-        request.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 8.0
+        guard let encodedTitle  = cleanTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let encodedArtist = cleanArtist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        else { return nil }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // 1. Exact GET — only when we have a real duration (duration=0 always 404s on LRCLIB)
+            if duration > 0,
+               let getUrl = URL(string: "https://lrclib.net/api/get?track_name=\(encodedTitle)&artist_name=\(encodedArtist)&duration=\(Int(duration))") {
+                var req = URLRequest(url: getUrl)
+                req.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
+                req.timeoutInterval = 8.0
+                let (data, response) = try await URLSession.shared.data(for: req)
+                if let http = response as? HTTPURLResponse, http.statusCode == 200,
+                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if let synced = json["syncedLyrics"] as? String, !synced.isEmpty { return synced }
-                    if let plain = json["plainLyrics"] as? String, !plain.isEmpty { return plain }
+                    if let plain  = json["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
                 }
             }
 
-            // Fallback to SEARCH API if EXACT GET fails (handles slight metadata mismatches)
-            guard let q = "\(cleanArtist) \(cleanTitle)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-                  let searchUrl = URL(string: "https://lrclib.net/api/search?q=\(q)") else { return nil }
-
+            // 2. Search fallback — separate params give LRCLIB much better matching than a combined blob
+            guard let searchUrl = URL(string: "https://lrclib.net/api/search?track_name=\(encodedTitle)&artist_name=\(encodedArtist)") else {
+                return nil
+            }
             var searchReq = URLRequest(url: searchUrl)
             searchReq.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
             searchReq.timeoutInterval = 8.0
 
             let (searchData, searchResp) = try await URLSession.shared.data(for: searchReq)
-            if let httpSearchResp = searchResp as? HTTPURLResponse, httpSearchResp.statusCode == 200 {
-                if let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]] {
+            if let httpSearchResp = searchResp as? HTTPURLResponse, httpSearchResp.statusCode == 200,
+               let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]] {
 
-                    // WORLD CLASS HEURISTIC: Find the best match that is within Â±3 seconds of our actual audio file
-                    // This prevents syncing a "Live Version" to a "Studio Version" and causing drift.
-                    let bestMatch = jsonArray.first { result in
-                        if let resultDuration = result["duration"] as? Double {
-                            return abs(resultDuration - duration) <= 3.0
-                        }
-                        return false
-                    } ?? jsonArray.first // Fallback to first if no duration matches perfectly
+                // Best match: prefer a result within ±3s of actual track duration to avoid
+                // syncing a Live Version to a Studio Version (causes lyric drift).
+                let bestMatch = jsonArray.first { result in
+                    guard let resultDuration = result["duration"] as? Double else { return false }
+                    return abs(resultDuration - duration) <= 3.0
+                } ?? jsonArray.first
 
-                    if let match = bestMatch {
-                        if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
-                        if let plain = match["plainLyrics"] as? String, !plain.isEmpty { return plain }
-                    }
+                if let match = bestMatch {
+                    if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
+                    if let plain  = match["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
                 }
             }
         } catch {
             AppLogger.shared.log("[LRCLIB] Fetch error: \(error.localizedDescription)", level: .error)
-            return nil
         }
         return nil
     }
+
 
     // MARK: - Scrobbling
 
