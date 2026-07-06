@@ -41,10 +41,71 @@ final class MusicBrainzManager: ObservableObject {
         self.metadataDir = VeloraStorage.metadata
         self.cacheFile = VeloraStorage.root.appendingPathComponent("name_to_mbid.json")
 
-        // Load cache
+        // Load persisted cache
         if let data = try? Data(contentsOf: self.cacheFile),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
             self.nameToMBIDCache = json
+        }
+
+        // Self-heal: reconstruct any entries missing from the cache by scanning disk.
+        // This makes the cache resilient to deletion/corruption of name_to_mbid.json.
+        rebuildCacheFromDisk()
+    }
+
+    /// Scans all artist_*.json and album_*.json files in the metadata directory and
+    /// backfills nameToMBIDCache for any entries not already present.
+    /// Called once at init — runs synchronously on a background thread via Task.detached.
+    private func rebuildCacheFromDisk() {
+        let dir = self.metadataDir
+        let cacheFile = self.cacheFile
+
+        Task.detached(priority: .background) { [weak self] in
+            let fm = FileManager.default
+            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+
+            var rebuilt: [String: String] = [:]
+
+            for file in files {
+                let name = file.lastPathComponent
+                guard name.hasSuffix(".json") else { continue }
+
+                guard let data = try? Data(contentsOf: file),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { continue }
+
+                let mbid = (json["id"] as? String) ?? ""
+                guard !mbid.isEmpty else { continue }
+
+                if name.hasPrefix("artist_") {
+                    // MusicBrainz returns artist name under "name"
+                    if let artistName = json["name"] as? String {
+                        rebuilt[artistName] = mbid
+                    }
+                } else if name.hasPrefix("album_") {
+                    // Albums: MusicBrainz returns title under "title", artist under credit
+                    if let title = json["title"] as? String,
+                       let credits = json["artist-credit"] as? [[String: Any]],
+                       let firstCredit = credits.first,
+                       let artist = firstCredit["artist"] as? [String: Any],
+                       let artistName = artist["name"] as? String {
+                        rebuilt["\(artistName)_\(title)"] = mbid
+                    }
+                }
+            }
+
+            guard !rebuilt.isEmpty else { return }
+
+            await MainActor.run {
+                guard let self = self else { return }
+                var didChange = false
+                for (key, mbid) in rebuilt {
+                    if self.nameToMBIDCache[key] == nil {
+                        self.nameToMBIDCache[key] = mbid
+                        didChange = true
+                    }
+                }
+                if didChange { self.saveCache() }
+            }
         }
     }
 
@@ -60,21 +121,63 @@ final class MusicBrainzManager: ObservableObject {
     }
 
     func hasArtistMetadata(for artistName: String) -> Bool {
-        let mbid = nameToMBIDCache[artistName]
-        guard let validMbid = mbid else { return false }
-        if validMbid == "NOT_FOUND" { return true }
-        let fileName = "artist_" + (validMbid) + ".json"
-        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
-        return FileManager.default.fileExists(atPath: fileUrl.path)
+        // Fast path: MBID is in the in-memory cache
+        if let mbid = nameToMBIDCache[artistName] {
+            if mbid == "NOT_FOUND" { return true }
+            return FileManager.default.fileExists(
+                atPath: metadataDir.appendingPathComponent("artist_\(mbid).json").path
+            )
+        }
+        // Cache miss — scan disk so a deleted/corrupt name_to_mbid.json
+        // doesn't cause every artist to be re-synced on next tap.
+        return hasAnyArtistFile(named: artistName)
+    }
+
+    /// Scans the metadata directory for an artist JSON whose "name" field matches.
+    /// Only called when the MBID cache doesn't have an entry for this artist.
+    private func hasAnyArtistFile(named artistName: String) -> Bool {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: metadataDir, includingPropertiesForKeys: nil)
+        else { return false }
+        for file in files where file.lastPathComponent.hasPrefix("artist_") {
+            if let data = try? Data(contentsOf: file),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let name = json["name"] as? String, name == artistName,
+               let mbid = json["id"] as? String {
+                // Backfill the cache while we're here
+                nameToMBIDCache[artistName] = mbid
+                saveCache()
+                return true
+            }
+        }
+        return false
     }
 
     func hasAlbumMetadata(albumName: String, artistName: String) -> Bool {
-        let mbid = nameToMBIDCache["\(artistName)_\(albumName)"]
-        guard let validMbid = mbid else { return false }
-        if validMbid == "NOT_FOUND" { return true }
-        let fileName = "album_" + (validMbid) + ".json"
-        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
-        return FileManager.default.fileExists(atPath: fileUrl.path)
+        let cacheKey = "\(artistName)_\(albumName)"
+        if let mbid = nameToMBIDCache[cacheKey] {
+            if mbid == "NOT_FOUND" { return true }
+            let fileUrl = metadataDir.appendingPathComponent("album_\(mbid).json")
+            return FileManager.default.fileExists(atPath: fileUrl.path)
+        }
+        // Cache miss — scan disk directly
+        return hasAnyAlbumFile(albumName: albumName, artistName: artistName)
+    }
+
+    private func hasAnyAlbumFile(albumName: String, artistName: String) -> Bool {
+        guard let files = try? FileManager.default.contentsOfDirectory(at: metadataDir, includingPropertiesForKeys: nil)
+        else { return false }
+        let cacheKey = "\(artistName)_\(albumName)"
+        for file in files where file.lastPathComponent.hasPrefix("album_") {
+            if let data = try? Data(contentsOf: file),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let title = json["title"] as? String, title == albumName,
+               let mbid = json["id"] as? String {
+                nameToMBIDCache[cacheKey] = mbid
+                saveCache()
+                return true
+            }
+        }
+        return false
     }
 
     func getArtistBiography(for artistName: String) -> String? {
