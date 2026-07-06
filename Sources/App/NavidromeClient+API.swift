@@ -766,7 +766,9 @@ extension NavidromeClient {
             let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(extractArtId(from: id)).jpg")
             guard error == nil, let data = data, !data.isEmpty,
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                // Do NOT write a poison marker — leave no file so repair correctly re-attempts this
+                // Write a 0-byte poison marker so SyncManager stops endlessly re-fetching this missing asset.
+                // 'Repair Sync' will still detect it, delete it, and correctly re-attempt downloading it.
+                try? Data().write(to: localUrl)
                 Task { @MainActor in completion(false) }
                 return
             }
@@ -793,7 +795,9 @@ extension NavidromeClient {
             let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
             guard error == nil, let data = data, !data.isEmpty,
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                // Do NOT write a poison marker — leave no file so repair correctly re-attempts this
+                // Write a 0-byte poison marker so SyncManager stops endlessly re-fetching this missing asset.
+                // 'Repair Sync' will still detect it, delete it, and correctly re-attempt downloading it.
+                try? Data().write(to: localUrl)
                 Task { @MainActor in completion(false) }
                 return
             }
