@@ -535,18 +535,27 @@ extension NavidromeClient {
             let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8)
             if let lyrics = cachedLyrics, !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if lyrics.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
-                    completion(nil)
+                    // Offline: trust the cache to avoid pointless waits
+                    // Online:  fall through and retry — the cache may have been written during
+                    //          a bad network run (sync timeout) and LRCLIB may have lyrics now.
+                    if !isOnline {
+                        completion(nil)
+                        return
+                    }
+                    // Delete the stale NO_LYRICS marker so we can overwrite it on success
+                    try? FileManager.default.removeItem(at: cacheFile)
+                } else {
+                    completion(lyrics)
                     return
                 }
-                completion(lyrics)
-                return
             } else if !isOnline {
-                // It's an empty marker, and we are offline, so don't bother retrying
+                // Empty file + offline: don't bother retrying
                 completion(nil)
                 return
             }
-            // If it's empty but we are online, we fall through and retry fetching
+            // Empty file + online: fall through and retry fetching
         }
+
 
         Task {
             guard NetworkMonitor.shared.isConnected else {
@@ -798,6 +807,20 @@ extension NavidromeClient {
             contents.forEach { try? fileManager.removeItem(at: $0) }
         }
     }
+
+    /// Removes only the NO_LYRICS sentinel files so that tracks previously failed
+    /// due to a bad network can be retried on next play without wiping real lyrics.
+    func clearPoisonedLyricsCache() {
+        let fileManager = FileManager.default
+        guard let contents = try? fileManager.contentsOfDirectory(at: VeloraStorage.lyrics, includingPropertiesForKeys: nil) else { return }
+        for file in contents {
+            if let text = try? String(contentsOf: file, encoding: .utf8),
+               text.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
+                try? fileManager.removeItem(at: file)
+            }
+        }
+    }
+
 
     func clearMediaCache() {
         let fileManager = FileManager.default

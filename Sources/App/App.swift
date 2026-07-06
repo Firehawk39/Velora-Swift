@@ -20,9 +20,25 @@ struct VeloraApp: App {
         VeloraStorage.migrateFromDocumentsIfNeeded()
         VeloraStorage.ensureDirectories()
 
+        // Purge any NO_LYRICS sentinel files written during bad-network conditions
+        // so that tracks can be retried on next play without nuking real lyrics.
+        Self.purgePoisonedLyricsCache()
+
         registerCustomFonts()
         setupURLCache()
     }
+
+    private static func purgePoisonedLyricsCache() {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: VeloraStorage.lyrics, includingPropertiesForKeys: nil) else { return }
+        for file in files {
+            if let text = try? String(contentsOf: file, encoding: .utf8),
+               text.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
+                try? fm.removeItem(at: file)
+            }
+        }
+    }
+
 
     private func setupURLCache() {
         // Configure a robust cache for album arts and metadata
