@@ -124,12 +124,17 @@ final class SyncManager: ObservableObject {
 
             for (index, artist) in artists.enumerated() {
                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
+                let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
+                let localBackdropUrl = VeloraStorage.backdrops.appendingPathComponent(backdropKey + ".jpg")
+
+                // Use disk existence for portrait + backdrop — the in-memory cache is empty on cold launch
+                // and would cause the sync to re-download everything every single time.
+                let hasLocalPortrait = isValidImageFile(at: localPortraitUrl)
+                let hasBackdrop = isValidImageFile(at: localBackdropUrl)
                 let hasArtist = mb.hasArtistMetadata(for: artist.primaryName)
-                let hasBackdrop = fa.hasBackdrop(for: artist.primaryName)
 
                 if hasLocalPortrait && hasArtist && hasBackdrop {
-                    // skipped
+                    // already complete — skip
                 } else {
                     missingArtists.append(artist)
                 }
@@ -583,25 +588,18 @@ final class SyncManager: ObservableObject {
                 // 1. Check Cover Art
                 let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
                 let artId = extractArtId(from: rawArtId)
-                let artPath = VeloraStorage.coverArt.appendingPathComponent("\(artId).jpg").path
-                if fileManager.fileExists(atPath: artPath) {
-                    if let size = (try? fileManager.attributesOfItem(atPath: artPath)[.size]) as? Int64, size == 0 {
-                        try? fileManager.removeItem(atPath: artPath)
-                        missingCoverArtIds.insert(artId)
-                    }
-                } else {
+                let artFile = VeloraStorage.coverArt.appendingPathComponent("\(artId).jpg")
+                if !isValidImageFile(at: artFile) {
+                    // Delete corrupt/poison file if it exists so repair can overwrite it
+                    try? fileManager.removeItem(at: artFile)
                     missingCoverArtIds.insert(artId)
                 }
 
                 // 2. Check Artist Portrait
                 let artistId = track.artistId ?? track.primaryArtist
-                let portraitPath = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg").path
-                if fileManager.fileExists(atPath: portraitPath) {
-                    if let size = (try? fileManager.attributesOfItem(atPath: portraitPath)[.size]) as? Int64, size == 0 {
-                        try? fileManager.removeItem(atPath: portraitPath)
-                        missingArtistPortraitIds.insert(artistId)
-                    }
-                } else {
+                let portraitFile = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
+                if !isValidImageFile(at: portraitFile) {
+                    try? fileManager.removeItem(at: portraitFile)
                     missingArtistPortraitIds.insert(artistId)
                 }
 
@@ -739,5 +737,14 @@ final class SyncManager: ObservableObject {
         self.mediaProgress = 1.0
         self.mediaEta = ""
         self.playback?.refreshDownloadedTracks()
+    }
+
+    /// Returns true only if a file exists AND is large enough to be a real image.
+    /// A minimum of 100 bytes filters out the old "NA" poison markers (2 bytes)
+    /// that previous versions wrote on download failure.
+    private func isValidImageFile(at url: URL) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int64 else { return false }
+        return size > 100
     }
 }
