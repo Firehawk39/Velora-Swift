@@ -755,14 +755,12 @@ extension NavidromeClient {
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
             let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(extractArtId(from: id)).jpg")
-            guard error == nil, let data = data, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                if let naData = "NA".data(using: .utf8) {
-                    try? naData.write(to: localUrl)
-                }
+            guard error == nil, let data = data, !data.isEmpty,
+                  let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                // Do NOT write a poison marker — leave no file so repair correctly re-attempts this
                 Task { @MainActor in completion(false) }
                 return
             }
-            // Save to VeloraStorage
             do {
                 try data.write(to: localUrl)
                 Task { @MainActor in completion(true) }
@@ -784,14 +782,12 @@ extension NavidromeClient {
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
             let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
-            guard error == nil, let data = data, let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                if let naData = "NA".data(using: .utf8) {
-                    try? naData.write(to: localUrl)
-                }
+            guard error == nil, let data = data, !data.isEmpty,
+                  let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                // Do NOT write a poison marker — leave no file so repair correctly re-attempts this
                 Task { @MainActor in completion(false) }
                 return
             }
-            // Save to VeloraStorage
             do {
                 try data.write(to: localUrl)
                 Task { @MainActor in completion(true) }

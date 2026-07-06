@@ -24,9 +24,13 @@ struct VeloraApp: App {
         // so that tracks can be retried on next play without nuking real lyrics.
         Self.purgePoisonedLyricsCache()
 
+        // Purge corrupt "NA" image markers left by previous app versions
+        Self.purgePoisonedImageCache()
+
         registerCustomFonts()
         setupURLCache()
     }
+
 
     private static func purgePoisonedLyricsCache() {
         let fm = FileManager.default
@@ -35,6 +39,23 @@ struct VeloraApp: App {
             if let text = try? String(contentsOf: file, encoding: .utf8),
                text.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
                 try? fm.removeItem(at: file)
+            }
+        }
+    }
+
+    /// Purge corrupt "NA" poison image files written by previous app versions on download failure.
+    /// These 2-byte text files pass file-existence checks but cannot be rendered as images,
+    /// causing permanently missing artwork even after Repair Sync completes.
+    private static func purgePoisonedImageCache() {
+        let fm = FileManager.default
+        let dirs = [VeloraStorage.coverArt, VeloraStorage.artistPortraits]
+        for dir in dirs {
+            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { continue }
+            for file in files {
+                if let attrs = try? file.resourceValues(forKeys: [.fileSizeKey]),
+                   let size = attrs.fileSize, size < 100 {
+                    try? fm.removeItem(at: file)
+                }
             }
         }
     }
