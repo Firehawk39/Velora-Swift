@@ -1245,8 +1245,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         // 3. Sort by score
         return scoredTracks.sorted { $0.score < $1.score }.map { $0.track }
     }
-    }
-
 }
 
 extension UIColor {
