@@ -565,22 +565,28 @@ extension NavidromeClient {
             }
 
             // Only try LRCLIB API for lyrics (time-synced first, then plain)
-            if let lrclibLyrics = await fetchFromLRCLIB(artist: artist, title: title, duration: duration), !lrclibLyrics.isEmpty {
-                try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
-                try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
-                completion(lrclibLyrics)
-                return
-            }
+            do {
+                if let lrclibLyrics = try await fetchFromLRCLIB(artist: artist, title: title, duration: duration), !lrclibLyrics.isEmpty {
+                    try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
+                    completion(lrclibLyrics)
+                    return
+                }
 
-            // Save empty file so we don't retry forever on un-lyric-able songs
-            try? FileManager.default.createDirectory(at: lyricsDir, withIntermediateDirectories: true)
-            try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
-            completion(nil)
+                // Save empty file so we don't retry forever on un-lyric-able songs (404 Not Found)
+                try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
+                completion(nil)
+            } catch {
+                // Network error or 429 Rate Limited. Do NOT poison the cache.
+                AppLogger.shared.log("[LRCLIB] Fetch error/rate limit for \(title): \(error.localizedDescription)", level: .error)
+                completion(nil)
+            }
         }
     }
 
-    nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double) async -> String? {
-        guard await NetworkMonitor.shared.isConnected else { return nil }
+    nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double) async throws -> String? {
+        guard await NetworkMonitor.shared.isConnected else { throw URLError(.notConnectedToInternet) }
 
         // Strip (Remaster), [Live Version], etc. from title
         let cleanTitle = title
@@ -621,30 +627,38 @@ extension NavidromeClient {
             URLQueryItem(name: "artist_name", value: cleanArtist)
         ]
 
-        do {
-            // 1. Exact GET — only when we have a real duration (duration=0 always 404s on LRCLIB)
-            if duration > 0, let getUrl = getComponents?.url {
-                var req = URLRequest(url: getUrl)
-                req.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
-                req.timeoutInterval = 8.0
-                let (data, response) = try await URLSession.shared.data(for: req)
-                if let http = response as? HTTPURLResponse, http.statusCode == 200,
+        // 1. Exact GET — only when we have a real duration (duration=0 always 404s on LRCLIB)
+        if duration > 0, let getUrl = getComponents?.url {
+            var req = URLRequest(url: getUrl)
+            req.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
+            req.timeoutInterval = 8.0
+            let (data, response) = try await URLSession.shared.data(for: req)
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 429 || http.statusCode >= 500 {
+                    throw URLError(.badServerResponse)
+                }
+                if http.statusCode == 200,
                    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     if let synced = json["syncedLyrics"] as? String, !synced.isEmpty { return synced }
                     if let plain  = json["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
                 }
             }
+        }
 
-            // 2. Search fallback — separate params give LRCLIB much better matching than a combined blob
-            guard let searchUrl = searchComponents?.url else {
-                return nil
+        // 2. Search fallback — separate params give LRCLIB much better matching than a combined blob
+        guard let searchUrl = searchComponents?.url else {
+            return nil
+        }
+        var searchReq = URLRequest(url: searchUrl)
+        searchReq.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
+        searchReq.timeoutInterval = 8.0
+
+        let (searchData, searchResp) = try await URLSession.shared.data(for: searchReq)
+        if let httpSearchResp = searchResp as? HTTPURLResponse {
+            if httpSearchResp.statusCode == 429 || httpSearchResp.statusCode >= 500 {
+                throw URLError(.badServerResponse)
             }
-            var searchReq = URLRequest(url: searchUrl)
-            searchReq.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
-            searchReq.timeoutInterval = 8.0
-
-            let (searchData, searchResp) = try await URLSession.shared.data(for: searchReq)
-            if let httpSearchResp = searchResp as? HTTPURLResponse, httpSearchResp.statusCode == 200,
+            if httpSearchResp.statusCode == 200,
                let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]] {
 
                 // Best match: prefer a result within ±3s of actual track duration to avoid
@@ -659,8 +673,6 @@ extension NavidromeClient {
                     if let plain  = match["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
                 }
             }
-        } catch {
-            AppLogger.shared.log("[LRCLIB] Fetch error: \(error.localizedDescription)", level: .error)
         }
         return nil
     }
@@ -837,8 +849,9 @@ extension NavidromeClient {
     /// due to a bad network can be retried on next play without wiping real lyrics.
     func clearPoisonedLyricsCache() {
         let fileManager = FileManager.default
-        guard let contents = try? fileManager.contentsOfDirectory(at: VeloraStorage.lyrics, includingPropertiesForKeys: nil) else { return }
-        for file in contents {
+        guard let enumerator = fileManager.enumerator(at: VeloraStorage.lyrics, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+        for case let file as URL in enumerator {
+            guard let isDir = try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, !isDir else { continue }
             if let text = try? String(contentsOf: file, encoding: .utf8),
                text.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
                 try? fileManager.removeItem(at: file)

@@ -34,8 +34,9 @@ struct VeloraApp: App {
 
     private static func purgePoisonedLyricsCache() {
         let fm = FileManager.default
-        guard let files = try? fm.contentsOfDirectory(at: VeloraStorage.lyrics, includingPropertiesForKeys: nil) else { return }
-        for file in files {
+        guard let enumerator = fm.enumerator(at: VeloraStorage.lyrics, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+        for case let file as URL in enumerator {
+            guard let isDir = try? file.resourceValues(forKeys: [.isDirectoryKey]).isDirectory, !isDir else { continue }
             if let text = try? String(contentsOf: file, encoding: .utf8),
                text.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
                 try? fm.removeItem(at: file)
