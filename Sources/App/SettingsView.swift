@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var showLogs: Bool       = false
     @State private var isCheckingServer: Bool = false
     @State private var serverError: String? = nil
+    @State private var loginErrorMessage: String? = nil
 
     @State private var statusTimer: Timer? = nil
     enum ConnStatus { case idle, connecting, connected, error }
@@ -205,7 +206,7 @@ struct SettingsView: View {
             .padding(.top, 20)
 
             if status == .error {
-                Text("Connection Failed. Check credentials.")
+                Text(loginErrorMessage ?? "Connection Failed. Check credentials.")
                     .font(.system(size: 11, weight: .bold))
                     .kerning(0.5)
                     .foregroundColor(Color(hex: "#f87171"))
@@ -257,7 +258,8 @@ struct SettingsView: View {
     }
 
     private func handleConnect() {
-        guard !username.isEmpty, !password.isEmpty else { return }
+        let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanUsername.isEmpty, !password.isEmpty else { return }
         
         // Explicitly dismiss keyboard to trigger iOS Password AutoFill save prompt
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -265,7 +267,7 @@ struct SettingsView: View {
         status = .connecting
 
         // 1. Configure the client temporarily to test
-        client.configure(url: serverAddress, user: username, pass: password)
+        client.configure(url: serverAddress, user: cleanUsername, pass: password)
         
         // 2. Perform actual verification with server
         client.ping { success, errorMessage in
@@ -275,11 +277,11 @@ struct SettingsView: View {
                     
                     // 3. Persist configuration only on success
                     UserDefaults.standard.set(serverAddress, forKey: "velora_server_url")
-                    UserDefaults.standard.set(username, forKey: "velora_username")
+                    UserDefaults.standard.set(cleanUsername, forKey: "velora_username")
                     
                     // 4. Securely save password in Keychain
                     if let passData = password.data(using: .utf8) {
-                        KeychainHelper.shared.save(passData, service: "velora-password", account: username)
+                        KeychainHelper.shared.save(passData, service: "velora-password", account: cleanUsername)
                     }
                     
                     // 5. Save comprehensive settings to Keychain for AutoLogin
@@ -302,6 +304,7 @@ struct SettingsView: View {
                     }
                 } else {
                     status = .error
+                    loginErrorMessage = errorMessage
                     AppLogger.shared.log("Login failed: \(errorMessage ?? "Unknown error")", level: .error)
                 }
             }
