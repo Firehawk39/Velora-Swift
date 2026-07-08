@@ -5,9 +5,6 @@ extension NavidromeClient {
     // MARK: - Ping
 
     func ping(completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
-        guard NetworkMonitor.shared.isConnected else {
-            completion(false, "Offline mode is active."); return
-        }
         guard let url = buildUrl(method: "ping.view") else {
             completion(false, "Invalid URL configuration."); return
         }
