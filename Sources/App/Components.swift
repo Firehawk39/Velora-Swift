@@ -595,7 +595,6 @@ struct ProfileDropdown: View {
                 }
                 .padding()
             }
-            }
         }
         .frame(width: 220)
         .background(isDarkMode ? Color(hex: "#1f1f1f") : Color.white)
