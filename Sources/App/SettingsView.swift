@@ -111,9 +111,11 @@ struct SettingsView: View {
             
             if let err = serverError {
                 Text(err)
-                    .font(.caption)
-                    .foregroundColor(.red)
-                    .padding(.top, 12)
+                    .font(.system(size: 11, weight: .bold))
+                    .kerning(0.5)
+                    .foregroundColor(Color(hex: "#f87171"))
+                    .padding(.top, 10)
+                    .textCase(.uppercase)
                     .multilineTextAlignment(.center)
             }
         }
