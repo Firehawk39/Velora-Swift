@@ -40,7 +40,12 @@ final class NetworkMonitor: ObservableObject {
         let mode = UserDefaults.standard.integer(forKey: "velora_connection_mode")
         if mode == ConnectionMode.offlineForced.rawValue {
             self.isConnected = false
+        } else if mode == ConnectionMode.local.rawValue {
+            // Local mode: always allow network requests. URLSession will fail naturally if unreachable.
+            // NWPathMonitor often reports .unsatisfied on local networks without internet access.
+            self.isConnected = true
         } else {
+            // Online mode
             self.isConnected = physicalConnection
         }
     }
