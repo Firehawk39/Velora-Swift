@@ -387,6 +387,7 @@ struct AppSettingsView: View {
     @State private var cacheSize: String = "Calculating..."
     @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @State private var showLogs: Bool = false
+    @State private var showLogoutConfirmation: Bool = false
     
     @State private var statusTimer: Timer? = nil
 
@@ -773,7 +774,7 @@ struct AppSettingsView: View {
                             }
                             
                             Button(action: {
-                                client.logout()
+                                showLogoutConfirmation = true
                             }) {
                                 HStack {
                                     Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -787,6 +788,14 @@ struct AppSettingsView: View {
                                 .background(Color.red.opacity(0.1))
                                 .foregroundColor(.red)
                                 .cornerRadius(16)
+                            }
+                            .alert("Sign Out", isPresented: $showLogoutConfirmation) {
+                                Button("Cancel", role: .cancel) {}
+                                Button("Sign Out", role: .destructive) {
+                                    client.logout()
+                                }
+                            } message: {
+                                Text("Are you sure you want to sign out? Your downloaded data will be preserved but you'll need to log in again.")
                             }
                         }
                     }

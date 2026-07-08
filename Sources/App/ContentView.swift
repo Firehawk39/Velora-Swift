@@ -100,11 +100,6 @@ struct ContentView: View {
                             isDarkMode: isDarkMode,
                             toggleDark: { isDarkMode.toggle() },
                             onSettings: { showProfileMenu = false; activeTab = "settings" },
-                            onLogout: {
-                                showProfileMenu = false
-                                client.logout()
-                                showSettings = true
-                            },
                             isLandscape: isLandscape,
                             isPlayingTab: activeTab == "now-playing"
                         )

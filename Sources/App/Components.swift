@@ -565,7 +565,6 @@ struct ProfileDropdown: View {
     let isDarkMode: Bool
     let toggleDark: () -> Void
     let onSettings: () -> Void
-    let onLogout: () -> Void
     var isLandscape: Bool = false
     var isPlayingTab: Bool = false
 
@@ -596,15 +595,6 @@ struct ProfileDropdown: View {
                 }
                 .padding()
             }
-            Divider().background(Color.white.opacity(0.1))
-            Button(action: onLogout) {
-                HStack {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                    Text("Logout")
-                    Spacer()
-                }
-                .padding()
-                .foregroundColor(.red)
             }
         }
         .frame(width: 220)
