@@ -22,6 +22,8 @@ struct SettingsView: View {
     @State private var cacheSize: String    = "Calculating..."
     @State private var downloadingAll: Bool = false
     @State private var showLogs: Bool       = false
+    @State private var isCheckingServer: Bool = false
+    @State private var serverError: String? = nil
 
     @State private var statusTimer: Timer? = nil
     enum ConnStatus { case idle, connecting, connected, error }
@@ -85,24 +87,78 @@ struct SettingsView: View {
             )
 
             // Next button
-            Button(action: { if isValidUrl(serverAddress) { withAnimation { step = .login } } }) {
+            Button(action: checkServerEndpoint) {
                 HStack(spacing: 8) {
-                    Image(systemName: "arrow.right")
-                    Text("Next")
-                        .fontWeight(.semibold)
+                    if isCheckingServer {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: accentFg))
+                        Text("Checking...")
+                            .fontWeight(.semibold)
+                    } else {
+                        Image(systemName: "arrow.right")
+                        Text("Next")
+                            .fontWeight(.semibold)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 64)
-                .background(isValidUrl(serverAddress) ? accentBg : accentBg.opacity(0.5))
+                .background(isValidUrl(serverAddress) && !isCheckingServer ? accentBg : accentBg.opacity(0.5))
                 .foregroundColor(accentFg)
                 .cornerRadius(100)
             }
-            .disabled(!isValidUrl(serverAddress))
+            .disabled(!isValidUrl(serverAddress) || isCheckingServer)
             .padding(.top, 28)
-
+            
+            if let err = serverError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.top, 12)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(.horizontal, 24)
         .transition(.asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .leading)).combined(with: .opacity))
+    }
+    
+    private func checkServerEndpoint() {
+        guard isValidUrl(serverAddress) else { return }
+        let cleanUrl = serverAddress.trimmingCharacters(in: .init(charactersIn: "/"))
+        guard let url = URL(string: cleanUrl + "/rest/ping.view?u=dummy&p=dummy&v=1.16.1&c=velora&f=json") else {
+            serverError = "Invalid URL format."
+            return
+        }
+        
+        withAnimation {
+            isCheckingServer = true
+            serverError = nil
+        }
+        
+        Task {
+            do {
+                var req = URLRequest(url: url)
+                req.timeoutInterval = 8.0
+                let (data, _) = try await URLSession.shared.data(for: req)
+                
+                let responseString = String(data: data, encoding: .utf8) ?? ""
+                if responseString.contains("subsonic-response") {
+                    withAnimation {
+                        isCheckingServer = false
+                        step = .login
+                    }
+                } else {
+                    withAnimation {
+                        isCheckingServer = false
+                        serverError = "URL is reachable, but it does not appear to be a valid Subsonic/Navidrome server."
+                    }
+                }
+            } catch {
+                withAnimation {
+                    isCheckingServer = false
+                    serverError = "Failed to reach server: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────
