@@ -604,8 +604,6 @@ final class FanartManager: ObservableObject {
                 DispatchQueue.main.async { completion(nil) }
             }
         }
-        task.priority = priority
-        task.resume()
     }
 
     nonisolated
@@ -645,7 +643,7 @@ final class FanartManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
 
-        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
+        ThrottledNetworkManager.shared.enqueue(request: request, priority: priority) { data, _, _ in
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let artists = json["artists"] as? [[String: Any]],
@@ -656,7 +654,5 @@ final class FanartManager: ObservableObject {
                 DispatchQueue.main.async { completion(nil) }
             }
         }
-        task.priority = priority
-        task.resume()
     }
 }
