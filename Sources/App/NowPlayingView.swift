@@ -410,14 +410,14 @@ struct NowPlayingView: View {
                 ZStack(alignment: .bottomTrailing) {
                     progressBar
 
-                    // Artist clearlogo: right-aligned, height matched to artist baseline
+                    // Artist clearlogo: right-aligned, height matched to song name size, offset to artist baseline
                     if let logo = fanart.currentClearLogo {
                         Image(uiImage: logo)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: isLargeCanvas ? 260 : 220, maxHeight: isLargeCanvas ? 100 : (isShortCanvas ? 60 : 80))
+                            .frame(maxWidth: isLargeCanvas ? 260 : 220, maxHeight: tabletTitleSize)
                             .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                            .offset(y: isShortCanvas ? -24 : -32)
+                            .offset(y: -(isShortCanvas ? 20 : 32))
                             .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                     }
                 }
