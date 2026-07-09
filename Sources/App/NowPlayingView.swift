@@ -306,16 +306,7 @@ struct NowPlayingView: View {
                 ZStack(alignment: .bottomTrailing) {
                     progressBar
 
-                    // Artist clearlogo: right-aligned above seekbar
-                    if let logo = fanart.currentClearLogo {
-                        Image(uiImage: logo)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: isSmallDevice ? 150 : 180, maxHeight: isSE ? 50 : 60)
-                            .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                            .offset(y: isSE ? -24 : -30)
-                            .transition(.opacity.animation(.easeInOut(duration: 0.5)))
-                    }
+
                 }
                 .padding(.horizontal, 24)
 
@@ -419,14 +410,14 @@ struct NowPlayingView: View {
                 ZStack(alignment: .bottomTrailing) {
                     progressBar
 
-                    // Artist clearlogo: right-aligned above seekbar
+                    // Artist clearlogo: right-aligned, height matched to artist baseline
                     if let logo = fanart.currentClearLogo {
                         Image(uiImage: logo)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: isLargeCanvas ? 240 : 180, maxHeight: isShortCanvas ? 50 : 64)
+                            .frame(maxWidth: isLargeCanvas ? 260 : 220, maxHeight: isLargeCanvas ? 100 : (isShortCanvas ? 60 : 80))
                             .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                            .offset(y: isShortCanvas ? -24 : -28)
+                            .offset(y: isShortCanvas ? -24 : -32)
                             .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                     }
                 }
