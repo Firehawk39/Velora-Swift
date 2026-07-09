@@ -1036,19 +1036,22 @@ struct HoldToDeleteButton: View {
                     holdStart = Date()
                     // Drive progress at 60fps via a repeating timer
                     holdTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
-                        guard let start = holdStart else { return }
-                        let elapsed = Date().timeIntervalSince(start)
-                        let p = CGFloat(min(elapsed / holdDuration, 1.0))
-                        withAnimation(.linear(duration: 1.0 / 60.0)) {
-                            progress = p
-                        }
-                        if p >= 1.0 {
-                            cancelHold()
-                            didFire = true
-                            DispatchQueue.main.async { action() }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                withAnimation(.easeOut(duration: 0.4)) { progress = 0.0 }
-                                didFire = false
+                        Task { @MainActor in
+                            guard let start = holdStart else { return }
+                            let elapsed = Date().timeIntervalSince(start)
+                            let p = CGFloat(min(elapsed / holdDuration, 1.0))
+                            withAnimation(.linear(duration: 1.0 / 60.0)) {
+                                progress = p
+                            }
+                            if p >= 1.0 {
+                                cancelHold()
+                                didFire = true
+                                action()
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 400_000_000)
+                                    withAnimation(.easeOut(duration: 0.4)) { progress = 0.0 }
+                                    didFire = false
+                                }
                             }
                         }
                     }

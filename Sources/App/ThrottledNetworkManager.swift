@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 class ThrottledNetworkManager: @unchecked Sendable {
-    nonisolated(unsafe) static let shared = ThrottledNetworkManager()
+    static let shared = ThrottledNetworkManager()
 
     private let queue = OperationQueue()
     private var lastRequestTime = Date.distantPast
