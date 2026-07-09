@@ -60,6 +60,12 @@ final class FanartManager: ObservableObject {
         return FileManager.default.fileExists(atPath: fileUrl.path)
     }
 
+    func hasClearLogo(for artist: String) -> Bool {
+        let key = "logo_" + sanitizeFileName(artist)
+        let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
+        return fileManager.fileExists(atPath: fileUrl.path)
+    }
+
     func fetchBackdrop(for artists: [String], artistId: String? = nil, mbid: String? = nil, allowNetwork: Bool = true) {
         guard !artists.isEmpty else { return }
         let primaryArtist = artists[0]

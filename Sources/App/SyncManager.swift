@@ -176,7 +176,8 @@ final class SyncManager: ObservableObject {
                                 let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
                                 let hasArtist = await mb.hasArtistMetadata(for: artist.primaryName)
                                 let hasBackdrop = await fa.hasBackdrop(for: artist.primaryName)
-                                if !(hasArtist && hasBackdrop && hasLocalPortrait) {
+                                let hasClearLogo = await fa.hasClearLogo(for: artist.primaryName)
+                                if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
                                     let mbid: String? = await withCheckedContinuation { continuation in
                                         Task { @MainActor in
                                             client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
@@ -185,6 +186,7 @@ final class SyncManager: ObservableObject {
                                         }
                                     }
                                     await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: mbid)
+                                    await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: mbid)
                                     await withCheckedContinuation { cont in
                                         Task { @MainActor in
                                             client.fetchArtist(id: artist.id) { _ in cont.resume() }
