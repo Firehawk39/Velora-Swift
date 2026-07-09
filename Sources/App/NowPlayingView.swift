@@ -272,7 +272,7 @@ struct NowPlayingView: View {
                     artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.42 : (isSmallDevice ? 0.55 : 0.7)), 280) : tabletArtworkSize)
                         .padding(.bottom, isSE ? 0 : (isSmallDevice ? 6 : 12))
 
-                    // Left-Aligned Metadata & Right-Aligned Clearlogo
+                    // Left-aligned Metadata with Clearlogo on Right
                     HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: isSE ? 2 : 6) {
                             Text(playback.currentTrack?.title ?? "Not Playing")
@@ -281,42 +281,38 @@ struct NowPlayingView: View {
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
 
-                            HStack(spacing: 6) {
-                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                    .font(.system(size: isSE ? 12 : (isSmallDevice ? 14 : 16), weight: .bold))
-                                    .foregroundColor(.white.opacity(0.6))
-                                    .lineLimit(1)
-                                    .multilineTextAlignment(.leading)
+                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                .font(.system(size: isSE ? 12 : (isSmallDevice ? 14 : 16), weight: .bold))
+                                .foregroundColor(.white.opacity(0.6))
+                                .lineLimit(1)
+                                .multilineTextAlignment(.leading)
                                 
-                                if playback.currentTrack?.suffix?.lowercased() == "flac" {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "waveform")
-                                        Text("Lossless")
-                                    }
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white.opacity(0.7))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Color.white.opacity(0.15))
-                                    .cornerRadius(4)
+                            if playback.currentTrack?.suffix?.lowercased() == "flac" {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "waveform")
+                                    Text("Lossless")
                                 }
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.white.opacity(0.15))
+                                .cornerRadius(4)
                             }
                         }
                         
                         Spacer(minLength: 16)
                         
-                        // Artist clearlogo: dynamically sized to match the title text height (max 2 lines)
                         if let logo = fanart.currentClearLogo {
                             Image(uiImage: logo)
                                 .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: isSE ? 100 : (isSmallDevice ? 120 : 150), maxHeight: isSE ? 34 : (isSmallDevice ? 40 : 52))
+                                .scaledToFit()
+                                .frame(maxHeight: isSE ? 24 : (isSmallDevice ? 32 : 40))
                                 .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
                                 .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                         }
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 8) // Spacing before the progress bar
                 }
 
                 // Progress Bar
@@ -387,47 +383,42 @@ struct NowPlayingView: View {
                     HStack(alignment: .bottom, spacing: isLargeCanvas ? 40 : 24) {
                         artworkSection(size: tabletArtworkSize)
 
-                        HStack(alignment: .center) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(playback.currentTrack?.title ?? "Not Playing")
-                                    .font(.system(size: tabletTitleSize, weight: .black))
-                                    .foregroundColor(.white)
-                                    .lineLimit(2)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(playback.currentTrack?.title ?? "Not Playing")
+                                .font(.system(size: tabletTitleSize, weight: .black))
+                                .foregroundColor(.white)
+                                .lineLimit(2)
 
-                                HStack(spacing: 8) {
-                                    Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                        .font(.system(size: tabletArtistSize, weight: .bold))
-                                        .foregroundColor(.white.opacity(0.8))
-                                        .lineLimit(1)
-                                        
-                                    if playback.currentTrack?.suffix?.lowercased() == "flac" {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: "waveform")
-                                            Text("Lossless")
-                                        }
-                                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                                        .foregroundColor(.white.opacity(0.7))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(Color.white.opacity(0.15))
-                                        .cornerRadius(4)
+                            HStack(spacing: 8) {
+                                Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                    .font(.system(size: tabletArtistSize, weight: .bold))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .lineLimit(1)
+                                    
+                                if playback.currentTrack?.suffix?.lowercased() == "flac" {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "waveform")
+                                        Text("Lossless")
                                     }
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.white.opacity(0.15))
+                                    .cornerRadius(4)
                                 }
-                            }
-                            
-                            Spacer(minLength: 24)
-                            
-                            // Artist clearlogo: dynamically sized to match the title text height
-                            if let logo = fanart.currentClearLogo {
-                                Image(uiImage: logo)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxWidth: isLargeCanvas ? 180 : 150, maxHeight: tabletTitleSize * 1.5)
-                                    .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        if let logo = fanart.currentClearLogo {
+                            Image(uiImage: logo)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxHeight: tabletTitleSize * 1.5)
+                                .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                                .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                        }
                     }
                     .padding(.horizontal, isLargeCanvas ? 60 : 32)
                     .transition(.opacity)
