@@ -311,9 +311,9 @@ struct NowPlayingView: View {
                         Image(uiImage: logo)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: proxy.size.width * 0.45, maxHeight: isSE ? 19 : (isSmallDevice ? 22 : 28))
+                            .frame(maxWidth: isSmallDevice ? 150 : 180, maxHeight: isSE ? 50 : 60)
                             .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                            .offset(y: isSE ? -24 : (isSmallDevice ? -36 : -48))
+                            .offset(y: isSE ? -24 : -30)
                             .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                     }
                 }
@@ -424,9 +424,9 @@ struct NowPlayingView: View {
                         Image(uiImage: logo)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: proxy.size.width * 0.45, maxHeight: tabletTitleSize * 1.1)
+                            .frame(maxWidth: isLargeCanvas ? 240 : 180, maxHeight: isShortCanvas ? 50 : 64)
                             .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                            .offset(y: isShortCanvas ? -36 : -48)
+                            .offset(y: isShortCanvas ? -24 : -28)
                             .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                     }
                 }
