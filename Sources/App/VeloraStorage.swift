@@ -35,10 +35,13 @@ enum VeloraStorage {
     /// MusicBrainz artist/album metadata JSON files
     static var metadata: URL { root.appendingPathComponent("Metadata", isDirectory: true) }
 
+    /// Artist clearlogos (transparent PNG) from Fanart.tv hdmusiclogo
+    static var clearLogos: URL { root.appendingPathComponent("ClearLogos", isDirectory: true) }
+
     /// Ensure all subdirectories exist. Call once at app launch.
     static func ensureDirectories() {
         let fm = FileManager.default
-        for dir in [tracks, coverArt, lyrics, backdrops, artistPortraits, metadata] {
+        for dir in [tracks, coverArt, lyrics, backdrops, artistPortraits, metadata, clearLogos] {
             if !fm.fileExists(atPath: dir.path) {
                 try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             }

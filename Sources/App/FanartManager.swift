@@ -6,18 +6,22 @@ final class FanartManager: ObservableObject {
     static let shared = FanartManager()
 
     @Published var currentBackdrop: UIImage? = nil
+    @Published var currentClearLogo: UIImage? = nil
     private let imageCache = NSCache<NSString, UIImage>()
+    private let logoCache  = NSCache<NSString, UIImage>()
 
     private let fileManager = FileManager.default
     private let backdropDir: URL
     private let portraitDir: URL
+    private let clearLogoDir: URL
 
     // Fanart.tv API Key - Provided by user
     private let fanartApiKey = "faceb56eac838d3e1c2a3ed15bf65a80"
 
     init() {
-        self.backdropDir = VeloraStorage.backdrops
-        self.portraitDir = VeloraStorage.artistPortraits
+        self.backdropDir   = VeloraStorage.backdrops
+        self.portraitDir   = VeloraStorage.artistPortraits
+        self.clearLogoDir  = VeloraStorage.clearLogos
     }
 
     // MARK: - Backdrops
@@ -278,7 +282,141 @@ final class FanartManager: ObservableObject {
 
     // MARK: - API Helpers
 
-    private enum FanartType { case background, portrait }
+    // MARK: - Clear Logos
+
+    private var activeClearLogoFetches = Set<String>()
+    private var currentClearLogoArtist: String?
+
+    /// Fetch the hdmusiclogo (transparent PNG) for `artist` and update `currentClearLogo`.
+    /// Falls back to `hdmusiclogo` → `musiclogo` in the API response.
+    func fetchClearLogo(for artist: String, mbid: String? = nil) {
+        let key = "logo_" + sanitizeFileName(artist)
+        let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
+
+        // 1. Disk cache hit
+        if FileManager.default.fileExists(atPath: fileUrl.path) {
+            if let data = try? Data(contentsOf: fileUrl),
+               !data.isEmpty,
+               let img = UIImage(data: data) {
+                logoCache.setObject(img, forKey: key as NSString)
+                withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+            } else {
+                // 0-byte negative cache marker — no logo on FanArt
+                withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
+            }
+            return
+        }
+
+        // 2. Memory cache
+        if let cached = logoCache.object(forKey: key as NSString) {
+            withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = cached }
+            return
+        }
+
+        // 3. Guard dedup
+        guard !activeClearLogoFetches.contains(key) else { return }
+        activeClearLogoFetches.insert(key)
+        currentClearLogoArtist = artist
+
+        // Clear stale logo immediately
+        withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
+
+        guard NetworkMonitor.shared.isConnected else {
+            activeClearLogoFetches.remove(key)
+            return
+        }
+
+        // 4. Resolve MBID then fetch
+        let doFetch: (String) -> Void = { [weak self] mbid in
+            guard let self = self else { return }
+            let urlString = "https://webservice.fanart.tv/v3/music/\(mbid)?api_key=\(self.fanartApiKey)"
+            self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url, _ in
+                guard let self = self else { return }
+                if let url = url {
+                    self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key)
+                } else {
+                    // Write negative marker so we don't re-fetch
+                    try? Data().write(to: fileUrl)
+                    self.activeClearLogoFetches.remove(key)
+                }
+            }
+        }
+
+        if let m = mbid, !m.isEmpty {
+            doFetch(m)
+        } else {
+            getMBID(for: artist) { [weak self] resolved in
+                guard let self = self else { return }
+                if let resolved = resolved {
+                    doFetch(resolved)
+                } else {
+                    try? Data().write(to: fileUrl)  // negative marker
+                    self.activeClearLogoFetches.remove(key)
+                }
+            }
+        }
+    }
+
+    /// Background-priority prefetch — same as fetchClearLogo but lower network priority.
+    func downloadClearLogoSilently(for artist: String, mbid: String? = nil) async {
+        let key = "logo_" + sanitizeFileName(artist)
+        let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
+        guard !FileManager.default.fileExists(atPath: fileUrl.path) else { return }
+        guard NetworkMonitor.shared.isConnected else { return }
+        guard !activeClearLogoFetches.contains(key) else { return }
+        activeClearLogoFetches.insert(key)
+
+        let resolve: (String) -> Void = { [weak self] mbid in
+            guard let self = self else { return }
+            let urlString = "https://webservice.fanart.tv/v3/music/\(mbid)?api_key=\(self.fanartApiKey)"
+            self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] url, _ in
+                guard let self = self else { return }
+                if let url = url {
+                    self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key)
+                } else {
+                    try? Data().write(to: fileUrl)
+                    self.activeClearLogoFetches.remove(key)
+                }
+            }
+        }
+
+        if let m = mbid, !m.isEmpty {
+            resolve(m)
+        } else {
+            getMBID(for: artist) { [weak self] resolved in
+                guard let self = self else { return }
+                if let r = resolved { resolve(r) } else {
+                    try? Data().write(to: fileUrl)
+                    self.activeClearLogoFetches.remove(key)
+                }
+            }
+        }
+    }
+
+    private func downloadClearLogoFile(from urlString: String, to localUrl: URL, artist: String, cacheKey: String) {
+        guard let url = URL(string: urlString) else {
+            activeClearLogoFetches.remove(cacheKey)
+            return
+        }
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                if let data = data, let img = UIImage(data: data) {
+                    try? data.write(to: localUrl)
+                    self.logoCache.setObject(img, forKey: cacheKey as NSString)
+                    if self.currentClearLogoArtist == artist {
+                        withAnimation(.easeInOut(duration: 0.6)) { self.currentClearLogo = img }
+                    }
+                } else {
+                    try? Data().write(to: localUrl)   // negative marker
+                }
+                self.activeClearLogoFetches.remove(cacheKey)
+            }
+        }
+        task.resume()
+    }
+
+    private enum FanartType { case background, portrait, clearlogo }
 
     nonisolated private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?, Bool) -> Void) {
         guard let url = URL(string: urlString) else {
@@ -323,6 +461,16 @@ final class FanartManager: ObservableObject {
                             DispatchQueue.main.async { completion(nil, true) }
                             return
                         }
+                    } else if type == .clearlogo {
+                        // Prefer HD logo, fall back to SD logo
+                        let hdUrls  = (json["hdmusiclogo"]  as? [[String: Any]])?.compactMap { $0["url"] as? String }
+                        let sdUrls  = (json["musiclogo"]    as? [[String: Any]])?.compactMap { $0["url"] as? String }
+                        if let first = (hdUrls?.first ?? sdUrls?.first) {
+                            DispatchQueue.main.async { completion(first, false) }
+                        } else {
+                            DispatchQueue.main.async { completion(nil, true) }
+                        }
+                        return
                     } else {
                         if let thumbs = json["artistthumb"] as? [[String: Any]],
                            let first = thumbs.first?["url"] as? String {
