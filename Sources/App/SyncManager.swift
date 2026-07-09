@@ -169,7 +169,7 @@ final class SyncManager: ObservableObject {
                     await withTaskGroup(of: Void.self) { group in
                         for (index, artist) in batch.enumerated() {
                             group.addTask {
-                                try? await Task.sleep(nanoseconds: UInt64(index) * 1_200_000_000)
+
                                 let mb = await MusicBrainzManager.shared
                                 let fa = await FanartManager.shared
                                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
@@ -219,7 +219,7 @@ final class SyncManager: ObservableObject {
                     await withTaskGroup(of: Void.self) { group in
                         for (index, album) in batch.enumerated() {
                             group.addTask {
-                                try? await Task.sleep(nanoseconds: UInt64(index) * 1_200_000_000)
+
                                 let artistName = album.artist ?? "Unknown Artist"
                                 let mb = await MusicBrainzManager.shared
                                 if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)) {

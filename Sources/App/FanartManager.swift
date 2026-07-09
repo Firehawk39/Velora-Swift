@@ -24,6 +24,17 @@ final class FanartManager: ObservableObject {
         self.clearLogoDir  = VeloraStorage.clearLogos
     }
 
+    // MARK: - TTL Helper
+
+    private func isNegativeCacheExpired(at url: URL, daysTTL: Int = 30) -> Bool {
+        guard let attr = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let modDate = attr[.modificationDate] as? Date else {
+            return true // If we can't read it, assume expired so it gets cleaned up
+        }
+        let age = Date().timeIntervalSince(modDate)
+        return age > TimeInterval(daysTTL * 24 * 60 * 60)
+    }
+
     // MARK: - Backdrops
 
     private var activeBackdropFetches = Set<String>()
@@ -306,9 +317,13 @@ final class FanartManager: ObservableObject {
                 withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
                 return
             } else {
-                // Delete 0-byte negative cache to allow TheAudioDB fallback to retry!
-                AppLogger.shared.log("[Fanart] Wiping old negative clearlogo cache for \(artist) to allow retry")
-                try? FileManager.default.removeItem(at: fileUrl)
+                if isNegativeCacheExpired(at: fileUrl) {
+                    AppLogger.shared.log("[Fanart] Wiping old negative clearlogo cache for \(artist) to allow retry")
+                    try? FileManager.default.removeItem(at: fileUrl)
+                } else {
+                    withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
+                    return
+                }
             }
         }
 
@@ -381,8 +396,11 @@ final class FanartManager: ObservableObject {
             if let data = try? Data(contentsOf: fileUrl), !data.isEmpty {
                 return // valid cache exists
             } else {
-                // Delete 0-byte negative cache to allow retry
-                try? FileManager.default.removeItem(at: fileUrl)
+                if isNegativeCacheExpired(at: fileUrl) {
+                    try? FileManager.default.removeItem(at: fileUrl)
+                } else {
+                    return
+                }
             }
         }
         guard NetworkMonitor.shared.isConnected else { return }
@@ -428,7 +446,7 @@ final class FanartManager: ObservableObject {
             activeClearLogoFetches.remove(cacheKey)
             return
         }
-        let task = URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, _ in
             guard let self = self else { return }
             DispatchQueue.main.async {
                 if let data = data, let img = UIImage(data: data) {
@@ -443,7 +461,6 @@ final class FanartManager: ObservableObject {
                 self.activeClearLogoFetches.remove(cacheKey)
             }
         }
-        task.resume()
     }
 
     // MARK: - TheAudioDB Fallback
@@ -456,7 +473,7 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+        ThrottledNetworkManager.shared.enqueue(url: url, priority: priority) { data, response, error in
             guard let data = data, error == nil else {
                 DispatchQueue.main.async { completion(nil) }
                 return
@@ -475,8 +492,6 @@ final class FanartManager: ObservableObject {
                 DispatchQueue.main.async { completion(nil) }
             }
         }
-        task.priority = priority
-        task.resume()
     }
 
     // MARK: - API Helpers
@@ -489,7 +504,7 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+        ThrottledNetworkManager.shared.enqueue(url: url, priority: priority) { data, response, error in
             if let error = error {
                 let desc = error.localizedDescription
                 DispatchQueue.main.async {
@@ -551,8 +566,6 @@ final class FanartManager: ObservableObject {
             } catch { AppLogger.shared.log("Fanart JSON error: \(error)", level: .error) }
             DispatchQueue.main.async { completion(nil, false) }
         }
-        task.priority = priority
-        task.resume()
     }
 
     // MARK: - Helpers
@@ -572,10 +585,7 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        var request = URLRequest(url: url)
-        request.networkServiceType = priority == URLSessionTask.highPriority ? .responsiveData : .background
-
-        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
+        ThrottledNetworkManager.shared.enqueue(url: url, priority: priority) { data, _, _ in
             if let data = data, let image = UIImage(data: data) {
                 try? data.write(to: localUrl)
 
