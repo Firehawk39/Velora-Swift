@@ -341,9 +341,16 @@ final class FanartManager: ObservableObject {
                 if let url = url {
                     self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key)
                 } else {
-                    // Write negative marker so we don't re-fetch
-                    try? Data().write(to: fileUrl)
-                    self.activeClearLogoFetches.remove(key)
+                    self.fetchFromTheAudioDB(artistName: artist, priority: URLSessionTask.highPriority) { [weak self] tadbUrl in
+                        guard let self = self else { return }
+                        if let tadbUrl = tadbUrl {
+                            self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key)
+                        } else {
+                            // Write negative marker so we don't re-fetch
+                            try? Data().write(to: fileUrl)
+                            self.activeClearLogoFetches.remove(key)
+                        }
+                    }
                 }
             }
         }
@@ -380,8 +387,15 @@ final class FanartManager: ObservableObject {
                 if let url = url {
                     self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key)
                 } else {
-                    try? Data().write(to: fileUrl)
-                    self.activeClearLogoFetches.remove(key)
+                    self.fetchFromTheAudioDB(artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl in
+                        guard let self = self else { return }
+                        if let tadbUrl = tadbUrl {
+                            self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key)
+                        } else {
+                            try? Data().write(to: fileUrl)
+                            self.activeClearLogoFetches.remove(key)
+                        }
+                    }
                 }
             }
         }
@@ -419,8 +433,44 @@ final class FanartManager: ObservableObject {
                 self.activeClearLogoFetches.remove(cacheKey)
             }
         }
+        }
         task.resume()
     }
+
+    // MARK: - TheAudioDB Fallback
+
+    nonisolated private func fetchFromTheAudioDB(artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?) -> Void) {
+        let encoded = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
+        let urlString = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=\(encoded)"
+        guard let url = URL(string: urlString) else {
+            DispatchQueue.main.async { completion(nil) }
+            return
+        }
+
+        let task = URLSession.shared.dataTask(with: url) { data, response, error in
+            guard let data = data, error == nil else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            do {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let artists = json["artists"] as? [[String: Any]],
+                   let firstArtist = artists.first,
+                   let logoUrl = firstArtist["strArtistLogo"] as? String,
+                   !logoUrl.isEmpty {
+                    DispatchQueue.main.async { completion(logoUrl) }
+                } else {
+                    DispatchQueue.main.async { completion(nil) }
+                }
+            } catch {
+                DispatchQueue.main.async { completion(nil) }
+            }
+        }
+        task.priority = priority
+        task.resume()
+    }
+
+    // MARK: - API Helpers
 
     private enum FanartType { case background, portrait, clearlogo }
 
