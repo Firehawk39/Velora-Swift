@@ -250,7 +250,7 @@ final class MusicBrainzManager: ObservableObject {
             var request = URLRequest(url: url)
             request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
 
-            URLSession.shared.dataTask(with: request) { data, _, _ in
+            ThrottledNetworkManager.shared.enqueue(request: request) { data, _, _ in
                 DispatchQueue.main.async {
                     guard self.currentArtistKey == artistKey else { return }
                     self.metadataProgress = 0.7
@@ -288,7 +288,7 @@ final class MusicBrainzManager: ObservableObject {
                         self.isLoading = false
                     }
                 }
-            }.resume()
+            }
         }
 
         if let mbid = mbid, !mbid.isEmpty {
@@ -356,7 +356,7 @@ final class MusicBrainzManager: ObservableObject {
             var request = URLRequest(url: url)
             request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
 
-            URLSession.shared.dataTask(with: request) { data, _, _ in
+            ThrottledNetworkManager.shared.enqueue(request: request) { data, _, _ in
                 guard let data = data,
                       var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     DispatchQueue.main.async {
@@ -390,7 +390,7 @@ final class MusicBrainzManager: ObservableObject {
                         self.isLoading = false
                     }
                 }
-            }.resume()
+            }
         }
 
         if let mbid = mbid, !mbid.isEmpty {
@@ -426,7 +426,7 @@ final class MusicBrainzManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
-        URLSession.shared.dataTask(with: request) { data, _, _ in
+        ThrottledNetworkManager.shared.enqueue(request: request) { data, _, _ in
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let artists = json["artists"] as? [[String: Any]],
@@ -436,7 +436,7 @@ final class MusicBrainzManager: ObservableObject {
             } else {
                 DispatchQueue.main.async { completion(nil) }
             }
-        }.resume()
+        }
     }
 
     private func extractPrimaryArtist(_ name: String) -> String {
@@ -462,7 +462,7 @@ final class MusicBrainzManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
-        URLSession.shared.dataTask(with: request) { data, _, _ in
+        ThrottledNetworkManager.shared.enqueue(request: request) { data, _, _ in
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let releases = json["releases"] as? [[String: Any]],
@@ -472,7 +472,7 @@ final class MusicBrainzManager: ObservableObject {
             } else {
                 DispatchQueue.main.async { completion(nil) }
             }
-        }.resume()
+        }
     }
 
     private func fetchAnnotation(entityMBID: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
@@ -485,7 +485,7 @@ final class MusicBrainzManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
-        URLSession.shared.dataTask(with: request) { data, _, _ in
+        ThrottledNetworkManager.shared.enqueue(request: request) { data, _, _ in
             if let data = data,
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let annotations = json["annotations"] as? [[String: Any]],
@@ -495,7 +495,7 @@ final class MusicBrainzManager: ObservableObject {
             } else {
                 DispatchQueue.main.async { completion(nil) }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Silent Bulk Fetchers
