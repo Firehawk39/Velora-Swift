@@ -302,13 +302,9 @@ struct NowPlayingView: View {
                     .padding(.horizontal, 24)
                 }
 
-                // Progress Bar — wrapped in ZStack so the clearlogo sits above it on the right
-                ZStack(alignment: .bottomTrailing) {
-                    progressBar
-
-
-                }
-                .padding(.horizontal, 24)
+                // Progress Bar
+                progressBar
+                    .padding(.horizontal, 24)
 
                 if !isIdle && !playback.isLyricsMode {
                     // Controls Section for Portrait
@@ -401,27 +397,24 @@ struct NowPlayingView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+
+                        // Artist clearlogo: right-aligned, baseline matches artist name
+                        if let logo = fanart.currentClearLogo {
+                            Image(uiImage: logo)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: isLargeCanvas ? 250 : 200, maxHeight: isShortCanvas ? 60 : 80)
+                                .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                                .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                        }
                     }
                     .padding(.horizontal, isLargeCanvas ? 60 : 32)
                     .transition(.opacity)
                 }
 
                 // Progress Bar (Always visible below content)
-                ZStack(alignment: .bottomTrailing) {
-                    progressBar
-
-                    // Artist clearlogo: right-aligned, height matched to song name size, offset to artist baseline
-                    if let logo = fanart.currentClearLogo {
-                        Image(uiImage: logo)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: isLargeCanvas ? 260 : 220, maxHeight: tabletTitleSize)
-                            .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                            .offset(y: -(isShortCanvas ? 20 : 32))
-                            .transition(.opacity.animation(.easeInOut(duration: 0.5)))
-                    }
-                }
-                .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                progressBar
+                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
 
                 // Controls Section
                 if !isIdle && !playback.isLyricsMode {
