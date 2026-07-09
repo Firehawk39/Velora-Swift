@@ -301,16 +301,15 @@ final class FanartManager: ObservableObject {
 
         // 1. Disk cache hit
         if FileManager.default.fileExists(atPath: fileUrl.path) {
-            if let data = try? Data(contentsOf: fileUrl),
-               !data.isEmpty,
-               let img = UIImage(data: data) {
+            if let data = try? Data(contentsOf: fileUrl), !data.isEmpty, let img = UIImage(data: data) {
                 logoCache.setObject(img, forKey: key as NSString)
                 withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                return
             } else {
-                // 0-byte negative cache marker — no logo on FanArt
-                withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
+                // Delete 0-byte negative cache to allow TheAudioDB fallback to retry!
+                AppLogger.shared.log("[Fanart] Wiping old negative clearlogo cache for \(artist) to allow retry")
+                try? FileManager.default.removeItem(at: fileUrl)
             }
-            return
         }
 
         // 2. Memory cache
@@ -339,13 +338,17 @@ final class FanartManager: ObservableObject {
             self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url, _ in
                 guard let self = self else { return }
                 if let url = url {
+                    AppLogger.shared.log("[Fanart] Fetched clearlogo from Fanart for \(artist)")
                     self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key)
                 } else {
+                    AppLogger.shared.log("[Fanart] Fanart has no clearlogo for \(artist), trying TheAudioDB fallback...")
                     self.fetchFromTheAudioDB(artistName: artist, priority: URLSessionTask.highPriority) { [weak self] tadbUrl in
                         guard let self = self else { return }
                         if let tadbUrl = tadbUrl {
+                            AppLogger.shared.log("[Fanart] Fetched clearlogo from TheAudioDB for \(artist)")
                             self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key)
                         } else {
+                            AppLogger.shared.log("[Fanart] TheAudioDB also has no clearlogo for \(artist). Writing negative cache.")
                             // Write negative marker so we don't re-fetch
                             try? Data().write(to: fileUrl)
                             self.activeClearLogoFetches.remove(key)
@@ -374,7 +377,14 @@ final class FanartManager: ObservableObject {
     func downloadClearLogoSilently(for artist: String, mbid: String? = nil) async {
         let key = "logo_" + sanitizeFileName(artist)
         let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
-        guard !FileManager.default.fileExists(atPath: fileUrl.path) else { return }
+        if FileManager.default.fileExists(atPath: fileUrl.path) {
+            if let data = try? Data(contentsOf: fileUrl), !data.isEmpty {
+                return // valid cache exists
+            } else {
+                // Delete 0-byte negative cache to allow retry
+                try? FileManager.default.removeItem(at: fileUrl)
+            }
+        }
         guard NetworkMonitor.shared.isConnected else { return }
         guard !activeClearLogoFetches.contains(key) else { return }
         activeClearLogoFetches.insert(key)
