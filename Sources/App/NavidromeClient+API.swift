@@ -629,7 +629,7 @@ extension NavidromeClient {
             var req = URLRequest(url: getUrl)
             req.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
             req.timeoutInterval = 8.0
-            let (data, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await ThrottledNetworkManager.shared.enqueue(request: req)
             if let http = response as? HTTPURLResponse {
                 if http.statusCode == 429 || http.statusCode >= 500 {
                     throw URLError(.badServerResponse)
@@ -650,7 +650,7 @@ extension NavidromeClient {
         searchReq.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
         searchReq.timeoutInterval = 8.0
 
-        let (searchData, searchResp) = try await URLSession.shared.data(for: searchReq)
+        let (searchData, searchResp) = try await ThrottledNetworkManager.shared.enqueue(request: searchReq)
         if let httpSearchResp = searchResp as? HTTPURLResponse {
             if httpSearchResp.statusCode == 429 || httpSearchResp.statusCode >= 500 {
                 throw URLError(.badServerResponse)
