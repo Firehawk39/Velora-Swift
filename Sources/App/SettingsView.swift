@@ -947,7 +947,7 @@ struct SwipeableSyncRow<Content: View>: View {
 }
 
 // MARK: - Hold To Delete Button
-/// Requires a 3-second press-and-hold before firing.
+/// Requires a 2-second press-and-hold before firing.
 /// A red fill expands symmetrically from the center outward while held.
 /// Releasing before completion snaps back with a spring animation.
 struct HoldToDeleteButton: View {
@@ -959,7 +959,7 @@ struct HoldToDeleteButton: View {
     let cacheCleared: Bool
     let action: () -> Void
 
-    private let holdDuration: Double = 3.0
+    private let holdDuration: Double = 2.0
 
     @State private var progress: CGFloat = 0.0
     @State private var isHolding: Bool = false
