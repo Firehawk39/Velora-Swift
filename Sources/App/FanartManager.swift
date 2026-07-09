@@ -433,7 +433,6 @@ final class FanartManager: ObservableObject {
                 self.activeClearLogoFetches.remove(cacheKey)
             }
         }
-        }
         task.resume()
     }
 
