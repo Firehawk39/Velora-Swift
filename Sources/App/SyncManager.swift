@@ -117,7 +117,7 @@ final class SyncManager: ObservableObject {
 
             let fa = FanartManager.shared
             let mb = MusicBrainzManager.shared
-            let maxConcurrent = 4
+            let maxConcurrent = 50 // Massive concurrency for Navidrome; ThrottledNetworkManager handles external limits safely
             let startTime = Date()
 
             // Keep looping until all artists are confirmed complete (handles partial failures in one go)

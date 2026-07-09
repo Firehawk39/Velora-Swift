@@ -89,9 +89,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
     /// Concurrent download slots.
-    /// Normal/playback: 3 (conservative — doesn’t compete with audio streaming).
-    /// Bulk “Download All Music”: bumped to activeProcessorCount via setBulkDownloadMode(true).
-    private var maxConcurrentDownloads: Int = 3
+    /// Normal/playback: 10 (conservative — doesn’t compete with audio streaming).
+    /// Bulk “Download All Music”: bumped via setBulkDownloadMode(true) to 50.
+    private var maxConcurrentDownloads: Int = 10
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
@@ -1174,12 +1174,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     /// normal playback or single-track downloads.
     func setBulkDownloadMode(_ enabled: Bool) {
         if enabled {
-            // Use every active CPU core the device has, capped at 16 to avoid
-            // overwhelming the Navidrome server’s connection pool.
-            maxConcurrentDownloads = min(ProcessInfo.processInfo.activeProcessorCount, 16)
+            // User requested maximum concurrency for Navidrome server downloads (no limits).
+            maxConcurrentDownloads = 50
         } else {
             // Back to the safe default that won’t compete with audio playback.
-            maxConcurrentDownloads = 3
+            maxConcurrentDownloads = 10
         }
         AppLogger.shared.log(
             "[Download] Bulk mode \(enabled ? "ON" : "OFF") — maxConcurrent=\(maxConcurrentDownloads)",
