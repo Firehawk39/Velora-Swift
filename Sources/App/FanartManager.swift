@@ -466,7 +466,8 @@ final class FanartManager: ObservableObject {
     // MARK: - TheAudioDB Fallback
 
     nonisolated private func fetchFromTheAudioDB(artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?) -> Void) {
-        let encoded = artistName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? artistName
+        let primary = extractPrimaryArtist(artistName)
+        let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? primary
         let urlString = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=\(encoded)"
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil) }
