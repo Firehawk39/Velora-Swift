@@ -291,10 +291,10 @@ struct NowPlayingView: View {
                                 Image(systemName: "waveform")
                                 Text("Lossless")
                             }
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundColor(.white.opacity(0.7))
                             .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 3)
                             .background(Color.white.opacity(0.15))
                             .cornerRadius(4)
                         }
@@ -302,9 +302,22 @@ struct NowPlayingView: View {
                     .padding(.horizontal, 24)
                 }
 
-                // Progress Bar
-                progressBar
-                    .padding(.horizontal, 24)
+                // Progress Bar — wrapped in ZStack so the clearlogo sits above it on the right
+                ZStack(alignment: .bottomTrailing) {
+                    progressBar
+
+                    // Artist clearlogo: only visible in idle state, right-aligned above seekbar
+                    if isIdle, let logo = fanart.currentClearLogo {
+                        Image(uiImage: logo)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: isSmallDevice ? 110 : 140, maxHeight: isSE ? 36 : 44)
+                            .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                            .offset(y: isSE ? -28 : -34)
+                            .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                    }
+                }
+                .padding(.horizontal, 24)
 
                 if !isIdle && !playback.isLyricsMode {
                     // Controls Section for Portrait
@@ -387,10 +400,10 @@ struct NowPlayingView: View {
                                         Image(systemName: "waveform")
                                         Text("Lossless")
                                     }
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
                                     .foregroundColor(.white.opacity(0.7))
                                     .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
+                                    .padding(.vertical, 3)
                                     .background(Color.white.opacity(0.15))
                                     .cornerRadius(4)
                                 }
@@ -403,8 +416,21 @@ struct NowPlayingView: View {
                 }
 
                 // Progress Bar (Always visible below content)
-                progressBar
-                    .padding(.horizontal, isLargeCanvas ? 60 : 32)
+                ZStack(alignment: .bottomTrailing) {
+                    progressBar
+
+                    // Artist clearlogo: only visible in idle state, right-aligned above seekbar
+                    if isIdle, let logo = fanart.currentClearLogo {
+                        Image(uiImage: logo)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: isLargeCanvas ? 160 : 130, maxHeight: isShortCanvas ? 36 : 48)
+                            .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                            .offset(y: isShortCanvas ? -28 : -36)
+                            .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                    }
+                }
+                .padding(.horizontal, isLargeCanvas ? 60 : 32)
 
                 // Controls Section
                 if !isIdle && !playback.isLyricsMode {
@@ -838,6 +864,9 @@ struct NowPlayingView: View {
         // This prevents the "waiting for Navidrome response" flicker
         fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil, allowNetwork: false)
 
+        // 1b. Trigger clearlogo fetch (cache-first, non-blocking)
+        fanart.fetchClearLogo(for: track.artist ?? "Unknown Artist")
+
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
             isFetchingArtistInfo = true
@@ -852,6 +881,8 @@ struct NowPlayingView: View {
                     // If we got a fresh MBID, update fanart too (though usually it's already there)
                     if let mbid = mbid {
                         fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: mbid, allowNetwork: true)
+                        // Re-fetch logo with known MBID for higher accuracy
+                        fanart.fetchClearLogo(for: track.artist ?? "Unknown Artist", mbid: mbid)
                     }
                 }
             }

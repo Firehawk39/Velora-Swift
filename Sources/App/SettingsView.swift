@@ -390,9 +390,12 @@ struct AppSettingsView: View {
     @AppStorage("velora_connection_mode") private var connectionMode: Int = 0
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
-    @AppStorage("velora_download_concurrency") private var downloadConcurrency: Int = 5
     @State private var showLogs: Bool = false
     @State private var showLogoutConfirmation: Bool = false
+    // Hold-to-delete state
+    @State private var holdProgress: CGFloat = 0.0
+    @State private var isHolding: Bool = false
+    @State private var holdTimer: Timer? = nil
     
     @State private var statusTimer: Timer? = nil
 
@@ -699,66 +702,24 @@ struct AppSettingsView: View {
                             }
                             
 
-                            Button(action: {
+                            // Hold-to-delete button
+                            HoldToDeleteButton(
+                                label: "Clear All App Data",
+                                subtitle: "Removes all downloaded tracks, images, and metadata",
+                                isDark: isDark,
+                                borderCol: borderCol,
+                                cacheSize: cacheSize,
+                                cacheCleared: cacheCleared
+                            ) {
                                 client.clearCache()
                                 cacheCleared = true
                                 self.cacheSize = "0 MB"
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                                     cacheCleared = false
                                 }
-                            }) {
-                                HStack {
-                                    Image(systemName: "trash.fill")
-                                        .foregroundColor(.red)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Clear All App Data")
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(isDark ? .white : .black)
-                                        Text("Removes all downloaded tracks, images, and metadata")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.gray)
-                                    }
-                                    Spacer()
-                                    if cacheCleared {
-                                        Text("Cleared").font(.system(size: 14, weight: .bold)).foregroundColor(.green)
-                                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                                    } else {
-                                        Text(cacheSize).font(.system(size: 14)).foregroundColor(.gray)
-                                    }
-                                }
-                                .padding()
-                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
-                                .cornerRadius(16)
-                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
                         }
-                        
-                        // Download Concurrency
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Download Concurrency")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(labelCol)
-                                Spacer()
-                                Text("\(downloadConcurrency) tracks")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(isDark ? .white : .black)
-                            }
-                            Slider(value: Binding(
-                                get: { Double(downloadConcurrency) },
-                                set: { downloadConcurrency = Int($0) }
-                            ), in: 1...15, step: 1)
-                            .accentColor(accentBg)
-                            
-                            Text("Higher values speed up downloads but may slow down your server or drain battery.")
-                                .font(.system(size: 11))
-                                .foregroundColor(.gray)
-                        }
-                        .padding()
-                        .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
-                        .cornerRadius(16)
-                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                        
+
                         // Danger Zone
                         VStack(alignment: .leading, spacing: 20) {
                             Button(action: {
@@ -981,6 +942,138 @@ struct SwipeableSyncRow<Content: View>: View {
                             }
                         }
                 )
+        }
+    }
+}
+
+// MARK: - Hold To Delete Button
+/// Requires a 3-second press-and-hold before firing.
+/// A red fill expands symmetrically from the center outward while held.
+/// Releasing before completion snaps back with a spring animation.
+struct HoldToDeleteButton: View {
+    let label: String
+    let subtitle: String
+    let isDark: Bool
+    let borderCol: Color
+    let cacheSize: String
+    let cacheCleared: Bool
+    let action: () -> Void
+
+    private let holdDuration: Double = 3.0
+
+    @State private var progress: CGFloat = 0.0
+    @State private var isHolding: Bool = false
+    @State private var holdTimer: Timer? = nil
+    @State private var holdStart: Date? = nil
+    @State private var didFire: Bool = false
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .center) {
+                // Base background
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+
+                // Red fill — grows from center outward (left + right simultaneously)
+                if progress > 0 {
+                    Rectangle()
+                        .fill(Color.red.opacity(0.22 + 0.18 * progress))
+                        .frame(width: geo.size.width * progress)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+
+                // Border — sharpens to red as hold progresses
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(
+                        progress > 0
+                            ? Color.red.opacity(0.3 + 0.7 * progress)
+                            : borderCol.opacity(0.3),
+                        lineWidth: progress > 0 ? 1.5 : 1
+                    )
+
+                // Content row
+                HStack {
+                    Image(systemName: cacheCleared ? "checkmark.circle.fill" : "trash.fill")
+                        .foregroundColor(cacheCleared ? .green : .red)
+                        .scaleEffect(1.0 + 0.12 * progress)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(label)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(
+                                cacheCleared ? .green :
+                                (progress > 0 ? .red : (isDark ? .white : .black))
+                            )
+                        Text(
+                            progress > 0
+                            ? "Release to cancel — \(String(format: "%.0f", ceil(holdDuration - progress * holdDuration)))s"
+                            : subtitle
+                        )
+                        .font(.system(size: 12))
+                        .foregroundColor(progress > 0 ? Color.red.opacity(0.85) : .gray)
+                    }
+                    Spacer()
+                    if cacheCleared {
+                        Text("Cleared")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.green)
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                    } else {
+                        Text(cacheSize)
+                            .font(.system(size: 14))
+                            .foregroundColor(progress > 0 ? .red : .gray)
+                    }
+                }
+                .padding()
+            }
+        }
+        .frame(height: 68)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !isHolding, !didFire else { return }
+                    isHolding = true
+                    holdStart = Date()
+                    // Drive progress at 60fps via a repeating timer
+                    holdTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
+                        guard let start = holdStart else { return }
+                        let elapsed = Date().timeIntervalSince(start)
+                        let p = CGFloat(min(elapsed / holdDuration, 1.0))
+                        withAnimation(.linear(duration: 1.0 / 60.0)) {
+                            progress = p
+                        }
+                        if p >= 1.0 {
+                            cancelHold()
+                            didFire = true
+                            DispatchQueue.main.async { action() }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                withAnimation(.easeOut(duration: 0.4)) { progress = 0.0 }
+                                didFire = false
+                            }
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    if !didFire { cancelHold() }
+                }
+        )
+        // Haptic pulse at 1s and 2s; strong at fire
+        .onChange(of: Int(progress * holdDuration)) { second in
+            if second == 1 || second == 2 {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } else if second >= Int(holdDuration) {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            }
+        }
+    }
+
+    private func cancelHold() {
+        holdTimer?.invalidate()
+        holdTimer = nil
+        holdStart = nil
+        isHolding = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+            progress = 0.0
         }
     }
 }

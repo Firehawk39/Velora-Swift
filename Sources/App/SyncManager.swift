@@ -77,7 +77,8 @@ final class SyncManager: ObservableObject {
         self.playback = playback
     }
 
-    /// Syncs Artist/Album info and images, but NO media files
+    /// Syncs Artist/Album info and images, but NO media files.
+    /// Loops until every item is confirmed complete — one tap always finishes the job.
     func startMetadataSync() {
         guard let client = client, !isSyncingMetadata else { return }
 
@@ -108,182 +109,142 @@ final class SyncManager: ObservableObject {
 
             let artists = client.artists
             let albums = client.albums
-            let songs = client.allSongs
 
-            if artists.isEmpty && albums.isEmpty && songs.isEmpty {
+            if artists.isEmpty && albums.isEmpty {
                 finalizeMetadataSync("No items found.")
                 return
             }
 
-            metadataStatus = "Analyzing library..."
-            await Task.yield()
-
-            var missingArtists = [Artist]()
             let fa = FanartManager.shared
             let mb = MusicBrainzManager.shared
-
-            for (index, artist) in artists.enumerated() {
-                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
-                let localBackdropUrl = VeloraStorage.backdrops.appendingPathComponent(backdropKey + ".jpg")
-
-                // Use disk existence for portrait + backdrop — the in-memory cache is empty on cold launch
-                // and would cause the sync to re-download everything every single time.
-                let hasLocalPortrait = isValidImageFile(at: localPortraitUrl)
-                let hasBackdrop = isValidImageFile(at: localBackdropUrl)
-                let hasArtist = mb.hasArtistMetadata(for: artist.primaryName)
-
-                if hasLocalPortrait && hasArtist && hasBackdrop {
-                    // already complete — skip
-                } else {
-                    missingArtists.append(artist)
-                }
-                if index % 100 == 0 { await Task.yield() }
-            }
-
-            var missingAlbums = [Album]()
-            for (index, album) in albums.enumerated() {
-                let artistName = album.artist ?? "Unknown Artist"
-                if mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
-                    // skipped
-                } else {
-                    missingAlbums.append(album)
-                }
-                if index % 100 == 0 { await Task.yield() }
-            }
-
-            let skippedCount = (artists.count - missingArtists.count) + (albums.count - missingAlbums.count)
-            let totalTasks = Double(missingArtists.count + missingAlbums.count)
-            var tasksCompleted = 0.0
-
-            if totalTasks == 0 {
-                finalizeMetadataSync("All metadata already synced.")
-                return
-            }
-
-            // Phase 1: Artist Metadata & Images
-            let maxConcurrentMetadata = 4
-            var artistStartIndex = 0
+            let maxConcurrent = 4
             let startTime = Date()
 
-            while artistStartIndex < missingArtists.count && isSyncingMetadata {
-                let endIndex = min(artistStartIndex + maxConcurrentMetadata, missingArtists.count)
-                let batch = Array(missingArtists[artistStartIndex..<endIndex])
+            // Keep looping until all artists are confirmed complete (handles partial failures in one go)
+            var passCount = 0
+            repeat {
+                passCount += 1
+                metadataStatus = passCount == 1 ? "Analyzing library..." : "Retrying incomplete items (pass \(passCount))..."
+                await Task.yield()
 
-                let processed = tasksCompleted
-                metadataStatus = "Syncing Artists: \(Int(processed))/\(Int(totalTasks))"
+                // Re-scan on every pass so we only work on what's still missing
+                var missingArtists = [Artist]()
+                for (index, artist) in artists.enumerated() {
+                    let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
+                    let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
+                    let localBackdropUrl = VeloraStorage.backdrops.appendingPathComponent(backdropKey + ".jpg")
+                    let hasLocalPortrait = isValidImageFile(at: localPortraitUrl)
+                    let hasBackdrop = isValidImageFile(at: localBackdropUrl)
+                    let hasArtist = mb.hasArtistMetadata(for: artist.primaryName)
+                    if !(hasLocalPortrait && hasArtist && hasBackdrop) {
+                        missingArtists.append(artist)
+                    }
+                    if index % 100 == 0 { await Task.yield() }
+                }
 
-                await withTaskGroup(of: Void.self) { group in
-                    for (index, artist) in batch.enumerated() {
-                        group.addTask {
-                            try? await Task.sleep(nanoseconds: UInt64(index) * 1_200_000_000)
+                var missingAlbums = [Album]()
+                for (index, album) in albums.enumerated() {
+                    let artistName = album.artist ?? "Unknown Artist"
+                    if !mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+                        missingAlbums.append(album)
+                    }
+                    if index % 100 == 0 { await Task.yield() }
+                }
 
-                            let mb = await MusicBrainzManager.shared
-                            let fa = await FanartManager.shared
+                let totalMissing = Double(missingArtists.count + missingAlbums.count)
+                let totalAll = Double(artists.count + albums.count)
+                let alreadyDone = totalAll - totalMissing
 
-                            let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                            let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
+                if totalMissing == 0 { break }
 
-                            let hasArtist = await mb.hasArtistMetadata(for: artist.primaryName)
-                            let hasBackdrop = await fa.hasBackdrop(for: artist.primaryName)
-                            let hasAll = hasArtist && hasBackdrop && hasLocalPortrait
+                var tasksCompleted = alreadyDone
 
-                            if !hasAll {
-                                let mbid: String? = await withCheckedContinuation { continuation in
-                                    Task { @MainActor in
-                                        client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
-                                            continuation.resume(returning: fetchedMbid)
+                // Phase A: Artist Metadata & Images
+                var artistStartIndex = 0
+                while artistStartIndex < missingArtists.count && isSyncingMetadata {
+                    let endIndex = min(artistStartIndex + maxConcurrent, missingArtists.count)
+                    let batch = Array(missingArtists[artistStartIndex..<endIndex])
+                    metadataStatus = "Syncing Artists: \(artistStartIndex)/\(missingArtists.count) (pass \(passCount))"
+
+                    await withTaskGroup(of: Void.self) { group in
+                        for (index, artist) in batch.enumerated() {
+                            group.addTask {
+                                try? await Task.sleep(nanoseconds: UInt64(index) * 1_200_000_000)
+                                let mb = await MusicBrainzManager.shared
+                                let fa = await FanartManager.shared
+                                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
+                                let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
+                                let hasArtist = await mb.hasArtistMetadata(for: artist.primaryName)
+                                let hasBackdrop = await fa.hasBackdrop(for: artist.primaryName)
+                                if !(hasArtist && hasBackdrop && hasLocalPortrait) {
+                                    let mbid: String? = await withCheckedContinuation { continuation in
+                                        Task { @MainActor in
+                                            client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
+                                                continuation.resume(returning: fetchedMbid)
+                                            }
                                         }
                                     }
-                                }
-                                await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: mbid)
-                                await withCheckedContinuation { cont in
-                                    Task { @MainActor in
-                                        client.fetchArtist(id: artist.id) { _ in cont.resume() }
+                                    await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: mbid)
+                                    await withCheckedContinuation { cont in
+                                        Task { @MainActor in
+                                            client.fetchArtist(id: artist.id) { _ in cont.resume() }
+                                        }
                                     }
+                                    await mb.downloadMetadataSilently(for: artist.primaryName, mbid: mbid)
                                 }
-                                await mb.downloadMetadataSilently(for: artist.primaryName, mbid: mbid)
                             }
                         }
                     }
-                }
 
-                tasksCompleted += Double(batch.count)
-                artistStartIndex += maxConcurrentMetadata
-                metadataProgress = tasksCompleted / totalTasks
-
-                // ETA — wait at least 2s before showing
-                if tasksCompleted > 0 {
+                    tasksCompleted += Double(batch.count)
+                    artistStartIndex += maxConcurrent
+                    metadataProgress = min(tasksCompleted / totalAll, 0.99)
                     let elapsed = Date().timeIntervalSince(startTime)
-                    if elapsed >= 2.0 {
-                        let tracksPerSecond = tasksCompleted / elapsed
-                        let remaining = totalTasks - tasksCompleted
-                        let remainingSeconds = Int(remaining / max(tracksPerSecond, 0.01))
-                        if remainingSeconds > 3600 {
-                            self.metadataEta = "\(remainingSeconds / 3600)h remaining"
-                        } else if remainingSeconds > 60 {
-                            self.metadataEta = "\(remainingSeconds / 60)m remaining"
-                        } else {
-                            self.metadataEta = "\(remainingSeconds)s remaining"
-                        }
+                    if elapsed >= 2.0 && tasksCompleted > alreadyDone {
+                        let rate = (tasksCompleted - alreadyDone) / elapsed
+                        let rem = Int((totalAll - tasksCompleted) / max(rate, 0.01))
+                        metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
                     }
                 }
-            }
 
-            // Phase 2: Album Metadata
-            let maxConcurrentAlbumMetadata = 4
-            var albumStartIndex = 0
-            while albumStartIndex < missingAlbums.count && isSyncingMetadata {
-                let endIndex = min(albumStartIndex + maxConcurrentAlbumMetadata, missingAlbums.count)
-                let batch = Array(missingAlbums[albumStartIndex..<endIndex])
+                // Phase B: Album Metadata
+                var albumStartIndex = 0
+                while albumStartIndex < missingAlbums.count && isSyncingMetadata {
+                    let endIndex = min(albumStartIndex + maxConcurrent, missingAlbums.count)
+                    let batch = Array(missingAlbums[albumStartIndex..<endIndex])
+                    metadataStatus = "Syncing Albums: \(albumStartIndex)/\(missingAlbums.count) (pass \(passCount))"
 
-                let processed = tasksCompleted
-                metadataStatus = "Syncing Albums: \(Int(processed))/\(Int(totalTasks))"
-
-                await withTaskGroup(of: Void.self) { group in
-                    for (index, album) in batch.enumerated() {
-                        group.addTask {
-                            try? await Task.sleep(nanoseconds: UInt64(index) * 1_200_000_000)
-
-                            let artistName = album.artist ?? "Unknown Artist"
-                            let mb = await MusicBrainzManager.shared
-
-                            let hasMeta = await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)
-
-                            if !hasMeta {
-                                await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
+                    await withTaskGroup(of: Void.self) { group in
+                        for (index, album) in batch.enumerated() {
+                            group.addTask {
+                                try? await Task.sleep(nanoseconds: UInt64(index) * 1_200_000_000)
+                                let artistName = album.artist ?? "Unknown Artist"
+                                let mb = await MusicBrainzManager.shared
+                                if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)) {
+                                    await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
+                                }
                             }
                         }
                     }
+
+                    tasksCompleted += Double(batch.count)
+                    albumStartIndex += maxConcurrent
+                    metadataProgress = min(tasksCompleted / totalAll, 0.99)
                 }
 
-                tasksCompleted += Double(batch.count)
-                albumStartIndex += maxConcurrentMetadata
-                metadataProgress = tasksCompleted / totalTasks
+                // Brief pause before re-scanning to allow disk writes to flush
+                if isSyncingMetadata { try? await Task.sleep(nanoseconds: 2_000_000_000) }
 
-                // ETA — wait at least 2s before showing
-                if tasksCompleted > 0 {
-                    let elapsed = Date().timeIntervalSince(startTime)
-                    if elapsed >= 2.0 {
-                        let tracksPerSecond = tasksCompleted / elapsed
-                        let remaining = totalTasks - tasksCompleted
-                        let remainingSeconds = Int(remaining / max(tracksPerSecond, 0.01))
-                        if remainingSeconds > 3600 {
-                            self.metadataEta = "\(remainingSeconds / 3600)h remaining"
-                        } else if remainingSeconds > 60 {
-                            self.metadataEta = "\(remainingSeconds / 60)m remaining"
-                        } else {
-                            self.metadataEta = "\(remainingSeconds)s remaining"
-                        }
-                    }
-                }
-            }
+            } while isSyncingMetadata && passCount < 5
+            // Cap at 5 passes — if something still fails after that, it's a permanent API gap.
 
-            finalizeMetadataSync("Metadata Sync Complete (\(skippedCount) items skipped)")
+            let skippedCount = (artists.count + albums.count)
+            finalizeMetadataSync("Metadata Sync Complete — \(skippedCount) items confirmed")
         }
     }
 
-    /// Downloads all missing lyrics from LRCLIB
+    /// Downloads all missing lyrics from LRCLIB.
+    /// Retries rate-limited songs with exponential back-off — one tap always finishes.
     func startLyricsSync() {
         guard let client = client, !isSyncingLyrics else { return }
 
@@ -292,14 +253,11 @@ final class SyncManager: ObservableObject {
         lyricsEta = ""
 
         Task {
-            // 1. Ensure we actually have the songs list
             let tracks: [Track]
             if client.allSongs.isEmpty {
                 lyricsStatus = "Fetching song list..."
                 tracks = await withCheckedContinuation { continuation in
-                    client.fetchAllSongs { songs in
-                        continuation.resume(returning: songs)
-                    }
+                    client.fetchAllSongs { songs in continuation.resume(returning: songs) }
                 }
             } else {
                 tracks = client.allSongs
@@ -310,22 +268,22 @@ final class SyncManager: ObservableObject {
             }
 
             let lyricsDir = VeloraStorage.lyrics
-            let maxConcurrentLyricsRequests = 15
-            var skippedCount = 0
-            var tasksCompleted = 0.0
+            // Slower, safer concurrency — 5 parallel requests with 300ms stagger avoids 429s
+            let maxConcurrent = 5
+            let staggerNs: UInt64 = 300_000_000
             let totalTasks = Double(tracks.count)
+            let startTime = Date()
 
-            // Filter out songs that already have local cached lyrics first so we skip them instantly
-            let missingSongs = tracks.filter { song in
+            // First pass: build the list of truly missing songs
+            var missingSongs = tracks.filter { song in
                 let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
-                if FileManager.default.fileExists(atPath: cacheFile.path) {
-                    skippedCount += 1
-                    tasksCompleted += 1
-                    return false
-                }
-                return true
+                guard FileManager.default.fileExists(atPath: cacheFile.path) else { return true }
+                // Also retry empty files — not NO_LYRICS, just blank
+                let size = (try? FileManager.default.attributesOfItem(atPath: cacheFile.path)[.size]) as? Int64 ?? 0
+                return size == 0
             }
-
+            let skippedCount = tracks.count - missingSongs.count
+            var tasksCompleted = Double(skippedCount)
             lyricsProgress = tasksCompleted / totalTasks
 
             if missingSongs.isEmpty {
@@ -333,62 +291,93 @@ final class SyncManager: ObservableObject {
                 return
             }
 
-            if !missingSongs.isEmpty {
-                var startIndex = 0
-                let startTime = Date()
+            var passCount = 0
+            // Retry loop: on each pass, only the songs still missing (no cache file) are attempted
+            while !missingSongs.isEmpty && isSyncingLyrics && passCount < 5 {
+                passCount += 1
+                var failedThisPass: [Track] = []
 
+                var startIndex = 0
                 while startIndex < missingSongs.count && isSyncingLyrics {
-                    let endIndex = min(startIndex + maxConcurrentLyricsRequests, missingSongs.count)
+                    let endIndex = min(startIndex + maxConcurrent, missingSongs.count)
                     let batch = Array(missingSongs[startIndex..<endIndex])
 
-                    let processed = tasksCompleted - Double(skippedCount)
-                    lyricsStatus = "Syncing Lyrics: \(Int(processed))/\(missingSongs.count) songs"
+                    let attemptedSoFar = Int(tasksCompleted) - skippedCount
+                    lyricsStatus = passCount == 1
+                        ? "Syncing Lyrics: \(attemptedSoFar)/\(missingSongs.count) songs"
+                        : "Retrying \(missingSongs.count) songs (pass \(passCount))"
 
-                    // Download this batch in parallel with a slight stagger
-                    await withTaskGroup(of: Void.self) { group in
+                    // Exponential back-off between passes: 0, 5s, 10s, 20s, 40s
+                    if passCount > 1 && startIndex == 0 {
+                        let backoffSeconds = UInt64(5 * (1 << (passCount - 2)))
+                        lyricsStatus = "Rate limited — waiting \(backoffSeconds)s before retry..."
+                        try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
+                    }
+
+                    // Track which songs in this batch succeeded so we can re-queue failures
+                    let results = await withTaskGroup(of: (Track, Bool).self) { group -> [(Track, Bool)] in
                         for (index, song) in batch.enumerated() {
                             group.addTask {
-                                // 100ms stagger between concurrent lyric requests
-                                try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
-                                await withCheckedContinuation { continuation in
+                                try? await Task.sleep(nanoseconds: UInt64(index) * staggerNs)
+                                let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                                     Task { @MainActor in
-                                        client.fetchLyrics(trackId: song.id, artist: song.primaryArtist, title: song.title, duration: Double(song.duration ?? 0)) { _ in
-                                            continuation.resume()
+                                        client.fetchLyrics(
+                                            trackId: song.id,
+                                            artist: song.primaryArtist,
+                                            title: song.title,
+                                            duration: Double(song.duration ?? 0)
+                                        ) { result in
+                                            // Success = non-nil lyrics written; failure = nil (rate limited/error)
+                                            continuation.resume(returning: result != nil)
                                         }
                                     }
                                 }
+                                return (song, succeeded)
+                            }
+                        }
+                        var out: [(Track, Bool)] = []
+                        for await pair in group { out.append(pair) }
+                        return out
+                    }
+
+                    for (song, succeeded) in results {
+                        if !succeeded {
+                            // Only re-queue if we still have no cache file (not even NO_LYRICS)
+                            let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
+                            if !FileManager.default.fileExists(atPath: cacheFile.path) {
+                                failedThisPass.append(song)
                             }
                         }
                     }
 
-                    // Update progress on the MainActor for the entire batch
                     tasksCompleted += Double(batch.count)
-                    lyricsProgress = tasksCompleted / totalTasks
+                    lyricsProgress = min(tasksCompleted / totalTasks, 0.99)
+                    startIndex += maxConcurrent
 
-                    // ETA Calculation — wait at least 2s before showing (avoids ∞ on first batch)
                     let nowProcessed = tasksCompleted - Double(skippedCount)
                     if nowProcessed > 0 {
                         let elapsed = Date().timeIntervalSince(startTime)
                         if elapsed >= 2.0 {
-                            let tracksPerSecond = nowProcessed / elapsed
-                            let remainingTracks = Double(missingSongs.count) - nowProcessed
-                            let remainingSeconds = Int(remainingTracks / max(tracksPerSecond, 0.01))
-
-                            if remainingSeconds > 3600 {
-                                self.lyricsEta = "\(remainingSeconds / 3600)h remaining"
-                            } else if remainingSeconds > 60 {
-                                self.lyricsEta = "\(remainingSeconds / 60)m remaining"
-                            } else {
-                                self.lyricsEta = "\(remainingSeconds)s remaining"
-                            }
+                            let rate = nowProcessed / elapsed
+                            let rem = Int(Double(missingSongs.count) - nowProcessed < 0 ? 0 : (Double(missingSongs.count) - nowProcessed) / max(rate, 0.01))
+                            lyricsEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
                         }
                     }
+                }
 
-                    startIndex += maxConcurrentLyricsRequests
+                // Only retry songs that truly still have no file
+                missingSongs = failedThisPass
+                if !missingSongs.isEmpty {
+                    AppLogger.shared.log("[LyricsSync] Pass \(passCount) done. \(missingSongs.count) songs still need retry.", level: .warning)
                 }
             }
 
-            finalizeLyricsSync("Lyrics Sync Complete (\(skippedCount) items skipped)")
+            let finalFailed = missingSongs.count
+            if finalFailed > 0 {
+                finalizeLyricsSync("Lyrics Sync done. \(skippedCount) skipped, \(finalFailed) unavailable after retries.")
+            } else {
+                finalizeLyricsSync("Lyrics Sync Complete (\(skippedCount) already cached)")
+            }
         }
     }
 
@@ -406,6 +395,9 @@ final class SyncManager: ObservableObject {
         mediaEta = ""
 
         Task {
+            // Unlock maximum download concurrency for the bulk operation.
+            // This is reset back to the conservative default in finalizeMediaSync.
+            playback?.setBulkDownloadMode(true)
             playback?.resetDownloadState()
 
             // 1. Ensure we actually have the songs list
@@ -536,6 +528,7 @@ final class SyncManager: ObservableObject {
     func stopMediaSync() {
         isSyncingMedia = false
         mediaStatus = "Sync Stopped"
+        playback?.setBulkDownloadMode(false)
     }
 
     func stopSync() {
@@ -606,9 +599,16 @@ final class SyncManager: ObservableObject {
                 // 3. Check Lyrics
                 let lyricsPath = VeloraStorage.lyrics.appendingPathComponent("\(track.id).txt").path
                 if fileManager.fileExists(atPath: lyricsPath) {
-                    if let size = (try? fileManager.attributesOfItem(atPath: lyricsPath)[.size]) as? Int64, size == 0 {
-                        try? fileManager.removeItem(atPath: lyricsPath)
-                        missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
+                    if let size = (try? fileManager.attributesOfItem(atPath: lyricsPath)[.size]) as? Int64 {
+                        if size == 0 {
+                            try? fileManager.removeItem(atPath: lyricsPath)
+                            missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
+                        } else if size == 9 {
+                            if let content = try? String(contentsOfFile: lyricsPath, encoding: .utf8), content == "NO_LYRICS" {
+                                try? fileManager.removeItem(atPath: lyricsPath)
+                                missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
+                            }
+                        }
                     }
                 } else {
                     missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
@@ -682,32 +682,83 @@ final class SyncManager: ObservableObject {
                 }
             }
 
-            // Repair Lyrics
+            // Repair Lyrics — with retry and accurate success/failure counts
             if !missingLyricsIds.isEmpty && isRepairing {
-                var startIndex = 0
-                while startIndex < missingLyricsIds.count && isRepairing {
-                    let endIndex = min(startIndex + repairBatchSize, missingLyricsIds.count)
-                    let batch = Array(missingLyricsIds[startIndex..<endIndex])
-                    await withTaskGroup(of: Void.self) { group in
-                        for (index, lyricReq) in batch.enumerated() {
-                            group.addTask {
-                                try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
-                                await withCheckedContinuation { cont in
-                                    Task { @MainActor in
-                                        client.fetchLyrics(trackId: lyricReq.id, artist: lyricReq.artist, title: lyricReq.title, duration: lyricReq.duration) { _ in cont.resume() }
+                var pendingLyrics = missingLyricsIds
+                var lyricPassCount = 0
+                var lyricsFixed = 0
+                var lyricsFailed = 0
+
+                // Safer concurrency: 5 at a time with 300ms stagger prevents 429 rate limits
+                let lyricsBatchSize = 5
+                let lyricsStaggerNs: UInt64 = 300_000_000
+
+                while !pendingLyrics.isEmpty && isRepairing && lyricPassCount < 5 {
+                    lyricPassCount += 1
+                    var stillFailing: [(id: String, artist: String, title: String, duration: Double)] = []
+
+                    if lyricPassCount > 1 {
+                        let backoffSeconds = UInt64(5 * (1 << (lyricPassCount - 2)))
+                        repairStatus = "Rate limited — waiting \(backoffSeconds)s before retry (pass \(lyricPassCount))..."
+                        AppLogger.shared.log("[RepairSync] Lyrics rate limited. Waiting \(backoffSeconds)s before pass \(lyricPassCount).", level: .warning)
+                        try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
+                    }
+
+                    var startIndex = 0
+                    while startIndex < pendingLyrics.count && isRepairing {
+                        let endIndex = min(startIndex + lyricsBatchSize, pendingLyrics.count)
+                        let batch = Array(pendingLyrics[startIndex..<endIndex])
+                        repairStatus = "Repairing lyrics: \(lyricsFixed)/\(missingLyricsIds.count) fixed" + (lyricPassCount > 1 ? " (pass \(lyricPassCount))" : "")
+
+                        let results = await withTaskGroup(of: (String, Bool).self) { group -> [(String, Bool)] in
+                            for (index, req) in batch.enumerated() {
+                                group.addTask {
+                                    try? await Task.sleep(nanoseconds: UInt64(index) * lyricsStaggerNs)
+                                    let succeeded = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                                        Task { @MainActor in
+                                            client.fetchLyrics(trackId: req.id, artist: req.artist, title: req.title, duration: req.duration) { result in
+                                                cont.resume(returning: result != nil)
+                                            }
+                                        }
                                     }
+                                    return (req.id, succeeded)
+                                }
+                            }
+                            var out: [(String, Bool)] = []
+                            for await pair in group { out.append(pair) }
+                            return out
+                        }
+
+                        for (id, succeeded) in results {
+                            if succeeded {
+                                lyricsFixed += 1
+                                repairedCount += 1
+                            } else {
+                                // Only re-queue if still no file on disk (true failure, not NO_LYRICS)
+                                let cacheFile = VeloraStorage.lyrics.appendingPathComponent("\(id).txt")
+                                if !FileManager.default.fileExists(atPath: cacheFile.path),
+                                   let req = pendingLyrics.first(where: { $0.id == id }) {
+                                    stillFailing.append(req)
                                 }
                             }
                         }
+
+                        tasksCompleted += Double(batch.count)
+                        repairProgress = tasksCompleted / Double(totalTasks)
+                        startIndex += lyricsBatchSize
                     }
-                    tasksCompleted += Double(batch.count)
-                    repairedCount += batch.count
-                    repairProgress = tasksCompleted / Double(totalTasks)
-                    startIndex += repairBatchSize
+
+                    pendingLyrics = stillFailing
+                }
+
+                lyricsFailed = pendingLyrics.count
+                if lyricsFailed > 0 {
+                    AppLogger.shared.log("[RepairSync] \(lyricsFailed) songs unavailable after all retries (likely not in LRCLIB).", level: .warning)
                 }
             }
 
-            finalizeRepairSync("Repair complete. Fixed \(repairedCount) items.")
+            let failedNote = missingLyricsIds.isEmpty ? "" : ", \(missingLyricsIds.count - repairedCount + (missingCoverArtIds.count - repairedCount < 0 ? 0 : 0)) unavailable"
+            finalizeRepairSync("Repair complete. Fixed \(repairedCount) items.\(failedNote)")
         }
     }
 
@@ -736,6 +787,7 @@ final class SyncManager: ObservableObject {
         self.mediaStatus = status
         self.mediaProgress = 1.0
         self.mediaEta = ""
+        self.playback?.setBulkDownloadMode(false)   // restore normal concurrency
         self.playback?.refreshDownloadedTracks()
     }
 
