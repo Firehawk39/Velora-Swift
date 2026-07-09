@@ -32,7 +32,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
     }
 
     /// Enqueues a URL Request to be processed at a safe rate by its domain's throttler.
-    func enqueue(request: URLRequest, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (Data?, URLResponse?, Error?) -> Void) {
+    func enqueue(request: URLRequest, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void) {
         let host = request.url?.host ?? "default"
         let throttler = getThrottler(for: host)
         
@@ -48,7 +48,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
     }
 
     /// Convenience for enqueueing a simple URL
-    func enqueue(url: URL, priority: Float = URLSessionTask.defaultPriority, completion: @escaping (Data?, URLResponse?, Error?) -> Void) {
+    func enqueue(url: URL, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void) {
         enqueue(request: URLRequest(url: url), priority: priority, completion: completion)
     }
 
@@ -135,7 +135,7 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
     override var isExecuting: Bool { _executing }
     override var isFinished: Bool { _finished }
 
-    init(request: URLRequest, throttler: DomainThrottler, completion: @escaping (Data?, URLResponse?, Error?) -> Void) {
+    init(request: URLRequest, throttler: DomainThrottler, completion: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void) {
         self.request = request
         self.throttler = throttler
         self.completion = completion
