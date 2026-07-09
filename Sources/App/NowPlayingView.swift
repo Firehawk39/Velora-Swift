@@ -280,23 +280,24 @@ struct NowPlayingView: View {
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
 
-                        Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                            .font(.system(size: isSE ? 12 : (isSmallDevice ? 14 : 16), weight: .bold))
-                            .foregroundColor(.white.opacity(0.6))
-                            .lineLimit(1)
-                            .multilineTextAlignment(.center)
-                            
-                        if playback.currentTrack?.suffix?.lowercased() == "flac" {
-                            HStack(spacing: 4) {
-                                Image(systemName: "waveform")
-                                Text("Lossless")
+                        HStack(alignment: .center, spacing: 4) {
+                            Text(playback.currentTrack?.artist ?? "Unknown Artist")
+                                .font(.system(size: isSE ? 12 : (isSmallDevice ? 14 : 16), weight: .bold))
+                                .foregroundColor(.white.opacity(0.6))
+                                .lineLimit(1)
+                                
+                            if playback.currentTrack?.suffix?.lowercased() == "flac" {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "waveform")
+                                    Text("Lossless")
+                                }
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundColor(.white.opacity(0.7))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.white.opacity(0.15))
+                                .cornerRadius(4)
                             }
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.7))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.15))
-                            .cornerRadius(4)
                         }
                     }
                     .padding(.horizontal, 24)
@@ -376,7 +377,7 @@ struct NowPlayingView: View {
                                 .foregroundColor(.white)
                                 .lineLimit(2)
 
-                            HStack(spacing: 8) {
+                            HStack(alignment: .bottom, spacing: 8) {
                                 Text(playback.currentTrack?.artist ?? "Unknown Artist")
                                     .font(.system(size: tabletArtistSize, weight: .bold))
                                     .foregroundColor(.white.opacity(0.8))
@@ -393,19 +394,23 @@ struct NowPlayingView: View {
                                     .padding(.vertical, 3)
                                     .background(Color.white.opacity(0.15))
                                     .cornerRadius(4)
+                                    // Slight negative padding to push the lossless badge exactly onto the text baseline
+                                    .padding(.bottom, 2)
                                 }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // Artist clearlogo: right-aligned, baseline matches artist name
-                        if let logo = fanart.currentClearLogo {
-                            Image(uiImage: logo)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: isLargeCanvas ? 250 : 200, maxHeight: isShortCanvas ? 60 : 80)
-                                .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                                .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                        .overlay(alignment: .bottomTrailing) {
+                            if let logo = fanart.currentClearLogo {
+                                Image(uiImage: logo)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: isLargeCanvas ? 240 : 180, maxHeight: isShortCanvas ? 54 : 72)
+                                    // Resetting offset so it naturally perfectly sits on the same line as the bottom-aligned Lossless badge!
+                                    .offset(y: 0)
+                                    .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                            }
                         }
                     }
                     .padding(.horizontal, isLargeCanvas ? 60 : 32)

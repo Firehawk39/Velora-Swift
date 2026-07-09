@@ -793,10 +793,6 @@ private struct PlaylistDetailView: View {
             
             // Secondary sort: title if added at the exact same time
             return a.title < b.title
-
-
-            // Final fallback: Track title
-            return a.title < b.title
         }
 
         VStack(alignment: .leading, spacing: 0) {
