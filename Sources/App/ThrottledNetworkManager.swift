@@ -35,6 +35,22 @@ class ThrottledNetworkManager: @unchecked Sendable {
         enqueue(request: URLRequest(url: url), priority: priority, completion: completion)
     }
 
+    /// Async wrapper for enqueueing a URL Request
+    func enqueue(request: URLRequest, priority: Float = URLSessionTask.defaultPriority) async throws -> (Data, URLResponse) {
+        return try await withCheckedThrowingContinuation { continuation in
+            self.enqueue(request: request, priority: priority) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else if let data = data, let response = response {
+                    continuation.resume(returning: (data, response))
+                } else {
+                    continuation.resume(throwing: URLError(.unknown))
+                }
+            }
+        }
+    }
+
+
     fileprivate func waitForSlot() {
         lock.lock()
         defer { lock.unlock() }

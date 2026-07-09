@@ -172,7 +172,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private func configureAudioSession() {
         #if os(iOS)
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.allowBluetoothHFP, .allowBluetoothA2DP, .duckOthers])
+            #if os(macOS) || targetEnvironment(macCatalyst)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            #else
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            #endif
             try AVAudioSession.sharedInstance().setActive(true)
 
             // Gold Standard: Handle Audio Interruptions (e.g., phone calls)
