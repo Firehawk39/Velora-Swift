@@ -1,8 +1,8 @@
 import Foundation
 import UIKit
 
-class ThrottledNetworkManager {
-    static let shared = ThrottledNetworkManager()
+class ThrottledNetworkManager: @unchecked Sendable {
+    nonisolated(unsafe) static let shared = ThrottledNetworkManager()
 
     private let queue = OperationQueue()
     private var lastRequestTime = Date.distantPast
@@ -69,7 +69,7 @@ class ThrottledNetworkManager {
     }
 }
 
-private class ThrottledOperation: Operation {
+private class ThrottledOperation: Operation, @unchecked Sendable {
     let request: URLRequest
     let manager: ThrottledNetworkManager
     let completion: (Data?, URLResponse?, Error?) -> Void
