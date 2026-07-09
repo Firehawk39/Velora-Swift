@@ -167,7 +167,7 @@ final class SyncManager: ObservableObject {
                     metadataStatus = "Syncing Artists: \(artistStartIndex)/\(missingArtists.count) (pass \(passCount))"
 
                     await withTaskGroup(of: Void.self) { group in
-                        for (index, artist) in batch.enumerated() {
+                        for (_, artist) in batch.enumerated() {
                             group.addTask {
 
                                 let mb = await MusicBrainzManager.shared
@@ -217,7 +217,7 @@ final class SyncManager: ObservableObject {
                     metadataStatus = "Syncing Albums: \(albumStartIndex)/\(missingAlbums.count) (pass \(passCount))"
 
                     await withTaskGroup(of: Void.self) { group in
-                        for (index, album) in batch.enumerated() {
+                        for (_, album) in batch.enumerated() {
                             group.addTask {
 
                                 let artistName = album.artist ?? "Unknown Artist"
