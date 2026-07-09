@@ -306,8 +306,8 @@ struct NowPlayingView: View {
                 ZStack(alignment: .bottomTrailing) {
                     progressBar
 
-                    // Artist clearlogo: only visible in idle state, right-aligned above seekbar
-                    if isIdle, let logo = fanart.currentClearLogo {
+                    // Artist clearlogo: right-aligned above seekbar
+                    if let logo = fanart.currentClearLogo {
                         Image(uiImage: logo)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
@@ -419,8 +419,8 @@ struct NowPlayingView: View {
                 ZStack(alignment: .bottomTrailing) {
                     progressBar
 
-                    // Artist clearlogo: only visible in idle state, right-aligned above seekbar
-                    if isIdle, let logo = fanart.currentClearLogo {
+                    // Artist clearlogo: right-aligned above seekbar
+                    if let logo = fanart.currentClearLogo {
                         Image(uiImage: logo)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
