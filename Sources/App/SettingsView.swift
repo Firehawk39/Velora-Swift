@@ -770,6 +770,12 @@ struct AppSettingsView: View {
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .center)
             }
+            .refreshable {
+                let size = client.getMediaCacheSize()
+                await MainActor.run {
+                    self.cacheSize = size
+                }
+            }
             .onAppear {
                 let clientRef = client
                 DispatchQueue.global(qos: .background).async {
