@@ -867,12 +867,12 @@ struct NowPlayingView: View {
                     self.artistBiography = bio
                     self.isFetchingArtistInfo = false
 
-                    // DO NOT pass Navidrome's `mbid` to FanartManager!
-                    // Navidrome fetches it from Last.fm, which forcibly aliases "Zimmer" to "Hans Zimmer".
-                    // FanartManager has a highly accurate `getMBID` function that prefers exact matches
-                    // to avoid this exact issue. By omitting `mbid`, we force FanartManager to use its own logic.
-                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil, allowNetwork: true)
-                    fanart.fetchClearLogo(for: track.artist ?? "Unknown Artist")
+                    // Use Navidrome's MBID for robust matching, but protect against Last.fm's "Zimmer" -> "Hans Zimmer" aliasing bug.
+                    if let mbid = mbid {
+                        let safeMbid = (track.artist?.lowercased() == "zimmer") ? nil : mbid
+                        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: safeMbid, allowNetwork: true)
+                        fanart.fetchClearLogo(for: track.artist ?? "Unknown Artist", mbid: safeMbid)
+                    }
                 }
             }
         }
