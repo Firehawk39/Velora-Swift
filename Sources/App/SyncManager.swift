@@ -185,15 +185,16 @@ final class SyncManager: ObservableObject {
                                             }
                                         }
                                     }
-                                    // DO NOT pass Navidrome's mbid. Let the managers resolve it safely.
-                                    await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: nil)
-                                    await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: nil)
+                                    // Use Navidrome's MBID for robust matching, but protect against Last.fm's "Zimmer" -> "Hans Zimmer" aliasing bug.
+                                    let safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : mbid
+                                    await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
+                                    await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
                                     await withCheckedContinuation { cont in
                                         Task { @MainActor in
                                             client.fetchArtist(id: artist.id) { _ in cont.resume() }
                                         }
                                     }
-                                    await mb.downloadMetadataSilently(for: artist.primaryName, mbid: nil)
+                                    await mb.downloadMetadataSilently(for: artist.primaryName, mbid: safeMbid)
                                 }
                             }
                         }
