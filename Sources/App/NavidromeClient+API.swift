@@ -523,7 +523,7 @@ extension NavidromeClient {
 
     // MARK: - Lyrics
 
-    func fetchLyrics(trackId: String, artist: String, title: String, duration: Double, completion: @escaping @MainActor @Sendable (String?) -> Void) {
+    func fetchLyrics(trackId: String, artist: String, title: String, duration: Double, priority: Float = URLSessionTask.highPriority, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
         let isOnline = NetworkMonitor.shared.isConnected
@@ -561,9 +561,17 @@ extension NavidromeClient {
                 return
             }
 
-            // Only try LRCLIB API for lyrics (time-synced first, then plain)
             do {
-                if let lrclibLyrics = try await fetchFromLRCLIB(artist: artist, title: title, duration: duration), !lrclibLyrics.isEmpty {
+                // 1. Try Navidrome server first (embedded lyrics/local .lrc files)
+                if let navidromeLyrics = try await fetchLyricsFromNavidrome(artist: artist, title: title), !navidromeLyrics.isEmpty {
+                    try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try? navidromeLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
+                    completion(navidromeLyrics)
+                    return
+                }
+                
+                // 2. Try LRCLIB API as fallback (time-synced first, then plain)
+                if let lrclibLyrics = try await fetchFromLRCLIB(artist: artist, title: title, duration: duration, priority: priority), !lrclibLyrics.isEmpty {
                     try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
                     completion(lrclibLyrics)
@@ -576,13 +584,23 @@ extension NavidromeClient {
                 completion(nil)
             } catch {
                 // Network error or 429 Rate Limited. Do NOT poison the cache.
-                AppLogger.shared.log("[LRCLIB] Fetch error/rate limit for \(title): \(error.localizedDescription)", level: .error)
+                AppLogger.shared.log("[Lyrics] Fetch error/rate limit for \(title): \(error.localizedDescription)", level: .error)
                 completion(nil)
             }
         }
     }
 
-    nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double) async throws -> String? {
+    private func fetchLyricsFromNavidrome(artist: String, title: String) async throws -> String? {
+        guard let url = buildUrl(method: "getLyrics.view", params: ["artist": artist, "title": title]) else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 8.0
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+        let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+        return decoded.subsonicResponse?.lyrics?.value
+    }
+
+    nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
         guard await NetworkMonitor.shared.isConnected else { throw URLError(.notConnectedToInternet) }
 
         // Strip (Remaster), [Live Version], etc. from title
@@ -629,7 +647,7 @@ extension NavidromeClient {
             var req = URLRequest(url: getUrl)
             req.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
             req.timeoutInterval = 8.0
-            let (data, response) = try await ThrottledNetworkManager.shared.enqueue(request: req)
+            let (data, response) = try await ThrottledNetworkManager.shared.enqueue(request: req, priority: priority)
             if let http = response as? HTTPURLResponse {
                 if http.statusCode == 429 || http.statusCode >= 500 {
                     throw URLError(.badServerResponse)
@@ -650,7 +668,7 @@ extension NavidromeClient {
         searchReq.setValue("Velora iOS App v1.0", forHTTPHeaderField: "User-Agent")
         searchReq.timeoutInterval = 8.0
 
-        let (searchData, searchResp) = try await ThrottledNetworkManager.shared.enqueue(request: searchReq)
+        let (searchData, searchResp) = try await ThrottledNetworkManager.shared.enqueue(request: searchReq, priority: priority)
         if let httpSearchResp = searchResp as? HTTPURLResponse {
             if httpSearchResp.statusCode == 429 || httpSearchResp.statusCode >= 500 {
                 throw URLError(.badServerResponse)
