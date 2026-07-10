@@ -126,11 +126,11 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
     var allArtists: [String] {
         guard let artist = artist else { return ["Unknown Artist"] }
         var temp = artist
-        let textDelimiters = [" feat.", " ft.", " featuring "]
+        let textDelimiters = [" feat.", " ft.", " featuring ", " x ", " vs."]
         for delim in textDelimiters {
-            temp = temp.replacingOccurrences(of: delim, with: " & ", options: .caseInsensitive)
+            temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
         }
-        let list = temp.components(separatedBy: CharacterSet(charactersIn: "&,")).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let list = temp.components(separatedBy: "|||").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         return list.isEmpty ? [artist] : list
     }
 

@@ -179,7 +179,7 @@ final class FanartManager: ObservableObject {
 
         for (index, artist) in artists.enumerated() {
             let key = getCacheKey(artistName: artist, artistId: index == 0 ? artistId : nil)
-        let fileUrl = backdropDir.appendingPathComponent(key + ".jpg")
+            let fileUrl = backdropDir.appendingPathComponent(key + ".jpg")
 
             if fileManager.fileExists(atPath: fileUrl.path) {
                 if let attr = try? fileManager.attributesOfItem(atPath: fileUrl.path), let size = attr[.size] as? Int64, size > 0 {
@@ -297,8 +297,6 @@ final class FanartManager: ObservableObject {
         }
     }
 
-    // MARK: - API Helpers
-
     // MARK: - Clear Logos
 
     private var activeClearLogoFetches = Set<String>()
@@ -306,36 +304,78 @@ final class FanartManager: ObservableObject {
 
     /// Fetch the hdmusiclogo (transparent PNG) for `artist` and update `currentClearLogo`.
     /// Falls back to `hdmusiclogo` → `musiclogo` in the API response.
+    ///
+    /// IMPORTANT: This function ALWAYS validates the cached logo against the artist's
+    /// MusicBrainz ID before serving it. This prevents "Zimmer" from showing "Hans Zimmer"'s
+    /// logo when the wrong logo was previously cached.
     func fetchClearLogo(for artist: String, mbid: String? = nil) {
         let key = "logo_" + sanitizeFileName(artist)
         let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
         let sidecarUrl = clearLogoDir.appendingPathComponent(key + ".mbid")
 
-        // 1. Disk cache hit
+        // 1. Disk cache hit — ALWAYS validate via sidecar before serving
         if FileManager.default.fileExists(atPath: fileUrl.path) {
             if let data = try? Data(contentsOf: fileUrl), !data.isEmpty, let img = UIImage(data: data) {
-                // MBID guard: if caller supplies a known MBID (e.g. from Navidrome) and it
-                // doesn't match the sidecar, the cached file belongs to the wrong artist
-                // (e.g. Hans Zimmer's logo cached under the key for "Zimmer"). Wipe and re-fetch.
+                let cachedMbid = (try? String(contentsOf: sidecarUrl, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+
                 if let knownMbid = mbid, !knownMbid.isEmpty {
-                    let cachedMbid = (try? String(contentsOf: sidecarUrl, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if cachedMbid != knownMbid {
-                        AppLogger.shared.log("[Fanart] Clearlogo MBID mismatch for \(artist) — wiping stale cache and re-fetching.", level: .info)
+                    // Caller supplied an authoritative MBID (e.g. from Navidrome) — validate immediately.
+                    if cachedMbid == knownMbid {
+                        // MBID matches — safe to serve.
+                        logoCache.setObject(img, forKey: key as NSString)
+                        withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                        return
+                    } else {
+                        // Mismatch — cached logo belongs to a different artist. Wipe it.
+                        AppLogger.shared.log("[Fanart] Clearlogo MBID mismatch for \(artist) (cached: \(cachedMbid ?? "none"), expected: \(knownMbid)) — wiping stale cache.", level: .info)
                         try? FileManager.default.removeItem(at: fileUrl)
                         try? FileManager.default.removeItem(at: sidecarUrl)
                         logoCache.removeObject(forKey: key as NSString)
                         // Fall through to network fetch below
-                    } else {
-                        logoCache.setObject(img, forKey: key as NSString)
-                        withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
-                        return
                     }
+                } else if let cachedMbid = cachedMbid, !cachedMbid.isEmpty {
+                    // No caller-MBID but sidecar exists — must resolve MBID to validate.
+                    // Don't serve until confirmed correct (prevents showing Hans Zimmer's logo).
+                    withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
+                    guard !activeClearLogoFetches.contains(key) else { return }
+                    activeClearLogoFetches.insert(key)
+                    currentClearLogoArtist = artist
+                    getMBID(for: artist) { [weak self] resolved in
+                        guard let self = self else { return }
+                        if let resolved = resolved, resolved == cachedMbid {
+                            // Confirmed — serve cached logo.
+                            self.logoCache.setObject(img, forKey: key as NSString)
+                            withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                            self.activeClearLogoFetches.remove(key)
+                        } else {
+                            // Wrong artist in cache — wipe and fetch the correct logo.
+                            AppLogger.shared.log("[Fanart] Clearlogo confirmed wrong artist for \(artist) — wiping and re-fetching.", level: .info)
+                            try? FileManager.default.removeItem(at: fileUrl)
+                            try? FileManager.default.removeItem(at: sidecarUrl)
+                            self.logoCache.removeObject(forKey: key as NSString)
+                            self.activeClearLogoFetches.remove(key)
+                            if let resolved = resolved {
+                                self.fetchClearLogo(for: artist, mbid: resolved)
+                            } else {
+                                // Can't resolve MBID — write negative marker to stop retries.
+                                try? Data().write(to: fileUrl)
+                            }
+                        }
+                    }
+                    return
                 } else {
+                    // No sidecar: legacy cache with no MBID metadata.
+                    // Serve it but retroactively write a sidecar for future validation.
                     logoCache.setObject(img, forKey: key as NSString)
                     withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                    Task { [weak self] in
+                        guard let self = self else { return }
+                        await self.validateAndRepairClearLogoSidecar(artist: artist, sidecarUrl: sidecarUrl)
+                    }
                     return
                 }
             } else {
+                // Empty or invalid file — negative cache entry
                 if isNegativeCacheExpired(at: fileUrl) {
                     AppLogger.shared.log("[Fanart] Wiping old negative clearlogo cache for \(artist) to allow retry")
                     try? FileManager.default.removeItem(at: fileUrl)
@@ -358,7 +398,7 @@ final class FanartManager: ObservableObject {
         activeClearLogoFetches.insert(key)
         currentClearLogoArtist = artist
 
-        // Clear stale logo immediately
+        // Clear stale logo immediately while we fetch
         withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
 
         guard NetworkMonitor.shared.isConnected else {
@@ -366,7 +406,7 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        // 4. Resolve MBID then fetch
+        // 4. Resolve MBID then fetch from Fanart.tv (fallback: TheAudioDB)
         let doFetch: (String) -> Void = { [weak self] resolvedMbid in
             guard let self = self else { return }
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMbid)?api_key=\(self.fanartApiKey)"
@@ -400,9 +440,24 @@ final class FanartManager: ObservableObject {
                 if let resolved = resolved {
                     doFetch(resolved)
                 } else {
-                    try? Data().write(to: fileUrl)  // negative marker
+                    try? Data().write(to: fileUrl)  // negative marker — no MBID found
                     self.activeClearLogoFetches.remove(key)
                 }
+            }
+        }
+    }
+
+    /// Resolves the correct MBID for `artist` and writes a sidecar file retroactively
+    /// for legacy cached logos that have no MBID metadata. This ensures the next call
+    /// with an authoritative MBID will be able to detect and correct a wrong logo.
+    private func validateAndRepairClearLogoSidecar(artist: String, sidecarUrl: URL) async {
+        return await withCheckedContinuation { continuation in
+            self.getMBID(for: artist) { resolved in
+                if let resolved = resolved {
+                    try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                    AppLogger.shared.log("[Fanart] Retroactively wrote sidecar for \(artist): \(resolved)", level: .info)
+                }
+                continuation.resume()
             }
         }
     }
@@ -412,20 +467,21 @@ final class FanartManager: ObservableObject {
         let key = "logo_" + sanitizeFileName(artist)
         let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
         let sidecarUrl = clearLogoDir.appendingPathComponent(key + ".mbid")
-        
+
         if FileManager.default.fileExists(atPath: fileUrl.path) {
             if let data = try? Data(contentsOf: fileUrl), !data.isEmpty {
-                // Check MBID guard
+                let cachedMbid = (try? String(contentsOf: sidecarUrl, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
                 if let knownMbid = mbid, !knownMbid.isEmpty {
-                    let cachedMbid = (try? String(contentsOf: sidecarUrl, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if cachedMbid != knownMbid {
+                    if cachedMbid == knownMbid {
+                        return // valid cache
+                    } else {
+                        // Wrong artist — wipe and fall through to re-fetch
+                        AppLogger.shared.log("[Fanart] Silent prefetch: MBID mismatch for \(artist) — wiping.", level: .info)
                         try? FileManager.default.removeItem(at: fileUrl)
                         try? FileManager.default.removeItem(at: sidecarUrl)
-                    } else {
-                        return // valid cache exists
                     }
                 } else {
-                    return // valid cache exists
+                    return // No MBID to validate against, trust existing cache
                 }
             } else {
                 if isNegativeCacheExpired(at: fileUrl) {
@@ -436,22 +492,23 @@ final class FanartManager: ObservableObject {
                 }
             }
         }
+
         guard NetworkMonitor.shared.isConnected else { return }
         guard !activeClearLogoFetches.contains(key) else { return }
         activeClearLogoFetches.insert(key)
 
-        let resolve: (String) -> Void = { [weak self] mbid in
+        let resolve: (String) -> Void = { [weak self] resolvedMbid in
             guard let self = self else { return }
-            let urlString = "https://webservice.fanart.tv/v3/music/\(mbid)?api_key=\(self.fanartApiKey)"
+            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMbid)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] url, _ in
                 guard let self = self else { return }
                 if let url = url {
-                    self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key, usedMbid: mbid)
+                    self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
                 } else {
                     self.fetchFromTheAudioDB(artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl in
                         guard let self = self else { return }
                         if let tadbUrl = tadbUrl {
-                            self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key, usedMbid: mbid)
+                            self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
                         } else {
                             try? Data().write(to: fileUrl)
                             self.activeClearLogoFetches.remove(key)
@@ -484,7 +541,7 @@ final class FanartManager: ObservableObject {
             DispatchQueue.main.async {
                 if let data = data, let img = UIImage(data: data) {
                     try? data.write(to: localUrl)
-                    // Write sidecar MBID so future cache loads can validate the source artist
+                    // Always write sidecar MBID so future cache loads can validate artist identity
                     if let mbid = usedMbid, !mbid.isEmpty {
                         let sidecarUrl = localUrl.deletingPathExtension().appendingPathExtension("mbid")
                         try? mbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
@@ -494,7 +551,7 @@ final class FanartManager: ObservableObject {
                         withAnimation(.easeInOut(duration: 0.6)) { self.currentClearLogo = img }
                     }
                 } else {
-                    try? Data().write(to: localUrl)   // negative marker
+                    try? Data().write(to: localUrl)  // negative marker
                 }
                 self.activeClearLogoFetches.remove(cacheKey)
             }
@@ -519,11 +576,20 @@ final class FanartManager: ObservableObject {
             }
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let artists = json["artists"] as? [[String: Any]],
-                   let firstArtist = artists.first,
-                   let logoUrl = firstArtist["strArtistLogo"] as? String,
-                   !logoUrl.isEmpty {
-                    DispatchQueue.main.async { completion(logoUrl) }
+                   let artists = json["artists"] as? [[String: Any]] {
+                    let lowerPrimary = primary.lowercased()
+                    // CRITICAL: Strictly match artist name. TheAudioDB returns "Hans Zimmer"
+                    // for queries like "Zimmer" — we must reject those.
+                    let matched = artists.first {
+                        ($0["strArtist"] as? String ?? "").lowercased() == lowerPrimary
+                    }
+                    if let matched = matched,
+                       let logoUrl = matched["strArtistLogo"] as? String,
+                       !logoUrl.isEmpty {
+                        DispatchQueue.main.async { completion(logoUrl) }
+                    } else {
+                        DispatchQueue.main.async { completion(nil) }
+                    }
                 } else {
                     DispatchQueue.main.async { completion(nil) }
                 }
@@ -658,7 +724,7 @@ final class FanartManager: ObservableObject {
     }
 
     nonisolated private func extractPrimaryArtist(_ name: String) -> String {
-        let delimiters = [",", "&", "feat.", "ft.", " x ", " vs.", " and "]
+        let delimiters = ["feat.", "ft.", " x ", " vs.", " featuring "]
         var primary = name
         for delimiter in delimiters {
             if let range = primary.range(of: delimiter, options: .caseInsensitive) {
