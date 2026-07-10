@@ -617,18 +617,42 @@ final class MusicBrainzManager: ObservableObject {
         let cached = nameToMBIDCache[artist]
         if let cached = cached { return cached }
 
-        let encoded = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\(encoded)&fmt=json"
+        let primary = extractPrimaryArtist(artist)
+        let queryTerm = "artist:\"\(primary)\""
+        let encoded = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encoded)&fmt=json"
         guard let url = URL(string: urlString) else { return nil }
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let artists = json?["artists"] as? [[String: Any]]
-            return artists?.first?["id"] as? String
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
+                return nil
+            }
+
+            let lowerPrimary = primary.lowercased()
+
+            // 1. Exact name match — prevents "Zimmer" → "Hans Zimmer"
+            if let exactMatch = artists.first(where: {
+                ($0["name"] as? String)?.lowercased() == lowerPrimary
+            }), let id = exactMatch["id"] as? String {
+                return id
+            }
+
+            // 2. Unambiguous top score (100, single candidate)
+            let topScore = artists.first.flatMap { $0["score"] as? Int } ?? 0
+            let topScoreCandidates = artists.filter { ($0["score"] as? Int) == topScore }
+            if topScore == 100, topScoreCandidates.count == 1,
+               let id = topScoreCandidates.first?["id"] as? String {
+                return id
+            }
+
+            // 3. Ambiguous — refuse to guess
+            return nil
         } catch { return nil }
     }
+
 
     private func resolveAlbumMBIDAsync(album: String, artist: String) async -> String? {
         let cached = nameToMBIDCache["\(artist)_\(album)"]
