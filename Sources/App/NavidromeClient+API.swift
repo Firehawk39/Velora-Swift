@@ -660,10 +660,19 @@ extension NavidromeClient {
 
                 // Best match: prefer a result within ±3s of actual track duration to avoid
                 // syncing a Live Version to a Studio Version (causes lyric drift).
+                // Ensure we ONLY match results that actually contain lyrics.
                 let bestMatch = jsonArray.first { result in
-                    guard let resultDuration = result["duration"] as? Double else { return false }
+                    let hasSynced = (result["syncedLyrics"] as? String)?.isEmpty == false
+                    let hasPlain = (result["plainLyrics"] as? String)?.isEmpty == false
+                    guard hasSynced || hasPlain else { return false }
+
+                    guard let resultDuration = result["duration"] as? Double else { return true }
                     return abs(resultDuration - duration) <= 3.0
-                } ?? jsonArray.first
+                } ?? jsonArray.first { result in
+                    let hasSynced = (result["syncedLyrics"] as? String)?.isEmpty == false
+                    let hasPlain = (result["plainLyrics"] as? String)?.isEmpty == false
+                    return hasSynced || hasPlain
+                }
 
                 if let match = bestMatch {
                     if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
