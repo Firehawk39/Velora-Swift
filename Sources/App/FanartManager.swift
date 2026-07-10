@@ -634,7 +634,6 @@ final class FanartManager: ObservableObject {
         let primary = extractPrimaryArtist(artistName)
         let queryTerm = "artist:\"\(primary)\""
         let encodedQuery = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        // Use exact name query to improve accuracy
         let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encodedQuery)&fmt=json"
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil) }
@@ -645,15 +644,38 @@ final class FanartManager: ObservableObject {
         request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
 
         ThrottledNetworkManager.shared.enqueue(request: request, priority: priority) { data, _, _ in
-            if let data = data,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let artists = json["artists"] as? [[String: Any]],
-               let firstArtist = artists.first,
-               let id = firstArtist["id"] as? String {
-                DispatchQueue.main.async { completion(id) }
-            } else {
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
                 DispatchQueue.main.async { completion(nil) }
+                return
             }
+
+            let lowerPrimary = primary.lowercased()
+
+            // 1. Prefer an artist whose name is an exact case-insensitive match.
+            //    This prevents "Zimmer" from resolving to "Hans Zimmer" which has
+            //    "Zimmer" as a search-hint alias and ranks first in MusicBrainz results.
+            if let exactMatch = artists.first(where: {
+                ($0["name"] as? String)?.lowercased() == lowerPrimary
+            }), let id = exactMatch["id"] as? String {
+                DispatchQueue.main.async { completion(id) }
+                return
+            }
+
+            // 2. Fallback: only accept the top result if it has the maximum possible
+            //    score (100) AND the top-score group contains exactly one artist,
+            //    meaning MusicBrainz itself is unambiguous about the match.
+            let topScore = artists.first.flatMap { $0["score"] as? Int } ?? 0
+            let topScoreCandidates = artists.filter { ($0["score"] as? Int) == topScore }
+            if topScore == 100, topScoreCandidates.count == 1,
+               let id = topScoreCandidates.first?["id"] as? String {
+                DispatchQueue.main.async { completion(id) }
+                return
+            }
+
+            // 3. No reliable match found — return nil so callers don't show wrong art.
+            DispatchQueue.main.async { completion(nil) }
         }
     }
 }
