@@ -309,6 +309,13 @@ final class FanartManager: ObservableObject {
     /// MusicBrainz ID before serving it. This prevents "Zimmer" from showing "Hans Zimmer"'s
     /// logo when the wrong logo was previously cached.
     func fetchClearLogo(for artist: String, mbid: String? = nil) {
+        let isNewArtist = self.currentClearLogoArtist != artist
+        if isNewArtist {
+            self.currentClearLogoArtist = artist
+            // Instantly clear old stale logo so it doesn't linger while resolving or fetching
+            withAnimation(.easeOut(duration: 0.2)) { self.currentClearLogo = nil }
+        }
+
         let key = "logo_" + sanitizeFileName(artist)
         let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
         let sidecarUrl = clearLogoDir.appendingPathComponent(key + ".mbid")
@@ -339,7 +346,6 @@ final class FanartManager: ObservableObject {
                     withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
                     guard !activeClearLogoFetches.contains(key) else { return }
                     activeClearLogoFetches.insert(key)
-                    currentClearLogoArtist = artist
                     getMBID(for: artist) { [weak self] resolved in
                         guard let self = self else { return }
                         if let resolved = resolved, resolved == cachedMbid {
@@ -396,7 +402,6 @@ final class FanartManager: ObservableObject {
         // 3. Guard dedup
         guard !activeClearLogoFetches.contains(key) else { return }
         activeClearLogoFetches.insert(key)
-        currentClearLogoArtist = artist
 
         // Clear stale logo immediately while we fetch
         withAnimation(.easeInOut(duration: 0.3)) { self.currentClearLogo = nil }
