@@ -185,14 +185,15 @@ final class SyncManager: ObservableObject {
                                             }
                                         }
                                     }
-                                    await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: mbid)
-                                    await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: mbid)
+                                    // DO NOT pass Navidrome's mbid. Let the managers resolve it safely.
+                                    await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: nil)
+                                    await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: nil)
                                     await withCheckedContinuation { cont in
                                         Task { @MainActor in
                                             client.fetchArtist(id: artist.id) { _ in cont.resume() }
                                         }
                                     }
-                                    await mb.downloadMetadataSilently(for: artist.primaryName, mbid: mbid)
+                                    await mb.downloadMetadataSilently(for: artist.primaryName, mbid: nil)
                                 }
                             }
                         }
@@ -327,7 +328,8 @@ final class SyncManager: ObservableObject {
                                             trackId: song.id,
                                             artist: song.primaryArtist,
                                             title: song.title,
-                                            duration: Double(song.duration ?? 0)
+                                            duration: Double(song.duration ?? 0),
+                                            priority: URLSessionTask.lowPriority
                                         ) { result in
                                             // Success = non-nil lyrics written; failure = nil (rate limited/error)
                                             continuation.resume(returning: result != nil)
@@ -718,7 +720,7 @@ final class SyncManager: ObservableObject {
                                     try? await Task.sleep(nanoseconds: UInt64(index) * lyricsStaggerNs)
                                     let succeeded = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
                                         Task { @MainActor in
-                                            client.fetchLyrics(trackId: req.id, artist: req.artist, title: req.title, duration: req.duration) { result in
+                                            client.fetchLyrics(trackId: req.id, artist: req.artist, title: req.title, duration: req.duration, priority: URLSessionTask.lowPriority) { result in
                                                 cont.resume(returning: result != nil)
                                             }
                                         }
