@@ -347,7 +347,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let isOnline = NetworkMonitor.shared.isConnected
 
         // Fetch lyrics — works offline (returns disk-cached lyrics)
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { [weak self] lyrics in
+        client.fetchLyrics(
+            trackId: track.id,
+            artist: track.artist ?? "",
+            title: track.title,
+            duration: Double(track.duration ?? 0),
+            priority: URLSessionTask.highPriority
+        ) { [weak self] lyrics in
             Task { @MainActor in
                 self?.applyLyrics(lyrics, for: track)
             }
