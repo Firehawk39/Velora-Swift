@@ -154,7 +154,7 @@ struct TrackChipView: View {
     @EnvironmentObject var client: NavidromeClient
     
     private var track: Track? {
-        client.allSongs.first(where: { $0.id == trackId })
+        DatabaseManager.shared.getTrack(id: trackId)
     }
     
     var body: some View {

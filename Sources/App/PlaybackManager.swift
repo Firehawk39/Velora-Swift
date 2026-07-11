@@ -964,14 +964,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func deleteAlbumDownloads(albumId: String) {
-        let tracks = client.allSongs.filter { $0.albumId == albumId }
+        let tracks = DatabaseManager.shared.getTracks(albumId: albumId)
         for track in tracks {
             if isDownloaded(track.id) { deleteDownload(trackId: track.id) }
         }
     }
 
     func deleteArtistDownloads(artistId: String) {
-        let tracks = client.allSongs.filter { $0.artistId == artistId }
+        let tracks = DatabaseManager.shared.getTracks(artistId: artistId)
         for track in tracks {
             if isDownloaded(track.id) { deleteDownload(trackId: track.id) }
         }
@@ -979,7 +979,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     /// Returns (downloaded, total) count for an album
     func albumDownloadStatus(albumId: String) -> (downloaded: Int, total: Int) {
-        let tracks = client.allSongs.filter { $0.albumId == albumId }
+        let tracks = DatabaseManager.shared.getTracks(albumId: albumId)
         let downloaded = tracks.filter { isDownloaded($0.id) }.count
         return (downloaded, tracks.count)
     }
@@ -991,7 +991,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func downloadAlbum(albumId: String) {
-        let tracks = client.allSongs.filter { $0.albumId == albumId }
+        let tracks = DatabaseManager.shared.getTracks(albumId: albumId)
         for track in tracks {
             downloadTrack(track)
         }
@@ -1168,7 +1168,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                          let delay = pow(2.0, Double(retries))
                          Task {
                              try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                             if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
+                             if let track = DatabaseManager.shared.getTrack(id: trackId) ?? self.queue.first(where: { $0.id == trackId }) {
                                  self.downloadProgress[trackId] = nil
                                  self.downloadTrack(track)
                              }
@@ -1216,7 +1216,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                         let delay = pow(2.0, Double(retries))
                         Task {
                             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                            if let track = self.client.allSongs.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
+                            if let track = DatabaseManager.shared.getTrack(id: trackId) ?? self.queue.first(where: { $0.id == trackId }) {
                                 self.downloadProgress[trackId] = nil
                                 self.downloadTrack(track)
                             }

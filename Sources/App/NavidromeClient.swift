@@ -8,7 +8,6 @@ final class NavidromeClient: ObservableObject {
     @Published var albums: [Album] = []
     @Published var recentlyPlayed: [Track] = []
     @Published var playlists: [Playlist] = []
-    @Published var allSongs: [Track] = []
 
     private var pendingSaveTask: Task<Void, Never>?
 
@@ -79,9 +78,6 @@ final class NavidromeClient: ObservableObject {
             let playlistsUrl = dir.appendingPathComponent("cached_playlists.json")
             let loadedPlaylists = (try? Data(contentsOf: playlistsUrl)).flatMap { try? decoder.decode([Playlist].self, from: $0) }
 
-            let songsUrl = dir.appendingPathComponent("cached_all_songs.json")
-            let loadedSongs = (try? Data(contentsOf: songsUrl)).flatMap { try? decoder.decode([Track].self, from: $0) }
-
             let recentUrl = dir.appendingPathComponent("cached_recently_played.json")
             let loadedRecent = (try? Data(contentsOf: recentUrl)).flatMap { try? decoder.decode([Track].self, from: $0) }
 
@@ -104,14 +100,6 @@ final class NavidromeClient: ObservableObject {
                     self.albums = albums
                 }
                 if let playlists = loadedPlaylists { self.playlists = playlists }
-                if var songs = loadedSongs {
-                    for i in 0..<songs.count {
-                        if let artId = songs[i].coverArt {
-                            songs[i].coverArt = self.getCoverArtUrl(id: extractArtId(from: artId))
-                        }
-                    }
-                    self.allSongs = songs
-                }
                 if var recent = loadedRecent {
                     for i in 0..<recent.count {
                         if let artId = recent[i].coverArt {
@@ -121,7 +109,7 @@ final class NavidromeClient: ObservableObject {
                     self.recentlyPlayed = recent
                 }
 
-                AppLogger.shared.log("[Offline Cache] Loaded metadata asynchronously: \(self.artists.count) artists, \(self.albums.count) albums, \(self.allSongs.count) songs")
+                AppLogger.shared.log("[Offline Cache] Loaded metadata asynchronously: \(self.artists.count) artists, \(self.albums.count) albums")
             }
         }
     }
@@ -134,7 +122,6 @@ final class NavidromeClient: ObservableObject {
         let copyArtists = self.artists
         let copyAlbums = self.albums
         let copyPlaylists = self.playlists
-        let copyAllSongs = self.allSongs
         let copyRecentlyPlayed = self.recentlyPlayed
 
         pendingSaveTask = Task.detached(priority: .background) {
@@ -161,11 +148,6 @@ final class NavidromeClient: ObservableObject {
             let playlistsUrl = dir.appendingPathComponent("cached_playlists.json")
             if let data = try? encoder.encode(copyPlaylists) {
                 try? data.write(to: playlistsUrl, options: writeOptions)
-            }
-
-            let songsUrl = dir.appendingPathComponent("cached_all_songs.json")
-            if let data = try? encoder.encode(copyAllSongs) {
-                try? data.write(to: songsUrl, options: writeOptions)
             }
 
             let recentUrl = dir.appendingPathComponent("cached_recently_played.json")
@@ -195,7 +177,6 @@ final class NavidromeClient: ObservableObject {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_artists.json"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_albums.json"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_playlists.json"))
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_all_songs.json"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_recently_played.json"))
 
         self.baseUrl = ""
@@ -207,6 +188,5 @@ final class NavidromeClient: ObservableObject {
         self.albums = []
         self.recentlyPlayed = []
         self.playlists = []
-        self.allSongs = []
     }
 }
