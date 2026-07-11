@@ -105,7 +105,8 @@ final class FanartManager: ObservableObject {
                 if FileManager.default.fileExists(atPath: fileUrl.path),
                    let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
                    let size = attr[.size] as? Int64, size == 0 {
-                    if NetworkMonitor.shared.isConnected {
+                    let isConnected = await MainActor.run { NetworkMonitor.shared.isConnected }
+                    if isConnected {
                         // SELF-HEAL: Delete the marker and try fetching again since we are online.
                         try? FileManager.default.removeItem(at: fileUrl)
                     } else {
@@ -336,7 +337,7 @@ final class FanartManager: ObservableObject {
                     return
                 }
 
-                let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
+                let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(self.fanartApiKey)"
                 self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url, isEmpty in
                     guard let self = self else { completion(nil); return }
                     if let url = url {

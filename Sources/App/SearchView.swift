@@ -93,7 +93,7 @@ struct SearchView: View {
                 let lowerQuery = trimmed.lowercased()
 
                 // Tracks
-                let foundTracks = DatabaseManager.shared.searchTracks(query: searchText).filter {
+                let foundTracks = DatabaseManager.shared.searchTracks(query: trimmed).filter {
                     $0.title.lowercased().contains(lowerQuery) ||
                     ($0.artist?.lowercased().contains(lowerQuery) ?? false) ||
                     ($0.album?.lowercased().contains(lowerQuery) ?? false)
