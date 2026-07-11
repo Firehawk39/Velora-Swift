@@ -901,6 +901,7 @@ extension NavidromeClient {
             VeloraStorage.coverArt,
             VeloraStorage.tracks,
             VeloraStorage.lyrics,
+            VeloraStorage.clearLogos,
         ]
 
         for dir in dirsToClean {
