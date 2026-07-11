@@ -203,8 +203,8 @@ struct AppHeader: View {
             headerActions
         }
         .padding(.horizontal, mainHeaderHorizontalPadding)
-        .offset(y: min(0, scrollOffset))
-        .opacity(max(0, 1 - (-min(0, scrollOffset) / 50)))
+        .offset(y: min(0.0, scrollOffset))
+        .opacity(max(0.0, 1.0 + (min(0.0, scrollOffset) / 50.0)))
     }
 
     private var logoButton: some View {
