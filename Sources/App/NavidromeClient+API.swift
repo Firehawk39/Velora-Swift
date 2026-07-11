@@ -204,9 +204,9 @@ extension NavidromeClient {
                     }
 
                     group.enter()
-                    self.fetchArtistInfo(artistId: artistId) { b, m in
-                        bio = b
-                        mbid = m
+                    self.fetchArtistInfo(artistId: artistId) { info in
+                        bio = info?.biography
+                        mbid = info?.musicBrainzId
                         group.leave()
                     }
 
@@ -221,22 +221,20 @@ extension NavidromeClient {
         }.resume()
     }
 
-    func fetchArtistInfo(artistId: String, completion: @escaping @MainActor @Sendable (String?, String?) -> Void) {
-        guard NetworkMonitor.shared.isConnected else { completion(nil, nil); return }
-        guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil, nil); return }
+    func fetchArtistInfo(artistId: String, completion: @escaping @MainActor @Sendable (SubsonicArtistInfo?) -> Void) {
+        guard NetworkMonitor.shared.isConnected else { completion(nil); return }
+        guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil); return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                Task { @MainActor in completion(nil, nil) }
+                Task { @MainActor in completion(nil) }
                 return
             }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let info = decoded.subsonicResponse?.artistInfo ?? decoded.subsonicResponse?.artistInfo2
-                let biography = info?.biography
-                let musicBrainzId = info?.musicBrainzId
-                Task { @MainActor in completion(biography, musicBrainzId) }
+                Task { @MainActor in completion(info) }
             } catch {
-                Task { @MainActor in completion(nil, nil) }
+                Task { @MainActor in completion(nil) }
             }
         }.resume()
     }

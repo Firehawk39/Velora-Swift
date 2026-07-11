@@ -900,16 +900,17 @@ struct NowPlayingView: View {
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
             isFetchingArtistInfo = true
-            playback.client.fetchArtistInfo(artistId: artistId) { bio, mbid in
+            playback.client.fetchArtistInfo(artistId: artistId) { info in
                 Task { @MainActor in
                     // Check if we haven't skipped to another track in the meantime
                     guard self.playback.currentTrack?.id == track.id else { return }
 
-                    self.artistBiography = bio
+                    self.artistBiography = info?.biography
+                    self.currentMBID = info?.musicBrainzId
                     self.isFetchingArtistInfo = false
 
                     // Use Navidrome's MBID for robust matching, but protect against Last.fm's "Zimmer" -> "Hans Zimmer" aliasing bug.
-                    if let mbid = mbid {
+                    if let mbid = info?.musicBrainzId {
                         let safeMbid = (track.artist?.lowercased() == "zimmer") ? nil : mbid
                         fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: safeMbid, allowNetwork: true)
                         fanart.fetchClearLogo(for: track.artist ?? "Unknown Artist", mbid: safeMbid)
