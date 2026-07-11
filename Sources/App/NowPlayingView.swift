@@ -23,6 +23,11 @@ struct NowPlayingView: View {
     @State private var showPlayPauseHint: Bool = false
     @State private var hintIcon: String = "play.fill"
     @State private var showFullBio: Bool = false
+    
+    // Explicitly managed state to prevent flickering/mixing up of artist portrait
+    @State private var artistPortraitImage: UIImage? = nil
+    @State private var currentPortraitArtistId: String? = nil
+    
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     // Header height to avoid overlap
@@ -714,19 +719,10 @@ struct NowPlayingView: View {
 
     private var artistImage: some View {
         Group {
-            if let artistId = playback.currentTrack?.artistId {
-                // FIX #4: Look in artistPortraits (where SyncManager saves Fanart.tv portraits),
-                // not coverArt (which stores album art). Wrong dir caused a cache miss every time.
-                let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
-                let imageUrl: URL? = FileManager.default.fileExists(atPath: localUrl.path)
-                    ? localUrl
-                    : URL(string: playback.client.getCoverArtUrl(id: artistId))
-                SelfHealingAsyncImage(url: imageUrl) { img in
-                    img.resizable().scaledToFill()
-                } placeholder: {
-                    Circle().fill(Color.white.opacity(0.1))
-                }
-                .id(playback.currentTrack?.artistId ?? "")
+            if let img = artistPortraitImage {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
             } else {
                 Circle().fill(Color.white.opacity(0.1))
             }
@@ -902,6 +898,7 @@ struct NowPlayingView: View {
         let albumName = track.album ?? "Unknown Album"
 
         self.artistBiography = nil
+        self.loadArtistPortrait(for: track)
 
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker
@@ -987,6 +984,58 @@ struct LyricLineView: View {
             result = result + Text(word + suffix).foregroundColor(.white.opacity(isSpoken ? 1.0 : 0.4))
         }
         return result.font(font)
+    }
+
+    /// Loads the artist portrait with the exact same ID-validation strategy as backdrops
+    /// to prevent mixing up images when skipping fast, and avoids AsyncImage placeholder flickering.
+    private func loadArtistPortrait(for track: Track) {
+        guard let newArtistId = track.artistId else {
+            withAnimation(.easeInOut(duration: 0.3)) { artistPortraitImage = nil }
+            currentPortraitArtistId = nil
+            return
+        }
+        
+        let isNewArtist = (currentPortraitArtistId != newArtistId)
+        if isNewArtist {
+            currentPortraitArtistId = newArtistId
+            // Only clear the portrait if it's a DIFFERENT artist. If same, keep showing it.
+            withAnimation(.easeOut(duration: 0.2)) { artistPortraitImage = nil }
+        }
+        
+        let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(newArtistId).jpg")
+        
+        // 1. Try local cache synchronously
+        if FileManager.default.fileExists(atPath: localUrl.path) {
+            DispatchQueue.global(qos: .userInitiated).async {
+                if let data = try? Data(contentsOf: localUrl), let img = UIImage(data: data) {
+                    DispatchQueue.main.async {
+                        // Check if we haven't skipped to another artist in the meantime
+                        if self.currentPortraitArtistId == newArtistId {
+                            if isNewArtist {
+                                withAnimation(.easeInOut(duration: 0.5)) { self.artistPortraitImage = img }
+                            } else {
+                                self.artistPortraitImage = img
+                            }
+                        }
+                    }
+                }
+            }
+            return
+        }
+        
+        // 2. Fetch from Navidrome
+        let fallbackUrlString = playback.client.getCoverArtUrl(id: newArtistId)
+        guard let url = URL(string: fallbackUrlString) else { return }
+        
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            if let data = data, let img = UIImage(data: data) {
+                DispatchQueue.main.async {
+                    if self.currentPortraitArtistId == newArtistId {
+                        withAnimation(.easeInOut(duration: 0.5)) { self.artistPortraitImage = img }
+                    }
+                }
+            }
+        }.resume()
     }
 }
 

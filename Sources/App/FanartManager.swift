@@ -395,7 +395,9 @@ final class FanartManager: ObservableObject {
                         if let resolved = resolved, resolved == cachedMbid {
                             // Confirmed — serve cached logo.
                             self.logoCache.setObject(img, forKey: key as NSString)
-                            withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                            if self.currentClearLogoArtist == artist {
+                                withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                            }
                             self.activeClearLogoFetches.remove(key)
                         } else {
                             // Wrong artist in cache — wipe and fetch the correct logo.
@@ -417,7 +419,9 @@ final class FanartManager: ObservableObject {
                     // No sidecar: legacy cache with no MBID metadata.
                     // Serve it but retroactively write a sidecar for future validation.
                     logoCache.setObject(img, forKey: key as NSString)
-                    withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                    if self.currentClearLogoArtist == artist {
+                        withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = img }
+                    }
                     Task { [weak self] in
                         guard let self = self else { return }
                         await self.validateAndRepairClearLogoSidecar(artist: artist, sidecarUrl: sidecarUrl)
@@ -439,7 +443,9 @@ final class FanartManager: ObservableObject {
 
         // 2. Memory cache
         if let cached = logoCache.object(forKey: key as NSString) {
-            withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = cached }
+            if self.currentClearLogoArtist == artist {
+                withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = cached }
+            }
             return
         }
 
