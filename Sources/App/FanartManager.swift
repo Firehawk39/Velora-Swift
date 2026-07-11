@@ -472,7 +472,7 @@ final class FanartManager: ObservableObject {
                     self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
                 } else {
                     AppLogger.shared.log("[Fanart] Fanart has no clearlogo for \(artist), trying TheAudioDB fallback...")
-                    self.fetchFromTheAudioDB(artistName: artist, priority: URLSessionTask.highPriority) { [weak self] tadbUrl in
+                    self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMbid, priority: URLSessionTask.highPriority) { [weak self] tadbUrl in
                         guard let self = self else { return }
                         if let tadbUrl = tadbUrl {
                             AppLogger.shared.log("[Fanart] Fetched clearlogo from TheAudioDB for \(artist)")
@@ -560,7 +560,7 @@ final class FanartManager: ObservableObject {
                 if let url = url {
                     self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
                 } else {
-                    self.fetchFromTheAudioDB(artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl in
+                    self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMbid, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl in
                         guard let self = self else { return }
                         if let tadbUrl = tadbUrl {
                             self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
@@ -615,10 +615,17 @@ final class FanartManager: ObservableObject {
 
     // MARK: - TheAudioDB Fallback
 
-    nonisolated private func fetchFromTheAudioDB(artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?) -> Void) {
+    nonisolated private func fetchFromTheAudioDB(artistName: String, mbid: String? = nil, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?) -> Void) {
         let primary = extractPrimaryArtist(artistName)
-        let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? primary
-        let urlString = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=\(encoded)"
+        
+        let urlString: String
+        if let knownMbid = mbid, !knownMbid.isEmpty {
+            urlString = "https://theaudiodb.com/api/v1/json/2/artist-mb.php?i=\(knownMbid)"
+        } else {
+            let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? primary
+            urlString = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=\(encoded)"
+        }
+        
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil) }
             return
@@ -632,11 +639,13 @@ final class FanartManager: ObservableObject {
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let artists = json["artists"] as? [[String: Any]] {
+                    
                     let lowerPrimary = primary.lowercased()
                     // CRITICAL: Strictly match artist name. TheAudioDB returns "Hans Zimmer"
                     // for queries like "Zimmer" — we must reject those.
+                    // If we searched by MBID, we assume it's correct.
                     let matched = artists.first {
-                        ($0["strArtist"] as? String ?? "").lowercased() == lowerPrimary
+                        (mbid != nil && !mbid!.isEmpty) || ($0["strArtist"] as? String ?? "").lowercased() == lowerPrimary
                     }
                     if let matched = matched,
                        let logoUrl = matched["strArtistLogo"] as? String,
