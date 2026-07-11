@@ -311,47 +311,44 @@ final class FanartManager: ObservableObject {
                     return
                 }
 
-        guard NetworkMonitor.shared.isConnected else {
-            completion(nil)
-            return
-        }
-
-        let apiKey = self.fanartApiKey
-        let queryFanartPortrait: @Sendable @MainActor (String) -> Void = { [weak self] resolvedMBID in
-            guard let self = self else { completion(nil); return }
-            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
-            self.fetchFromFanart(urlString: urlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { url, isEmpty in
-                if let url = url {
-                    self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, cacheKey: self.getCacheKey(artistName: artist), completion: completion)
-                } else {
-                    completion(nil)
+                let apiKey = self.fanartApiKey
+                let queryFanartPortrait: @Sendable @MainActor (String) -> Void = { [weak self] resolvedMBID in
+                    guard let self = self else { completion(nil); return }
+                    let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
+                    self.fetchFromFanart(urlString: urlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { url, isEmpty in
+                        if let url = url {
+                            self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, cacheKey: self.getCacheKey(artistName: artist), completion: completion)
+                        } else {
+                            completion(nil)
+                        }
+                    }
                 }
-            }
-        }
 
-        guard let validMBID = mbid, !validMBID.isEmpty else {
-            self.getMBID(for: artist) { [weak self] resolved in
-                guard self != nil else { completion(nil); return }
-                if let resolved = resolved {
-                    queryFanartPortrait(resolved)
-                } else {
-                    completion(nil)
+                guard let validMBID = mbid, !validMBID.isEmpty else {
+                    self.getMBID(for: artist) { [weak self] resolved in
+                        guard self != nil else { completion(nil); return }
+                        if let resolved = resolved {
+                            queryFanartPortrait(resolved)
+                        } else {
+                            completion(nil)
+                        }
+                    }
+                    return
                 }
-            }
-            return
-        }
 
-        let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
-        self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url, isEmpty in
-            guard let self = self else { completion(nil); return }
-            if let url = url {
-                self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, cacheKey: self.getCacheKey(artistName: artist), priority: URLSessionTask.highPriority, completion: completion)
-            } else {
-                self.getMBID(for: artist, priority: URLSessionTask.highPriority) { resolved in
-                    if let resolved = resolved, resolved != validMBID {
-                        queryFanartPortrait(resolved)
+                let originalUrlString = "https://webservice.fanart.tv/v3/music/\(validMBID)?api_key=\(fanartApiKey)"
+                self.fetchFromFanart(urlString: originalUrlString, type: .portrait, artistName: artist, priority: URLSessionTask.highPriority) { [weak self] url, isEmpty in
+                    guard let self = self else { completion(nil); return }
+                    if let url = url {
+                        self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, cacheKey: self.getCacheKey(artistName: artist), priority: URLSessionTask.highPriority, completion: completion)
                     } else {
-                        completion(nil)
+                        self.getMBID(for: artist, priority: URLSessionTask.highPriority) { resolved in
+                            if let resolved = resolved, resolved != validMBID {
+                                queryFanartPortrait(resolved)
+                            } else {
+                                completion(nil)
+                            }
+                        }
                     }
                 }
             }
