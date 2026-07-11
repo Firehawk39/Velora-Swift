@@ -303,6 +303,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     private func getLocalAudioUrl(for trackId: String) -> URL? {
+        guard isDownloaded(trackId) else { return nil }
+        
         let tracksDir = VeloraStorage.tracks
         let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
         for ext in audioExtensions {

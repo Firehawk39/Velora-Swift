@@ -78,6 +78,7 @@ private class DomainThrottler: @unchecked Sendable {
     
     private var isCircuitOpen = false
     private var circuitResumeTime = Date.distantPast
+    var consecutiveFailures = 0
 
     init(host: String, minInterval: TimeInterval) {
         self.host = host
@@ -89,18 +90,19 @@ private class DomainThrottler: @unchecked Sendable {
         queue.addOperation(op)
     }
 
-    func waitForSlot() {
+    func waitForSlot() -> Bool {
         lock.lock()
         defer { lock.unlock() }
 
         let now = Date()
         if isCircuitOpen {
             if now < circuitResumeTime {
-                let delay = circuitResumeTime.timeIntervalSince(now)
-                Thread.sleep(forTimeInterval: delay)
+                // Fail fast
+                return false
             }
+            // Half-open state: allow this request through to test the waters
             isCircuitOpen = false
-            AppLogger.shared.log("✅ Circuit Breaker reset for \(host). Resuming network operations.", level: .info)
+            AppLogger.shared.log("🟢 Circuit Breaker half-open for \(host). Testing connection.", level: .info)
         }
 
         let timeSinceLast = Date().timeIntervalSince(lastRequestTime)
@@ -108,16 +110,32 @@ private class DomainThrottler: @unchecked Sendable {
             Thread.sleep(forTimeInterval: minInterval - timeSinceLast)
         }
         lastRequestTime = Date()
+        return true
     }
 
-    func tripCircuitBreaker(seconds: TimeInterval = 30) {
+    func recordFailure(isRateLimit: Bool = false, retryAfter: TimeInterval? = nil) {
         lock.lock()
         defer { lock.unlock() }
-        isCircuitOpen = true
-        let targetResumeTime = Date().addingTimeInterval(seconds)
-        if targetResumeTime > circuitResumeTime {
-            circuitResumeTime = targetResumeTime
-            AppLogger.shared.log("⚠️ Circuit Breaker Tripped for \(host)! Pausing operations for \(seconds) seconds.", level: .warning)
+        
+        consecutiveFailures += 1
+        
+        if isRateLimit || consecutiveFailures >= 3 {
+            isCircuitOpen = true
+            let seconds = retryAfter ?? (300.0) // 5 minutes default
+            let targetResumeTime = Date().addingTimeInterval(seconds)
+            if targetResumeTime > circuitResumeTime {
+                circuitResumeTime = targetResumeTime
+                AppLogger.shared.log("🛑 Circuit Breaker Tripped for \(host)! Failing fast for \(seconds) seconds.", level: .warning)
+            }
+        }
+    }
+
+    func recordSuccess() {
+        lock.lock()
+        defer { lock.unlock() }
+        if consecutiveFailures > 0 {
+            consecutiveFailures = 0
+            AppLogger.shared.log("🟢 Circuit Breaker fully reset for \(host).", level: .info)
         }
     }
 }
@@ -149,23 +167,46 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
         _executing = true
         didChangeValue(forKey: "isExecuting")
 
-        // Block this background thread until we have a safe slot (enforces rate limit)
-        throttler.waitForSlot()
+        // Block this background thread until we have a safe slot, or fail fast
+        let canProceed = throttler.waitForSlot()
+        
+        guard canProceed else {
+            let error = NSError(domain: "CircuitBreaker", code: 503, userInfo: [NSLocalizedDescriptionKey: "Circuit Breaker open for \(throttler.host). Failing fast."])
+            self.completion(nil, nil, error)
+            finish()
+            return
+        }
 
         guard !isCancelled else { finish(); return }
 
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
             
-            if let http = response as? HTTPURLResponse {
-                // If rate limited or forbidden (likely due to abusive traffic patterns)
+            var isFailure = false
+            
+            if let error = error {
+                let nsError = error as NSError
+                // Timeout or host not found
+                if nsError.code == NSURLErrorTimedOut || nsError.code == NSURLErrorCannotFindHost || nsError.code == NSURLErrorCannotConnectToHost {
+                    isFailure = true
+                    self.throttler.recordFailure()
+                }
+            } else if let http = response as? HTTPURLResponse {
                 if http.statusCode == 429 || http.statusCode == 403 {
-                    var delay: TimeInterval = 30
+                    isFailure = true
+                    var delay: TimeInterval? = nil
                     if let retryStr = http.value(forHTTPHeaderField: "Retry-After"), let retryInt = Double(retryStr) {
                         delay = retryInt
                     }
-                    self.throttler.tripCircuitBreaker(seconds: delay)
+                    self.throttler.recordFailure(isRateLimit: true, retryAfter: delay)
+                } else if http.statusCode >= 500 {
+                    isFailure = true
+                    self.throttler.recordFailure()
                 }
+            }
+            
+            if !isFailure {
+                self.throttler.recordSuccess()
             }
             
             self.completion(data, response, error)

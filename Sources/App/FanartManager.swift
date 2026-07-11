@@ -41,7 +41,7 @@ final class FanartManager: ObservableObject {
     private var currentArtistName: String?
 
     /// Synchronously checks if a backdrop exists in cache and returns it
-    func getCachedBackdrop(for artist: String, artistId: String? = nil) -> UIImage? {
+    nonisolated func getCachedBackdrop(for artist: String, artistId: String? = nil) -> UIImage? {
         let key = getCacheKey(artistName: artist, artistId: artistId)
         if let memoryCached = imageCache.object(forKey: key as NSString) {
             return memoryCached
@@ -82,43 +82,53 @@ final class FanartManager: ObservableObject {
         let primaryArtist = artists[0]
         let isNewArtist = self.currentArtistName != primaryArtist
 
-        // 1. Check Cache Synchronously BEFORE nilling anything
-        for (index, artist) in artists.enumerated() {
-            let currentArtistId = (index == 0) ? artistId : nil
-            if let cached = getCachedBackdrop(for: artist, artistId: currentArtistId) {
-                AppLogger.shared.log("[Fanart] Cache hit for \(artist)")
-                self.currentArtistName = primaryArtist
-                // Use animation if it's a new artist, otherwise just set it
-                if isNewArtist {
-                    withAnimation(.easeInOut(duration: 0.6)) { self.currentBackdrop = cached }
-                } else {
-                    self.currentBackdrop = cached
-                }
-                return
-            }
-
-            // Check for negative cache marker (0 byte file)
-            let key = getCacheKey(artistName: artist, artistId: currentArtistId)
-            let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
-            if FileManager.default.fileExists(atPath: fileUrl.path),
-               let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
-               let size = attr[.size] as? Int64, size == 0 {
-                if NetworkMonitor.shared.isConnected {
-                    // SELF-HEAL: Delete the marker and try fetching again since we are online.
-                    try? FileManager.default.removeItem(at: fileUrl)
-                } else {
-                    continue // Offline, so trust the marker and skip
-                }
-            }
-        }
-
-        // 2. Clear current UI if new artist
         if isNewArtist {
             self.currentArtistName = primaryArtist
             withAnimation(.easeInOut(duration: 0.4)) { self.currentBackdrop = nil }
         }
 
-        fetchBackdropRecursive(artists: artists, index: 0, artistId: artistId, providedMbid: mbid, allowNetwork: allowNetwork)
+        Task.detached {
+            var hitImage: UIImage? = nil
+            var hitArtist = ""
+
+            for (index, artist) in artists.enumerated() {
+                let currentArtistId = (index == 0) ? artistId : nil
+                if let cached = self.getCachedBackdrop(for: artist, artistId: currentArtistId) {
+                    hitImage = cached
+                    hitArtist = artist
+                    break
+                }
+
+                // Check for negative cache marker (0 byte file)
+                let key = self.getCacheKey(artistName: artist, artistId: currentArtistId)
+                let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
+                if FileManager.default.fileExists(atPath: fileUrl.path),
+                   let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
+                   let size = attr[.size] as? Int64, size == 0 {
+                    if NetworkMonitor.shared.isConnected {
+                        // SELF-HEAL: Delete the marker and try fetching again since we are online.
+                        try? FileManager.default.removeItem(at: fileUrl)
+                    } else {
+                        continue // Offline, so trust the marker and skip
+                    }
+                }
+            }
+
+            await MainActor.run {
+                if let cached = hitImage {
+                    AppLogger.shared.log("[Fanart] Cache hit for \(hitArtist)")
+                    self.currentArtistName = primaryArtist
+                    if isNewArtist {
+                        withAnimation(.easeInOut(duration: 0.6)) { self.currentBackdrop = cached }
+                    } else {
+                        self.currentBackdrop = cached
+                    }
+                } else {
+                    self.currentArtistName = primaryArtist
+                    self.fetchBackdropRecursive(artists: artists, index: 0, artistId: artistId, providedMbid: mbid, allowNetwork: allowNetwork)
+                }
+            }
+        }
     }
 
     private func fetchBackdropRecursive(artists: [String], index: Int, artistId: String?, providedMbid: String?, allowNetwork: Bool) {
@@ -287,12 +297,19 @@ final class FanartManager: ObservableObject {
         let fileName = sanitized + ".jpg"
         let fileUrl = portraitDir.appendingPathComponent(fileName)
 
-        if fileManager.fileExists(atPath: fileUrl.path),
-           let data = try? Data(contentsOf: fileUrl),
-           let image = UIImage(data: data) {
-            completion(image)
-            return
-        }
+        Task.detached {
+            if FileManager.default.fileExists(atPath: fileUrl.path),
+               let data = try? Data(contentsOf: fileUrl),
+               let image = UIImage(data: data) {
+                await MainActor.run { completion(image) }
+                return
+            }
+
+            await MainActor.run {
+                guard NetworkMonitor.shared.isConnected else {
+                    completion(nil)
+                    return
+                }
 
         guard NetworkMonitor.shared.isConnected else {
             completion(nil)
@@ -775,8 +792,7 @@ final class FanartManager: ObservableObject {
         }
     }
 
-    nonisolated
-    func getCacheKey(artistName: String, artistId: String? = nil) -> String {
+    nonisolated func getCacheKey(artistName: String, artistId: String? = nil) -> String {
         if let aid = artistId, !aid.isEmpty { return aid }
         return sanitizeFileName(artistName)
     }
