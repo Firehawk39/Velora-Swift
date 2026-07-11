@@ -93,7 +93,7 @@ struct SearchView: View {
                 let lowerQuery = trimmed.lowercased()
 
                 // Tracks
-                let foundTracks = self.client.allSongs.filter {
+                let foundTracks = DatabaseManager.shared.searchTracks(query: searchText).filter {
                     $0.title.lowercased().contains(lowerQuery) ||
                     ($0.artist?.lowercased().contains(lowerQuery) ?? false) ||
                     ($0.album?.lowercased().contains(lowerQuery) ?? false)
@@ -104,14 +104,14 @@ struct SearchView: View {
                     $0.name.lowercased().contains(lowerQuery) ||
                     ($0.artist?.lowercased().contains(lowerQuery) ?? false)
                 }.filter { album in
-                    self.client.allSongs.contains { $0.albumId == album.id && self.playback.isDownloaded($0.id) }
+                    DatabaseManager.shared.getTracks(albumId: album.id).contains { self.playback.isDownloaded($0.id) }
                 }
 
                 // Artists
                 let foundArtists = self.client.artists.filter {
                     $0.name.lowercased().contains(lowerQuery)
                 }.filter { artist in
-                    self.client.allSongs.contains { $0.artistId == artist.id && self.playback.isDownloaded($0.id) }
+                    DatabaseManager.shared.getTracks(artistId: artist.id).contains { self.playback.isDownloaded($0.id) }
                 }
 
                 Task { @MainActor in

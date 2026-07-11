@@ -59,7 +59,7 @@ struct LibraryView: View {
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.2), value: activeCategory)
         .task {
-            if client.allSongs.isEmpty {
+            if DatabaseManager.shared.getTrackCount() == 0 {
                 client.fetchEverything()
             }
         }
@@ -135,7 +135,7 @@ struct LibraryView: View {
                 if category == "songs" {
                     HStack(spacing: 8) {
                         Button(action: {
-                            playback.shufflePlay(tracks: client.allSongs)
+                            playback.shufflePlay(tracks: DatabaseManager.shared.getAllTracks())
                         }) {
                             Group {
                                 if isCompact {
@@ -250,7 +250,7 @@ private struct LibraryMenuView: View {
                     }
                     .padding(.horizontal, hPad)
                     let stats = [
-                        ("Tracks", "\(client.allSongs.count)", "music.note", Color.blue),
+                        ("Tracks", "\(DatabaseManager.shared.getTrackCount())", "music.note", Color.blue),
                         ("Playlists", "\(client.playlists.count)", "music.note.list", Color.green),
                         ("Albums", "\(client.albums.count)", "opticaldisc", Color.orange),
                         ("Artists", "\(client.artists.count)", "person.2", Color.teal)
@@ -437,7 +437,7 @@ private struct ArtistGridView: View {
         let filtered: [Artist] = {
             if showOfflineOnly {
                 var offlineArtistIds = Set<String>()
-                for song in client.allSongs where playback.isDownloaded(song.id) {
+                for song in DatabaseManager.shared.getAllTracks() where playback.isDownloaded(song.id) {
                     if let aid = song.artistId { offlineArtistIds.insert(aid) }
                 }
                 return base.filter { offlineArtistIds.contains($0.id) }
@@ -500,7 +500,7 @@ private struct AlbumGridView: View {
         let filtered: [Album] = {
             if showOfflineOnly {
                 var offlineAlbumIds = Set<String>()
-                for song in client.allSongs where playback.isDownloaded(song.id) {
+                for song in DatabaseManager.shared.getAllTracks() where playback.isDownloaded(song.id) {
                     if let aid = song.albumId { offlineAlbumIds.insert(aid) }
                 }
                 return base.filter { offlineAlbumIds.contains($0.id) }
@@ -624,7 +624,7 @@ private struct SongListView: View {
     let showOfflineOnly: Bool
 
     var body: some View {
-        let base = client.allSongs
+        let base = DatabaseManager.shared.getAllTracks()
         let filtered = showOfflineOnly ? playback.filterOffline(base) : base
 
         let sorted: [Track] = {

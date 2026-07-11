@@ -71,7 +71,7 @@ struct HomeView: View {
 
                 // ── Artists ───────────────────────────────────────────
                 let offlineArtists = !network.isConnected ? client.artists.filter { artist in
-                    client.allSongs.contains(where: { $0.artistId == artist.id && playback.isDownloaded($0.id) })
+                    DatabaseManager.shared.getTracks(artistId: artist.id).contains(where: { playback.isDownloaded($0.id) })
                 } : client.artists
 
                 if !offlineArtists.isEmpty || network.isConnected {
@@ -101,7 +101,7 @@ struct HomeView: View {
 
                 // ── Recently Added Albums ─────────────────────────────
                 let offlineAlbums = !network.isConnected ? client.albums.filter { album in
-                    client.allSongs.contains(where: { $0.albumId == album.id && playback.isDownloaded($0.id) })
+                    DatabaseManager.shared.getTracks(albumId: album.id).contains(where: { playback.isDownloaded($0.id) })
                 } : client.albums
 
                 if !offlineAlbums.isEmpty || network.isConnected {

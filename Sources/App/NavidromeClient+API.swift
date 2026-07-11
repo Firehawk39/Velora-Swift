@@ -152,7 +152,8 @@ extension NavidromeClient {
                 let artistName = self.artists.first(where: { $0.id == artistId })?.name ?? ""
                 let offlineAlbums = self.albums.filter { $0.artistId == artistId }
                 let albumIds = Set(offlineAlbums.map { $0.id })
-                let offlineTracks = self.allSongs.filter {
+                let allTracks = DatabaseManager.shared.getAllTracks()
+                let offlineTracks = allTracks.filter {
                     $0.artistId == artistId || (albumIds.contains($0.albumId ?? "")) || ($0.artist == artistName && !artistName.isEmpty)
                 }
                 // Filter to only downloaded tracks
@@ -405,16 +406,21 @@ extension NavidromeClient {
     }
 
     func syncLosslessPlaylist() {
-        let flacIds = allSongs.filter { $0.suffix?.lowercased() == "flac" }.map { $0.id }
-        guard !flacIds.isEmpty else { return }
+        Task.detached(priority: .background) {
+            let allTracks = await DatabaseManager.shared.getAllTracks()
+            let flacIds = allTracks.filter { $0.suffix?.lowercased() == "flac" }.map { $0.id }
+            guard !flacIds.isEmpty else { return }
 
-        if let existing = playlists.first(where: { $0.name == "Lossless" }) {
-            updatePlaylist(id: existing.id, songIdsToAdd: flacIds) { _ in
-                AppLogger.shared.log("Synced \(flacIds.count) tracks to existing Lossless playlist.", level: .info)
-            }
-        } else {
-            createPlaylist(name: "Lossless", songIds: flacIds) { success in
-                if success { AppLogger.shared.log("Created new Lossless playlist with \(flacIds.count) tracks.", level: .info) }
+            await MainActor.run {
+                if let existing = self.playlists.first(where: { $0.name == "Lossless" }) {
+                    self.updatePlaylist(id: existing.id, songIdsToAdd: flacIds) { _ in
+                        AppLogger.shared.log("Synced \(flacIds.count) tracks to existing Lossless playlist.", level: .info)
+                    }
+                } else {
+                    self.createPlaylist(name: "Lossless", songIds: flacIds) { success in
+                        if success { AppLogger.shared.log("Created new Lossless playlist with \(flacIds.count) tracks.", level: .info) }
+                    }
+                }
             }
         }
     }
@@ -422,33 +428,27 @@ extension NavidromeClient {
     // MARK: - All Songs
 
     func fetchAllSongs(completion: (@MainActor @Sendable ([Track]) -> Void)? = nil) {
-        fetchSongsPage(offset: 0, batchSize: 500) { allFetchedSongs in
-            // Guard: never overwrite good cached data with an empty result
-            // (network failure returns [] via the pagination error path)
-            guard !allFetchedSongs.isEmpty else {
-                completion?(allFetchedSongs)
-                return
+        fetchSongsPage(offset: 0, batchSize: 1000) { success in
+            if success {
+                self.syncLosslessPlaylist()
             }
-            self.allSongs = allFetchedSongs
-            self.syncLosslessPlaylist()
-            self.saveOfflineMetadata()
-            completion?(allFetchedSongs)
+            completion?([])
         }
     }
 
-    private func fetchSongsPage(offset: Int, batchSize: Int, allSongsSoFar: [Track] = [], completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
+    private func fetchSongsPage(offset: Int, batchSize: Int, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
         guard NetworkMonitor.shared.isConnected else {
-            completion(allSongsSoFar)
+            completion(false)
             return
         }
         guard let url = buildUrl(method: "search3.view", params: ["query": "", "songCount": "\(batchSize)", "songOffset": "\(offset)"]) else {
-            completion(allSongsSoFar)
+            completion(false)
             return
         }
 
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                Task { @MainActor in completion(allSongsSoFar) }
+                Task { @MainActor in completion(false) }
                 return
             }
 
@@ -457,7 +457,7 @@ extension NavidromeClient {
                 let rawSongs = decoded.subsonicResponse?.searchResult3?.song ?? []
 
                 Task { @MainActor [weak self] in
-                    guard let self = self else { completion(allSongsSoFar); return }
+                    guard let self = self else { completion(false); return }
                     let songs = rawSongs.map { s in
                         var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
                               artist: s.artist ?? "", duration: s.duration ?? 0,
@@ -471,15 +471,15 @@ extension NavidromeClient {
                     }
 
                     if !songs.isEmpty {
-                        let combined = allSongsSoFar + songs
-                        self.fetchSongsPage(offset: offset + batchSize, batchSize: batchSize, allSongsSoFar: combined, completion: completion)
+                        DatabaseManager.shared.insertOrUpdateTracks(songs)
+                        self.fetchSongsPage(offset: offset + batchSize, batchSize: batchSize, completion: completion)
                     } else {
-                        completion(allSongsSoFar)
+                        completion(true)
                     }
                 }
             } catch {
                 AppLogger.shared.log("Error decoding search3.view at offset \(offset): \(error)")
-                Task { @MainActor in completion(allSongsSoFar) }
+                Task { @MainActor in completion(false) }
             }
         }.resume()
     }
@@ -731,7 +731,7 @@ extension NavidromeClient {
             } else if submission {
                 Task { @MainActor in
                     guard let self = self else { return }
-                    if let track = self.allSongs.first(where: { $0.id == id }) {
+                    if let track = DatabaseManager.shared.getTrack(id: id) {
                         self.recentlyPlayed.removeAll(where: { $0.id == id })
                         self.recentlyPlayed.insert(track, at: 0)
                         if self.recentlyPlayed.count > 15 {
@@ -882,7 +882,7 @@ extension NavidromeClient {
             guard let self = self else { return }
             self.artists.removeAll()
             self.albums.removeAll()
-            self.allSongs.removeAll()
+            DatabaseManager.shared.clearTracks()
             self.playlists.removeAll()
             self.recentlyPlayed.removeAll()
         }

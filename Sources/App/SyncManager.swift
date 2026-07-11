@@ -266,13 +266,14 @@ final class SyncManager: ObservableObject {
 
         Task {
             let tracks: [Track]
-            if client.allSongs.isEmpty {
+            let allTracks = DatabaseManager.shared.getAllTracks()
+            if allTracks.isEmpty {
                 lyricsStatus = "Fetching song list..."
                 tracks = await withCheckedContinuation { continuation in
                     client.fetchAllSongs { songs in continuation.resume(returning: songs) }
                 }
             } else {
-                tracks = client.allSongs
+                tracks = allTracks
             }
             if tracks.isEmpty {
                 finalizeLyricsSync("No tracks found in library.")
@@ -427,7 +428,8 @@ final class SyncManager: ObservableObject {
 
             // 1. Ensure we actually have the songs list
             let tracks: [Track]
-            if client.allSongs.isEmpty {
+            let allTracks = DatabaseManager.shared.getAllTracks()
+            if allTracks.isEmpty {
                 mediaStatus = "Fetching song list..."
                 tracks = await withCheckedContinuation { continuation in
                     client.fetchAllSongs { songs in
@@ -435,7 +437,7 @@ final class SyncManager: ObservableObject {
                     }
                 }
             } else {
-                tracks = client.allSongs
+                tracks = allTracks
             }
             if tracks.isEmpty {
                 AppLogger.shared.log("Songs list still empty after polling. Aborting.", level: .error)
@@ -580,7 +582,8 @@ final class SyncManager: ObservableObject {
             let fileManager = FileManager.default
 
             // Wait for client to have songs loaded
-            if client.allSongs.isEmpty {
+            let allTracks = DatabaseManager.shared.getAllTracks()
+            if allTracks.isEmpty {
                 repairStatus = "Fetching track list..."
                 await withCheckedContinuation { continuation in
                     client.fetchAllSongs { _ in continuation.resume() }
@@ -589,7 +592,7 @@ final class SyncManager: ObservableObject {
 
             // Only care about tracks we actually have downloaded
             let downloadedTrackIds = IntegrityManager.shared.downloadedIds
-            let localTracks = client.allSongs.filter { downloadedTrackIds.contains($0.id) }
+            let localTracks = allTracks.filter { downloadedTrackIds.contains($0.id) }
 
             if localTracks.isEmpty {
                 finalizeRepairSync("No offline tracks found. Nothing to repair.")
