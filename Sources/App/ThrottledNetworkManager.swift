@@ -21,7 +21,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
         if host.contains("musicbrainz.org") {
             interval = 1.0 // Strict 1 request per second
         } else if host.contains("lrclib.net") {
-            interval = 0.3 // Slightly faster (approx 3 per sec)
+            interval = 0.15 // 6.6 requests per second (handled gracefully by circuit breaker if 429)
         } else {
             interval = 0.5 // Default 2 requests per second
         }
