@@ -133,29 +133,7 @@ struct ContentView: View {
                 .zIndex(350)
             }
 
-            // ── Layer 7: Bottom Navigation (iPhone Portrait) ───────────────
-            if ScreenTier.isPhone && !isLandscape {
-                VStack {
-                    Spacer()
-                    BottomNavigationBar(
-                        activeTab: $activeTab,
-                        isDarkMode: isDarkMode,
-                        isPlayingTab: activeTab == "now-playing",
-                        onAction: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                artistStack.removeAll()
-                                artistDetailOffset = 0
-                            }
-                        }
-                    )
-                }
-                .padding(.bottom, 0)
-                .opacity(isHeaderHidden ? 0 : 1)
-                .offset(y: isHeaderHidden ? 100 : 0)
-                .allowsHitTesting(!isHeaderHidden)
-                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isHeaderHidden)
-                .zIndex(400)
-            }
+
         }
         .environmentObject(client)
         .environmentObject(playback)

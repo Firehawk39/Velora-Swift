@@ -873,6 +873,19 @@ struct NowPlayingView: View {
                     }
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                if let logo = fanart.currentClearLogo {
+                    Image(uiImage: logo)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: isLargeCanvas ? 240 : (isSE ? 140 : 180), maxHeight: isShortCanvas ? 54 : 72)
+                        .padding(.trailing, 10)
+                        .opacity(0.8)
+                        .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                        .allowsHitTesting(false)
+                        .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                }
+            }
         }
     }
 
