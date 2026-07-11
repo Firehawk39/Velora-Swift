@@ -856,14 +856,14 @@ public struct BottomNavigationBar: View {
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
+            Rectangle()
                 .fill(Color.black.opacity(0.85))
-                .shadow(color: Color.black.opacity(0.2), radius: 10, y: 5)
+                .ignoresSafeArea(edges: .bottom)
         )
-        .padding(.horizontal, 24)
-        .padding(.bottom, 32)
     }
 }
