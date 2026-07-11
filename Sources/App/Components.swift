@@ -115,6 +115,7 @@ struct AppHeader: View {
     let isDarkMode: Bool
     let toggleDark: () -> Void
     var onAction: () -> Void
+    var scrollOffset: CGFloat = 0
 
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass) var vSizeClass
@@ -202,6 +203,8 @@ struct AppHeader: View {
             headerActions
         }
         .padding(.horizontal, mainHeaderHorizontalPadding)
+        .offset(y: min(0, scrollOffset))
+        .opacity(max(0, 1 - (-min(0, scrollOffset) / 50)))
     }
 
     private var logoButton: some View {
@@ -827,5 +830,32 @@ public struct ToggleButton: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+// MARK: - Bottom Navigation Bar
+public struct BottomNavigationBar: View {
+    @Binding var activeTab: String
+    let isDarkMode: Bool
+    let isPlayingTab: Bool
+    let onAction: () -> Void
+    
+    public init(activeTab: Binding<String>, isDarkMode: Bool, isPlayingTab: Bool, onAction: @escaping () -> Void) {
+        self._activeTab = activeTab
+        self.isDarkMode = isDarkMode
+        self.isPlayingTab = isPlayingTab
+        self.onAction = onAction
+    }
+    
+    public var body: some View {
+        HStack(spacing: 0) {
+            TabButton(id: "home", label: "Home", activeTab: \, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            TabButton(id: "library", label: "Library", activeTab: \, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            TabButton(id: "velora", label: "Velora", activeTab: \, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            TabButton(id: "search", label: "Search", activeTab: \, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+            TabButton(id: "now-playing", label: "Playing", activeTab: \, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
     }
 }
