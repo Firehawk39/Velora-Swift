@@ -2,8 +2,7 @@ import Foundation
 import SQLite3
 import os.log
 
-@MainActor
-class DatabaseManager {
+final class DatabaseManager: @unchecked Sendable {
     static let shared = DatabaseManager()
     private var db: OpaquePointer?
     private let queue = DispatchQueue(label: "com.velora.db", qos: .userInitiated)
