@@ -63,7 +63,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     func clearDownloadState() {
         downloadedTrackIds.removeAll()
-        activeDownloads.removeAll()
+        activeDownloadTasksByTrackId.removeAll()
         downloadProgress.removeAll()
         pausedDownloadIds.removeAll()
     }
