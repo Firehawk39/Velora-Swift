@@ -238,6 +238,50 @@ final class FanartManager: ObservableObject {
 
     // MARK: - Artist Portraits
 
+    func downloadArtistPortraitSilently(for artist: String, artistId: String, mbid: String? = nil) async {
+        let fileUrl = portraitDir.appendingPathComponent("\(artistId).jpg")
+
+        if fileManager.fileExists(atPath: fileUrl.path) {
+            if let attr = try? fileManager.attributesOfItem(atPath: fileUrl.path), let size = attr[.size] as? Int64, size > 0 {
+                return // Found a valid image!
+            }
+            return // Skip if negative cached
+        }
+
+        guard NetworkMonitor.shared.isConnected else { return }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let query: @MainActor @Sendable (String) -> Void = { resolvedMBID in
+                let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
+                self.fetchFromFanart(urlString: urlString, type: .portrait, artistName: artist, priority: URLSessionTask.lowPriority) { url, isEmpty in
+                    if let url = url {
+                        self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, cacheKey: artistId, priority: URLSessionTask.lowPriority) { _ in
+                            continuation.resume()
+                        }
+                    } else {
+                        if isEmpty && NetworkMonitor.shared.isConnected {
+                            try? Data().write(to: fileUrl)
+                        }
+                        continuation.resume()
+                    }
+                }
+            }
+
+            if let validMBID = mbid, !validMBID.isEmpty {
+                Task { @MainActor in query(validMBID) }
+            } else {
+                getMBID(for: artist, priority: URLSessionTask.lowPriority) { resolved in
+                    if let resolved = resolved {
+                        Task { @MainActor in query(resolved) }
+                    } else {
+                        if NetworkMonitor.shared.isConnected { try? Data().write(to: fileUrl) }
+                        continuation.resume()
+                    }
+                }
+            }
+        }
+    }
+
     func fetchArtistPortrait(for artist: String, mbid: String? = nil, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
         let sanitized = sanitizeFileName(artist)
         let fileName = sanitized + ".jpg"

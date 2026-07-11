@@ -178,17 +178,23 @@ final class SyncManager: ObservableObject {
                                 let hasBackdrop = await fa.hasBackdrop(for: artist.primaryName)
                                 let hasClearLogo = await fa.hasClearLogo(for: artist.primaryName)
                                 if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
-                                    let mbid: String? = await withCheckedContinuation { continuation in
+                                    let info: SubsonicArtistInfo? = await withCheckedContinuation { continuation in
                                         Task { @MainActor in
-                                            client.fetchArtistInfo(artistId: artist.id) { _, fetchedMbid in
-                                                continuation.resume(returning: fetchedMbid)
+                                            client.fetchArtistInfo(artistId: artist.id) { info in
+                                                continuation.resume(returning: info)
                                             }
                                         }
                                     }
                                     // Use Navidrome's MBID for robust matching, but protect against Last.fm's "Zimmer" -> "Hans Zimmer" aliasing bug.
-                                    let safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : mbid
+                                    let safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : info?.musicBrainzId
                                     await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
                                     await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
+                                    
+                                    let hasImage = (info?.mediumImageUrl != nil && info?.mediumImageUrl?.isEmpty == false) || (info?.largeImageUrl != nil && info?.largeImageUrl?.isEmpty == false)
+                                    if !hasImage {
+                                        await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
+                                    }
+
                                     await withCheckedContinuation { cont in
                                         Task { @MainActor in
                                             client.fetchArtist(id: artist.id) { _ in cont.resume() }
