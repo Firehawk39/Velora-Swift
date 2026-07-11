@@ -910,6 +910,10 @@ extension NavidromeClient {
             }
         }
 
+        Task { @MainActor in
+            IntegrityManager.shared.clearAll()
+        }
+
         fetchAlbums()
         fetchArtists()
         fetchPlaylists()

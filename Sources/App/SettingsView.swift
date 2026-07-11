@@ -712,6 +712,7 @@ struct AppSettingsView: View {
                                 cacheCleared: cacheCleared
                             ) {
                                 client.clearCache()
+                                playback.downloadedTrackIds.removeAll()
                                 cacheCleared = true
                                 self.cacheSize = "0 MB"
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {

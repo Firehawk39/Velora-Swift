@@ -53,6 +53,12 @@ final class IntegrityManager: ObservableObject {
 
     // MARK: - Track Management
 
+    func clearAll() {
+        index.tracks.removeAll()
+        downloadedIds.removeAll()
+        saveIndex()
+    }
+
     func registerDownload(trackId: String, fileName: String, size: Int64) {
         let status = TrackStatus(
             id: trackId,
