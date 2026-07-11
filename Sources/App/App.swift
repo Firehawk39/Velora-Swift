@@ -109,7 +109,7 @@ struct VeloraApp: App {
         if !CTFontManagerRegisterGraphicsFont(font, &error) {
             if let errorRef = error?.takeUnretainedValue() {
                 let nsError = errorRef as Error as NSError
-                if nsError.code != 305 { // 305 = kCTFontManagerErrorAlreadyRegistered
+                if nsError.code != 105 && nsError.code != 305 { // 105/305 = kCTFontManagerErrorAlreadyRegistered
                     AppLogger.shared.log("❌ Error registering font: \(errorRef)", level: .error)
                 }
             }
