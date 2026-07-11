@@ -883,6 +883,7 @@ extension NavidromeClient {
             self.artists.removeAll()
             self.albums.removeAll()
             DatabaseManager.shared.clearTracks()
+            PlaybackManager.shared.clearDownloadState()
             self.playlists.removeAll()
             self.recentlyPlayed.removeAll()
         }
