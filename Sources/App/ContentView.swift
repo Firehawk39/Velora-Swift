@@ -65,7 +65,6 @@ struct ContentView: View {
             ZStack(alignment: .top) {
                 pageContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, (ScreenTier.isPhone && !isLandscape) ? 75 : 0)
 
                 AppHeader(
                     activeTab: $activeTab,
