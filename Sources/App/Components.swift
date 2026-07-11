@@ -190,7 +190,9 @@ struct AppHeader: View {
         Group {
         ZStack {
             mainHeaderContent
-            navigationPill
+            if !ScreenTier.isPhone || isLandscape {
+                navigationPill
+            }
         }
         }
         .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
