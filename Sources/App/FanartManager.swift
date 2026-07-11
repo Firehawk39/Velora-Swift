@@ -7,8 +7,8 @@ final class FanartManager: ObservableObject {
 
     @Published var currentBackdrop: UIImage? = nil
     @Published var currentClearLogo: UIImage? = nil
-    private let imageCache = NSCache<NSString, UIImage>()
-    private let logoCache  = NSCache<NSString, UIImage>()
+    nonisolated(unsafe) private let imageCache = NSCache<NSString, UIImage>()
+    nonisolated(unsafe) private let logoCache  = NSCache<NSString, UIImage>()
 
     private let fileManager = FileManager.default
     private let backdropDir: URL
