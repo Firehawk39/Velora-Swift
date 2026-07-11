@@ -905,7 +905,7 @@ struct NowPlayingView: View {
         fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil, allowNetwork: false)
 
         // 1b. Trigger clearlogo fetch (cache-first, non-blocking)
-        fanart.fetchClearLogo(for: track.artist ?? "Unknown Artist")
+        fanart.fetchClearLogo(for: track.primaryArtist)
 
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
@@ -922,7 +922,7 @@ struct NowPlayingView: View {
                     if let mbid = info?.musicBrainzId {
                         let safeMbid = (track.artist?.lowercased() == "zimmer") ? nil : mbid
                         fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: safeMbid, allowNetwork: true)
-                        fanart.fetchClearLogo(for: track.artist ?? "Unknown Artist", mbid: safeMbid)
+                        fanart.fetchClearLogo(for: track.primaryArtist, mbid: safeMbid)
                     }
                 }
             }
