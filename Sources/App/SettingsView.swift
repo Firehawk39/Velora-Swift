@@ -717,7 +717,7 @@ struct AppSettingsView: View {
                                 playback.downloadedTrackIds.removeAll()
                                 cacheCleared = true
                                 self.cacheSize = "0 MB"
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                                     cacheCleared = false
                                 }
                             }

@@ -61,6 +61,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         return downloadedTrackIds.contains(trackId)
     }
 
+    func clearDownloadState() {
+        downloadedTrackIds.removeAll()
+        activeDownloads.removeAll()
+        downloadProgress.removeAll()
+        pausedDownloadIds.removeAll()
+    }
+
     func checkFileSystemForTrack(_ trackId: String) -> Bool {
         if isDownloaded(trackId) { return true }
 
