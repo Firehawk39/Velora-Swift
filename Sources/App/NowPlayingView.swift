@@ -906,7 +906,6 @@ struct NowPlayingView: View {
                     guard self.playback.currentTrack?.id == track.id else { return }
 
                     self.artistBiography = info?.biography
-                    self.currentMBID = info?.musicBrainzId
                     self.isFetchingArtistInfo = false
 
                     // Use Navidrome's MBID for robust matching, but protect against Last.fm's "Zimmer" -> "Hans Zimmer" aliasing bug.

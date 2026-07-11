@@ -217,7 +217,7 @@ struct ContentView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         artistStack.append((id: id, name: name))
                     }
-                }, onScroll: { val in rawScrollOffset = val })
+                })
             case "velora":
                 VeloraChatView()
             case "now-playing":
