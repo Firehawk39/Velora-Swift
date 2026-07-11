@@ -340,9 +340,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.currentPrimaryColor = .black
         self.currentPalette = [.black, .black, .black, .black, .black]
 
-        // Immediately clear backdrop to prevent ghosting on slow networks
+        // Immediately clear fanart to prevent ghosting on slow networks
         self.currentArtworkTrackId = nil
         FanartManager.shared.currentBackdrop = nil
+        FanartManager.shared.currentClearLogo = nil
 
         let isOnline = NetworkMonitor.shared.isConnected
 
