@@ -48,9 +48,15 @@ struct ContentView: View {
     }
 
     @ObservedObject private var network = NetworkMonitor.shared
+    @State private var tabScrollOffset: CGFloat = 0
+    @State private var rawScrollOffset: CGFloat = 0
+
+
+
 
     var body: some View {
-        ZStack(alignment: .top) {
+        GeometryReader { outerGeo in
+            ZStack(alignment: .top) {
             // ── Layer 1: Global Canvas Background ──────────────────────────
             Color(hex: (isDarkMode || activeTab == "now-playing") ? "#000000" : "#f0f0f0")
                 .ignoresSafeArea()
@@ -59,7 +65,7 @@ struct ContentView: View {
             ZStack(alignment: .top) {
                 pageContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.bottom, 0)
+                    .padding(.bottom, (ScreenTier.isPhone && !isLandscape) ? 75 : 0)
 
                 AppHeader(
                     activeTab: $activeTab,
@@ -71,7 +77,8 @@ struct ContentView: View {
                             artistStack.removeAll()
                             artistDetailOffset = 0
                         }
-                    }
+                    },
+                    scrollOffset: rawScrollOffset
                 )
                 .padding(.top, 14)
                 .opacity(isHeaderHidden ? 0 : 1)
@@ -125,6 +132,30 @@ struct ContentView: View {
                 .ignoresSafeArea()
                 .zIndex(350)
             }
+
+            // ── Layer 7: Bottom Navigation (iPhone Portrait) ───────────────
+            if ScreenTier.isPhone && !isLandscape {
+                VStack {
+                    Spacer()
+                    BottomNavigationBar(
+                        activeTab: $activeTab,
+                        isDarkMode: isDarkMode,
+                        isPlayingTab: activeTab == "now-playing",
+                        onAction: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                artistStack.removeAll()
+                                artistDetailOffset = 0
+                            }
+                        }
+                    )
+                }
+                .padding(.bottom, 0)
+                .opacity(isHeaderHidden ? 0 : 1)
+                .offset(y: isHeaderHidden ? 100 : 0)
+                .allowsHitTesting(!isHeaderHidden)
+                .animation(.spring(response: 0.6, dampingFraction: 0.8), value: isHeaderHidden)
+                .zIndex(400)
+            }
         }
         .environmentObject(client)
         .environmentObject(playback)
@@ -137,6 +168,8 @@ struct ContentView: View {
             autoLogin()
         }
         .onChange(of: activeTab) { _ in
+            rawScrollOffset = 0
+            
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 isIdle = false
                 artistDetailOffset = UIScreen.main.bounds.width
@@ -149,6 +182,7 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $showSettings) {
             SettingsView(showSettings: $showSettings)
                 .environmentObject(client)
+        }
         }
     }
 
@@ -169,13 +203,13 @@ struct ContentView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         activeTab = "library"
                     }
-                })
+                }, onScroll: { val in rawScrollOffset = val })
             case "library":
                 LibraryView(onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         artistStack.append((id: id, name: name))
                     }
-                })
+                }, onScroll: { val in rawScrollOffset = val })
             case "settings":
                 AppSettingsView()
             case "search":
@@ -183,15 +217,15 @@ struct ContentView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         artistStack.append((id: id, name: name))
                     }
-                })
+                }, onScroll: { val in rawScrollOffset = val })
             case "velora":
                 VeloraChatView()
             case "now-playing":
-                NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle) { id, name in
+                NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle, onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         artistStack.append((id: id, name: name))
                     }
-                }
+                }, onScroll: { val in rawScrollOffset = val })
             default:
                 HomeView()
             }
@@ -300,24 +334,18 @@ struct ContentView: View {
 
         let isOnline = (connMode == 1)
 
-        // If there are no saved credentials, do not log in automatically.
-        // Instead, show the settings wizard (login screen) on fresh install.
-        guard !savedUrl.isEmpty, !savedUser.isEmpty else {
-            showSettings = true
-            return
-        }
-
-        // Retrieve the password securely from Keychain
-        if let passData = KeychainHelper.shared.read(service: "velora-password", account: savedUser),
-           let savedPass = String(data: passData, encoding: .utf8) {
-
-            let finalUrl = isOnline ? savedOnlineUrl : savedUrl
-            client.configure(url: finalUrl, user: savedUser, pass: savedPass)
-            client.loadOfflineMetadata()
-            client.fetchEverything() // Self-gates on NetworkMonitor; no-ops when offline
-            showSettings = false
+        if !savedUser.isEmpty, !savedUrl.isEmpty {
+            let activeUrl = isOnline && !savedOnlineUrl.isEmpty ? savedOnlineUrl : savedUrl
+            if let savedPassData = KeychainHelper.shared.read(service: "velora-password", account: savedUser),
+               let savedPass = String(data: savedPassData, encoding: .utf8) {
+                client.configure(url: activeUrl, user: savedUser, pass: savedPass)
+                client.loadOfflineMetadata()
+                client.fetchEverything()
+                showSettings = false
+            } else {
+                showSettings = true
+            }
         } else {
-            // Fallback to showing settings if Keychain read fails
             showSettings = true
         }
     }
