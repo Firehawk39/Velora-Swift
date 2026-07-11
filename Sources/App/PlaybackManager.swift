@@ -14,6 +14,14 @@ struct LyricLine: Hashable {
     let words: [LyricWord]
 }
 
+class TrackPlayerItem: AVPlayerItem {
+    let track: Track
+    init(url: URL, track: Track) {
+        self.track = track
+        super.init(asset: AVAsset(url: url), automaticallyLoadedAssetKeys: nil)
+    }
+}
+
 @MainActor
 final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     @MainActor static var shared: PlaybackManager?
@@ -97,13 +105,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
     private let maxRetries = 3
 
-    private var player: AVPlayer?
+    private var player: AVQueuePlayer?
     private var secondaryPlayer: AVPlayer?
     private var artworkRetryCount = 0
     private var nextArtworkRetryTime: Date? = nil
 
     private var timeObserver: Any?
-    private var playerItemObserver: Any?
+    private var currentItemObserver: NSKeyValueObservation?
     @Published var currentArtworkTrackId: String? = nil
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil
@@ -308,6 +316,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func loadAndPlay(track: Track) {
+        // Stop current playing state temporarily
+        isPlaying = false
+        player?.pause()
+        
         let urlToPlay: URL
         if let localUrl = getLocalAudioUrl(for: track.id) {
             urlToPlay = localUrl
@@ -316,18 +328,92 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             urlToPlay = streamUrl
         }
 
-        // Cleanup previous observer
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-            timeObserver = nil
+        let playerItem = TrackPlayerItem(url: urlToPlay, track: track)
+        
+        if self.player == nil {
+            self.player = AVQueuePlayer(playerItem: playerItem)
+            setupPlayerObservers()
+        } else {
+            self.player?.removeAllItems()
+            if self.player?.canInsert(playerItem, after: nil) == true {
+                self.player?.insert(playerItem, after: nil)
+            }
         }
-        if let itemObserver = playerItemObserver {
-            NotificationCenter.default.removeObserver(itemObserver)
-            playerItemObserver = nil
+        
+        // Force the UI state update immediately for the requested track
+        updateState(for: track)
+        
+        player?.play()
+        self.isPlaying = true
+        
+        ensureQueueIsFilled()
+    }
+    
+    private func setupPlayerObservers() {
+        guard let p = self.player else { return }
+        
+        currentItemObserver = p.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
+            Task { @MainActor in
+                self?.handleItemTransition()
+            }
         }
+        
+        // Time observer
+        timeObserver = p.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] time in
+            MainActor.assumeIsolated {
+                guard let self = self,
+                      let item = self.player?.currentItem,
+                      item.duration.isNumeric else { return }
 
-        let playerItem = AVPlayerItem(url: urlToPlay)
-        self.player = AVPlayer(playerItem: playerItem)
+                self.progress = time.seconds
+                self.duration = item.duration.seconds
+                self.updateNowPlayingInfo()
+
+                // Scrobble / Add to recently played at 30% completion
+                if !self.hasScrobbledCurrentTrack, self.duration > 0 {
+                    if self.progress >= (self.duration * 0.3) {
+                        self.hasScrobbledCurrentTrack = true
+                        if let track = self.currentTrack {
+                            self.client.scrobble(track: track, submission: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func handleItemTransition() {
+        guard let item = player?.currentItem as? TrackPlayerItem else {
+            // Reached end of queue (playback stopped)
+            if player?.currentItem == nil {
+                self.isPlaying = false
+                self.player?.pause()
+            }
+            return 
+        }
+        
+        // If this is the exact same track we're already playing (e.g. from loadAndPlay explicitly), skip state update
+        guard self.currentTrack?.id != item.track.id else { return }
+        
+        // Scrobble the finished track perfectly (as AVPlayerItemDidPlayToEndTime replacement)
+        if let oldTrack = self.currentTrack, !self.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
+            self.hasScrobbledCurrentTrack = true
+            self.client.scrobble(track: oldTrack, submission: true)
+        }
+        
+        // Update queue index
+        if let newIndex = self.queue.firstIndex(where: { $0.id == item.track.id }) {
+            self.queueIndex = newIndex
+        }
+        
+        self.updateState(for: item.track)
+        self.ensureQueueIsFilled()
+    }
+    
+    private func updateState(for track: Track) {
         self.currentTrack = track
         self.playbackSessionId = UUID()
         self.artworkRetryCount = 0
@@ -347,7 +433,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         let isOnline = NetworkMonitor.shared.isConnected
 
-        // Fetch lyrics — works offline (returns disk-cached lyrics)
+        // Fetch lyrics
         client.fetchLyrics(
             trackId: track.id,
             artist: track.artist ?? "",
@@ -362,67 +448,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId)
 
-        player?.play()
-        self.isPlaying = true
-
-        // Track progress — capture player instance to prevent stale-observer race condition
-        guard let capturedPlayer = player else { return }
-        timeObserver = capturedPlayer.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
-            queue: .main
-        ) { [weak self] time in
-            MainActor.assumeIsolated {
-                guard let self = self,
-                      self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                      let item = capturedPlayer.currentItem,
-                      item.duration.isNumeric else { return }
-
-                self.progress = time.seconds
-                self.duration = item.duration.seconds
-                self.updateNowPlayingInfo()
-
-                // Scrobble / Add to recently played at 30% completion
-                if !self.hasScrobbledCurrentTrack, self.duration > 0 {
-                    if self.progress >= (self.duration * 0.3) {
-                        self.hasScrobbledCurrentTrack = true
-                        // Fire the scrobble; the client handles offline queuing and instant local history update
-                        self.client.scrobble(track: track, submission: true)
-                    }
-                }
-            }
-        }
-
-        // Auto-advance to next track when done
-        playerItemObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: playerItem,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let manager = self else { return }
-
-                if let track = manager.currentTrack, !manager.hasScrobbledCurrentTrack, NetworkMonitor.shared.isConnected {
-                    manager.hasScrobbledCurrentTrack = true
-                    manager.client.scrobble(track: track, submission: true)
-                }
-
-                switch manager.repeatMode {
-                case .one:
-                    manager.loadAndPlay(track: manager.queue[manager.queueIndex])
-                case .all:
-                    manager.skipForward()
-                case .off:
-                    if manager.queueIndex < manager.queue.count - 1 {
-                        manager.skipForward()
-                    } else {
-                        manager.isPlaying = false
-                        manager.player?.pause()
-                    }
-                }
-            }
-        }
-
-        // Mark as "Now Playing" on server (only when online)
+        // Mark as "Now Playing" on server
         if isOnline {
             client.scrobble(track: track, submission: false)
         }
@@ -431,9 +457,42 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         if isOnline {
             prefetchNextTracks()
-            prewarmNextTrack()
-            // Prioritize downloads for the current playback context
             boostCurrentContextDownloads()
+        }
+    }
+    
+    private func ensureQueueIsFilled() {
+        guard let p = player else { return }
+        let items = p.items()
+        
+        // Keep 2 tracks ahead in the AVQueuePlayer buffer for seamless handoffs
+        if items.count < 3 {
+            if let lastItem = items.last as? TrackPlayerItem,
+               let lastIndex = self.queue.firstIndex(where: { $0.id == lastItem.track.id }) {
+                
+                let nextIndex = (lastIndex + 1) % self.queue.count
+                if nextIndex == 0 && repeatMode != .all {
+                    return // Don't loop if not repeating
+                }
+                
+                let nextTrack = self.queue[nextIndex]
+                
+                let urlToPlay: URL
+                if let localUrl = getLocalAudioUrl(for: nextTrack.id) {
+                    urlToPlay = localUrl
+                } else {
+                    guard let streamUrl = client.getStreamUrl(id: nextTrack.id) else { return }
+                    urlToPlay = streamUrl
+                }
+                
+                let newItem = TrackPlayerItem(url: urlToPlay, track: nextTrack)
+                if p.canInsert(newItem, after: nil) {
+                    p.insert(newItem, after: nil)
+                }
+                
+                // Recursively fill until we have 3 items or hit the end
+                ensureQueueIsFilled()
+            }
         }
     }
 
@@ -504,15 +563,20 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         // Save current index to history before moving forward
         if !isNavigatingHistory {
             playbackHistory.append(queueIndex)
-            // Limit history size to 100 entries
             if playbackHistory.count > 100 { playbackHistory.removeFirst() }
         }
 
-        let nextIndex = (queueIndex + 1) % queue.count
-
         isNavigatingHistory = false
-        queueIndex = nextIndex
-        loadAndPlay(track: queue[queueIndex])
+        
+        if player?.items().count ?? 0 > 1 {
+            player?.advanceToNextItem()
+            self.isPlaying = true
+            self.player?.play()
+        } else {
+            let nextIndex = (queueIndex + 1) % queue.count
+            queueIndex = nextIndex
+            loadAndPlay(track: queue[queueIndex])
+        }
     }
 
     func toggleRepeatMode() {
