@@ -8,6 +8,7 @@ enum SettingsStep { case server, login }
 struct SettingsView: View {
     @Binding var showSettings: Bool
     @EnvironmentObject var client: NavidromeClient
+    @EnvironmentObject var playback: PlaybackManager
     @Environment(\.colorScheme) var colorScheme
 
     var isDark: Bool { colorScheme == .dark }
