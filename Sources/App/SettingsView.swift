@@ -385,6 +385,7 @@ struct AppSettingsView: View {
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var client: NavidromeClient
     @EnvironmentObject var sync: SyncManager
+    @EnvironmentObject var playback: PlaybackManager
     @AppStorage("velora_server_url") private var serverUrl: String = ""
     @AppStorage("velora_online_server_url") private var onlineServerUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""

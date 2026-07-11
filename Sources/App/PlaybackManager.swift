@@ -3,7 +3,7 @@ import AVFoundation
 import MediaPlayer
 import UIKit
 
-private var playerItemAssociatedTrackKey: UInt8 = 0
+nonisolated(unsafe) private var playerItemAssociatedTrackKey: UInt8 = 0
 extension AVPlayerItem {
     var associatedTrack: Track? {
         get { objc_getAssociatedObject(self, &playerItemAssociatedTrackKey) as? Track }
