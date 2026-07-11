@@ -280,9 +280,9 @@ final class SyncManager: ObservableObject {
             }
 
             let lyricsDir = VeloraStorage.lyrics
-            // Slower, safer concurrency — 5 parallel requests with 300ms stagger avoids 429s
-            let maxConcurrent = 5
-            let staggerNs: UInt64 = 300_000_000
+            // ThrottledNetworkManager handles the pacing and circuit breaking globally.
+            // We dispatch in large batches to keep the pipeline full without overloading memory.
+            let maxConcurrent = 50
             let totalTasks = Double(tracks.count)
             let startTime = Date()
 
@@ -328,9 +328,8 @@ final class SyncManager: ObservableObject {
 
                     // Track which songs in this batch succeeded so we can re-queue failures
                     let results = await withTaskGroup(of: (Track, Bool).self) { group -> [(Track, Bool)] in
-                        for (index, song) in batch.enumerated() {
+                        for song in batch {
                             group.addTask {
-                                try? await Task.sleep(nanoseconds: UInt64(index) * staggerNs)
                                 let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                                     Task { @MainActor in
                                         client.fetchLyrics(
