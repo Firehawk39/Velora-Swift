@@ -1,4 +1,5 @@
 import Foundation
+
 import CryptoKit
 
 @MainActor
@@ -86,11 +87,39 @@ final class NavidromeClient: ObservableObject {
 
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
-                if let artists = loadedArtists { self.artists = artists }
-                if let albums = loadedAlbums { self.albums = albums }
+                if var artists = loadedArtists {
+                    for i in 0..<artists.count {
+                        if let artId = artists[i].coverArt {
+                            artists[i].coverArt = self.getCoverArtUrl(id: extractArtId(from: artId))
+                        }
+                    }
+                    self.artists = artists
+                }
+                if var albums = loadedAlbums {
+                    for i in 0..<albums.count {
+                        if let artId = albums[i].coverArt {
+                            albums[i].coverArt = self.getCoverArtUrl(id: extractArtId(from: artId))
+                        }
+                    }
+                    self.albums = albums
+                }
                 if let playlists = loadedPlaylists { self.playlists = playlists }
-                if let songs = loadedSongs { self.allSongs = songs }
-                if let recent = loadedRecent { self.recentlyPlayed = recent }
+                if var songs = loadedSongs {
+                    for i in 0..<songs.count {
+                        if let artId = songs[i].coverArt {
+                            songs[i].coverArt = self.getCoverArtUrl(id: extractArtId(from: artId))
+                        }
+                    }
+                    self.allSongs = songs
+                }
+                if var recent = loadedRecent {
+                    for i in 0..<recent.count {
+                        if let artId = recent[i].coverArt {
+                            recent[i].coverArt = self.getCoverArtUrl(id: extractArtId(from: artId))
+                        }
+                    }
+                    self.recentlyPlayed = recent
+                }
 
                 AppLogger.shared.log("[Offline Cache] Loaded metadata asynchronously: \(self.artists.count) artists, \(self.albums.count) albums, \(self.allSongs.count) songs")
             }

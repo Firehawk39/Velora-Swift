@@ -29,7 +29,8 @@ struct LibraryView: View {
     enum ViewMode: String { case grid, list }
     enum SortMode: String { case alphabetical, recent, topPlayed }
 
-    var onArtistClick: ((String, String) -> Void)?
+    var onArtistClick: ((String, String) -> Void)? = nil
+    var onScroll: ((CGFloat) -> Void)? = nil
 
     var isCompact: Bool { hSizeClass == .compact }
     var hPad: CGFloat { isCompact ? 24 : 48 }
@@ -51,7 +52,7 @@ struct LibraryView: View {
                 } else if let cat = activeCategory {
                     categoryDetailView(category: cat)
                 } else {
-                    LibraryMenuView(activeCategory: $activeCategory, menuItems: menuItems, isDarkMode: isDarkMode, isCompact: isCompact, hPad: hPad)
+                    LibraryMenuView(activeCategory: $activeCategory, menuItems: menuItems, isDarkMode: isDarkMode, isCompact: isCompact, hPad: hPad, onScroll: onScroll)
                 }
             }
         }
@@ -176,8 +177,9 @@ struct LibraryView: View {
             .padding(.bottom, category == "songs" ? 8 : 20)
 
             ScrollView(showsIndicators: false) {
-                Group {
-                    let effectiveOffline = showOfflineOnly || forceOffline || !network.isConnected
+                VStack(spacing: 0) {
+                    Group {
+                        let effectiveOffline = showOfflineOnly || forceOffline || !network.isConnected
                     switch category {
                     case "playlists": PlaylistGridView(viewMode: viewMode, sortMode: sortMode, isDarkMode: isDarkMode, isCompact: isCompact, showOfflineOnly: effectiveOffline) { p in
                         selectedPlaylist = p
@@ -201,9 +203,18 @@ struct LibraryView: View {
                 }
                 .padding(.horizontal, hPad)
                 Spacer(minLength: 120)
+                }
             }
-        }
+            .background(
+                ScrollViewOffsetTracker { value in
+                    if activeCategory == "home" {
+                        onScroll?(value)
+                    }
+                }
+            )
+            .ignoresSafeArea(edges: .top)
     }
+}
 }
 
 // MARK: - Subviews
@@ -213,12 +224,14 @@ private struct LibraryMenuView: View {
     @Binding var activeCategory: String?
     let menuItems: [(id: String, label: String, icon: String)]
     let isDarkMode: Bool
-    let isCompact: Bool
-    let hPad: CGFloat
+    var isCompact: Bool
+    var hPad: CGFloat
+    var onScroll: ((CGFloat) -> Void)? = nil
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+
                 Spacer().frame(height: isCompact ? 90 : 130)
                 ForEach(menuItems, id: \.id) { item in
                     Button(action: { activeCategory = item.id }) {
@@ -266,7 +279,13 @@ private struct LibraryMenuView: View {
                 }
                 .padding(.top, 30)
             }
+            .background(
+                ScrollViewOffsetTracker { value in
+                    onScroll?(value)
+                }
+            )
         }
+        .ignoresSafeArea(edges: .top)
     }
 }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 
+
 @MainActor
 struct NowPlayingView: View {
     @EnvironmentObject var playback: PlaybackManager
@@ -11,14 +12,17 @@ struct NowPlayingView: View {
     @Binding var isQueueOpen: Bool
     @Binding var isIdle:      Bool
     var onArtistClick: ((String, String) -> Void)? = nil
+    var onScroll: ((CGFloat) -> Void)? = nil
 
     @State private var isDragging   = false
     @State private var artistBiography: String? = nil
     @State private var isFetchingArtistInfo: Bool = false
     @State private var dragProgress: Double = 0
     @State private var idleTimer: Timer? = nil
+    @State private var isScrolledDown: Bool = false
     @State private var showPlayPauseHint: Bool = false
     @State private var hintIcon: String = "play.fill"
+    @State private var showFullBio: Bool = false
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
     // Header height to avoid overlap
@@ -170,7 +174,17 @@ struct NowPlayingView: View {
                             resetIdleTimer()
                         }
                     }
+                    .background(
+                        ScrollViewOffsetTracker { offset in
+                            onScroll?(offset)
+                            let scrolled = offset < -20
+                            if scrolled != isScrolledDown {
+                                isScrolledDown = scrolled
+                            }
+                        }
+                    )
                 }
+                .ignoresSafeArea(edges: .top)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.ignoresSafeArea())
@@ -218,12 +232,24 @@ struct NowPlayingView: View {
             resetIdleTimer()
             refreshMetadata()
         }
+        .onChange(of: isScrolledDown) { scrolled in
+            if scrolled {
+                stopIdleTimer()
+                if isIdle {
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.82, blendDuration: 0.3)) {
+                        isIdle = false
+                    }
+                }
+            } else {
+                resetIdleTimer()
+            }
+        }
         .preferredColorScheme(.dark)
     }
 
     private func startIdleTimer() {
         stopIdleTimer()
-        guard !isQueueOpen && !playback.isLyricsMode else { return }
+        guard !isQueueOpen && !playback.isLyricsMode && !isScrolledDown else { return }
 
         idleTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { _ in
             Task { @MainActor in
@@ -592,10 +618,25 @@ struct NowPlayingView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
 
-                        Text(bio)
-                            .font(.system(size: isSE ? 14 : 16))
-                            .foregroundColor(.white.opacity(0.8))
-                            .lineLimit(10)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showFullBio.toggle()
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(bio)
+                                    .font(.system(size: isSE ? 14 : 16))
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .lineLimit(showFullBio ? nil : 10)
+                                    .multilineTextAlignment(.leading)
+                                
+                                Text(showFullBio ? "See less" : "See more")
+                                    .font(.system(size: isSE ? 14 : 16, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.top, 2)
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     } else if isFetchingArtistInfo {
                         HStack {
                             Spacer()

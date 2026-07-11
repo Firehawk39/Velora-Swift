@@ -89,7 +89,7 @@ struct Album: Identifiable, Codable, Sendable {
     let artistId: String?
     let songCount: Int?
     let duration: Int?
-    let coverArt: String?
+    var coverArt: String?
     var created: String?
 
     var coverArtUrl: URL? { resolveCoverArtUrl(id: coverArt ?? id, serverUrl: coverArt) }
@@ -101,7 +101,7 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
     let album: String?
     let artist: String?
     let duration: Int?
-    let coverArt: String?
+    var coverArt: String?
     let artistId: String?
     let albumId: String?
     var created: String?
@@ -200,6 +200,62 @@ extension View {
             self.persistentSystemOverlays(.hidden)
         } else {
             self
+        }
+    }
+}
+
+// MARK: - Preference Keys
+public struct ScrollOffsetKey: PreferenceKey {
+    public typealias Value = CGFloat
+    public static let defaultValue: CGFloat = 0
+    public static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+// MARK: - UIKit Scroll Tracker
+public struct ScrollViewOffsetTracker: UIViewRepresentable {
+    public var onScroll: (CGFloat) -> Void
+    
+    public func makeUIView(context: Context) -> TrackerView {
+        let view = TrackerView()
+        view.onScroll = onScroll
+        return view
+    }
+    
+    public func updateUIView(_ uiView: TrackerView, context: Context) {
+        uiView.onScroll = onScroll
+    }
+    
+    public class TrackerView: UIView {
+        var onScroll: ((CGFloat) -> Void)?
+        private var scrollView: UIScrollView?
+        private var observation: NSKeyValueObservation?
+        
+        public override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard self.window != nil else { return }
+            findScrollView()
+        }
+        
+        private func findScrollView() {
+            var current: UIView? = self
+            while let view = current {
+                if let scrollView = view as? UIScrollView {
+                    self.scrollView = scrollView
+                    observation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in
+                        let base = scrollView.adjustedContentInset.top
+                        let offset = -(scrollView.contentOffset.y + base)
+                        self?.onScroll?(offset)
+                    }
+                    return
+                }
+                current = view.superview
+            }
+        }
+        
+        deinit {
+            observation?.invalidate()
         }
     }
 }

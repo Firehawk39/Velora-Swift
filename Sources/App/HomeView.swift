@@ -14,6 +14,7 @@ struct HomeView: View {
     var hPad: CGFloat { isCompact ? 24 : 48 }
     var onArtistClick: ((String, String) -> Void)? = nil
     var onSeeAll: (() -> Void)? = nil
+    var onScroll: ((CGFloat) -> Void)? = nil
 
     // Greeting — matches the web's time-of-day logic
     var greeting: String {
@@ -30,6 +31,8 @@ struct HomeView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
+
+
                 Spacer().frame(height: ScreenTier.isSmall ? 110 : (isCompact ? 80 : 100))
 
                 // ── Greeting ─────────────────────────────────────────
@@ -130,7 +133,13 @@ struct HomeView: View {
                 }
             }
             .padding(.top, 4)
+            .background(
+                ScrollViewOffsetTracker { value in
+                    onScroll?(value)
+                }
+            )
         }
+        .ignoresSafeArea(edges: .top)
         .refreshable {
             client.fetchAlbums()
             client.fetchArtists()
