@@ -309,70 +309,83 @@ final class SyncManager: ObservableObject {
                 passCount += 1
                 var failedThisPass: [Track] = []
 
-                var startIndex = 0
-                while startIndex < missingSongs.count && isSyncingLyrics {
-                    let endIndex = min(startIndex + maxConcurrent, missingSongs.count)
-                    let batch = Array(missingSongs[startIndex..<endIndex])
+                let attemptedSoFar = Int(tasksCompleted) - skippedCount
+                lyricsStatus = passCount == 1
+                    ? "Syncing Lyrics: \(attemptedSoFar)/\(missingSongs.count) songs"
+                    : "Retrying \(missingSongs.count) songs (pass \(passCount))"
 
-                    let attemptedSoFar = Int(tasksCompleted) - skippedCount
-                    lyricsStatus = passCount == 1
-                        ? "Syncing Lyrics: \(attemptedSoFar)/\(missingSongs.count) songs"
-                        : "Retrying \(missingSongs.count) songs (pass \(passCount))"
+                // Exponential back-off between passes: 0, 5s, 10s, 20s, 40s
+                if passCount > 1 {
+                    let backoffSeconds = UInt64(5 * (1 << (passCount - 2)))
+                    lyricsStatus = "Rate limited — waiting \(backoffSeconds)s before retry..."
+                    try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
+                }
 
-                    // Exponential back-off between passes: 0, 5s, 10s, 20s, 40s
-                    if passCount > 1 && startIndex == 0 {
-                        let backoffSeconds = UInt64(5 * (1 << (passCount - 2)))
-                        lyricsStatus = "Rate limited — waiting \(backoffSeconds)s before retry..."
-                        try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
+                // Continuous bounded task group (Worker Pool Pattern)
+                // Keeps exactly `maxConcurrent` tasks in flight at all times without batch stalls.
+                let results = await withTaskGroup(of: (Track, Bool).self) { group -> [(Track, Bool)] in
+                    var out: [(Track, Bool)] = []
+                    var enqueueIndex = 0
+                    let totalToQueue = missingSongs.count
+
+                    // 1. Seed the initial pool
+                    while enqueueIndex < min(maxConcurrent, totalToQueue) && isSyncingLyrics {
+                        let song = missingSongs[enqueueIndex]
+                        group.addTask {
+                            let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                                Task { @MainActor in
+                                    client.fetchLyrics(trackId: song.id, artist: song.primaryArtist, title: song.title, duration: Double(song.duration ?? 0), priority: URLSessionTask.lowPriority) { result in
+                                        continuation.resume(returning: result != nil)
+                                    }
+                                }
+                            }
+                            return (song, succeeded)
+                        }
+                        enqueueIndex += 1
                     }
 
-                    // Track which songs in this batch succeeded so we can re-queue failures
-                    let results = await withTaskGroup(of: (Track, Bool).self) { group -> [(Track, Bool)] in
-                        for song in batch {
+                    // 2. As each task finishes, queue a new one immediately
+                    for await pair in group {
+                        out.append(pair)
+                        
+                        // Update progress precisely after every single track completes
+                        tasksCompleted += 1.0
+                        lyricsProgress = min(tasksCompleted / totalTasks, 0.99)
+                        
+                        let nowProcessed = tasksCompleted - Double(skippedCount)
+                        if nowProcessed > 0 {
+                            let elapsed = Date().timeIntervalSince(startTime)
+                            if elapsed >= 2.0 {
+                                let rate = nowProcessed / elapsed
+                                let rem = Int(Double(totalToQueue) - nowProcessed < 0 ? 0 : (Double(totalToQueue) - nowProcessed) / max(rate, 0.01))
+                                lyricsEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
+                            }
+                        }
+
+                        // Add next task to keep pipeline full
+                        if enqueueIndex < totalToQueue && isSyncingLyrics {
+                            let nextSong = missingSongs[enqueueIndex]
                             group.addTask {
                                 let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                                     Task { @MainActor in
-                                        client.fetchLyrics(
-                                            trackId: song.id,
-                                            artist: song.primaryArtist,
-                                            title: song.title,
-                                            duration: Double(song.duration ?? 0),
-                                            priority: URLSessionTask.lowPriority
-                                        ) { result in
-                                            // Success = non-nil lyrics written; failure = nil (rate limited/error)
+                                        client.fetchLyrics(trackId: nextSong.id, artist: nextSong.primaryArtist, title: nextSong.title, duration: Double(nextSong.duration ?? 0), priority: URLSessionTask.lowPriority) { result in
                                             continuation.resume(returning: result != nil)
                                         }
                                     }
                                 }
-                                return (song, succeeded)
+                                return (nextSong, succeeded)
                             }
-                        }
-                        var out: [(Track, Bool)] = []
-                        for await pair in group { out.append(pair) }
-                        return out
-                    }
-
-                    for (song, succeeded) in results {
-                        if !succeeded {
-                            // Only re-queue if we still have no cache file (not even NO_LYRICS)
-                            let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
-                            if !FileManager.default.fileExists(atPath: cacheFile.path) {
-                                failedThisPass.append(song)
-                            }
+                            enqueueIndex += 1
                         }
                     }
+                    return out
+                }
 
-                    tasksCompleted += Double(batch.count)
-                    lyricsProgress = min(tasksCompleted / totalTasks, 0.99)
-                    startIndex += maxConcurrent
-
-                    let nowProcessed = tasksCompleted - Double(skippedCount)
-                    if nowProcessed > 0 {
-                        let elapsed = Date().timeIntervalSince(startTime)
-                        if elapsed >= 2.0 {
-                            let rate = nowProcessed / elapsed
-                            let rem = Int(Double(missingSongs.count) - nowProcessed < 0 ? 0 : (Double(missingSongs.count) - nowProcessed) / max(rate, 0.01))
-                            lyricsEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
+                for (song, succeeded) in results {
+                    if !succeeded {
+                        let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
+                        if !FileManager.default.fileExists(atPath: cacheFile.path) {
+                            failedThisPass.append(song)
                         }
                     }
                 }
