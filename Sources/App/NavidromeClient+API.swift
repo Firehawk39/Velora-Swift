@@ -583,13 +583,20 @@ extension NavidromeClient {
     nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
         guard await NetworkMonitor.shared.isConnected else { throw URLError(.notConnectedToInternet) }
 
-        // Strip (Remaster), [Live Version], etc. from title
+        // PASS 1: Exact Picard Match
+        // Use the unaltered string from the user's tags. For well-curated libraries (e.g. MusicBrainz Picard),
+        // titles like "Yellow (Live)" are canonical, and stripping them ruins the LRCLIB match.
+        if let exactResult = try await performLRCLIBRequest(artist: artist, title: title, duration: duration, priority: priority) {
+            return exactResult
+        }
+
+        // PASS 2: Stripped Fallback
+        // For messy libraries, strip (Remaster), [Live Version], feat., etc. and try again.
         let cleanTitle = title
             .replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\s*\[[^\]]*\]"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
 
-        // Strip feat./ft./featuring artists (case-insensitive), then take primary artist
         let cleanArtist: String = {
             let featPattern = try? NSRegularExpression(
                 pattern: #"\s+(feat\.|ft\.|featuring)\s+.*"#,
@@ -609,17 +616,25 @@ extension NavidromeClient {
                 .trimmingCharacters(in: .whitespaces) ?? stripped
         }()
 
+        if cleanTitle == title && cleanArtist == artist {
+            return nil // Skipping pass 2 since no strings were stripped
+        }
+
+        return try await performLRCLIBRequest(artist: cleanArtist, title: cleanTitle, duration: duration, priority: priority)
+    }
+
+    nonisolated private func performLRCLIBRequest(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
         var getComponents = URLComponents(string: "https://lrclib.net/api/get")
         getComponents?.queryItems = [
-            URLQueryItem(name: "track_name", value: cleanTitle),
-            URLQueryItem(name: "artist_name", value: cleanArtist),
+            URLQueryItem(name: "track_name", value: title),
+            URLQueryItem(name: "artist_name", value: artist),
             URLQueryItem(name: "duration", value: String(Int(duration)))
         ]
 
         var searchComponents = URLComponents(string: "https://lrclib.net/api/search")
         searchComponents?.queryItems = [
-            URLQueryItem(name: "track_name", value: cleanTitle),
-            URLQueryItem(name: "artist_name", value: cleanArtist)
+            URLQueryItem(name: "track_name", value: title),
+            URLQueryItem(name: "artist_name", value: artist)
         ]
 
         // 1. Exact GET — only when we have a real duration (duration=0 always 404s on LRCLIB)
