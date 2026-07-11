@@ -85,6 +85,7 @@ final class SyncManager: ObservableObject {
         isSyncingMetadata = true
         metadataProgress = 0.0
         metadataEta = ""
+        metadataStatus = "Starting metadata sync..."
 
         Task {
             // 1. Ensure artists are loaded
@@ -261,6 +262,7 @@ final class SyncManager: ObservableObject {
         isSyncingLyrics = true
         lyricsProgress = 0.0
         lyricsEta = ""
+        lyricsStatus = "Starting lyrics sync..."
 
         Task {
             let tracks: [Track]
