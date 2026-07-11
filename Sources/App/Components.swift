@@ -190,9 +190,7 @@ struct AppHeader: View {
         Group {
         ZStack {
             mainHeaderContent
-            if !ScreenTier.isPhone || isLandscape {
-                navigationPill
-            }
+            navigationPill
         }
         }
         .padding(.vertical, ScreenTier.isSmall ? 10.0 : 20.0)
@@ -307,7 +305,6 @@ struct TabButton: View {
     let isDarkMode: Bool
     let isPlayingTab: Bool
     let onAction: () -> Void
-    var isBottomNav: Bool = false
 
     @Environment(\.horizontalSizeClass) var hSizeClass
     var isCompact: Bool { hSizeClass == .compact }
@@ -315,17 +312,6 @@ struct TabButton: View {
     var isActive: Bool { activeTab == id }
     var isLandscape: Bool {
         UIScreen.main.bounds.width > UIScreen.main.bounds.height
-    }
-
-    private var iconName: String {
-        if let icon = icon { return icon }
-        switch id {
-        case "home": return "house.fill"
-        case "library": return "square.stack.fill"
-        case "search": return "magnifyingglass"
-        case "now-playing": return "play.circle.fill"
-        default: return "circle"
-        }
     }
 
     private var fontSize: CGFloat {
@@ -386,19 +372,6 @@ struct TabButton: View {
             }
         }) {
             VStack(spacing: 4) {
-                if isBottomNav {
-                    if id == "velora" {
-                        Text("V")
-                            .font(.custom("Stardom", size: 26).weight(.bold))
-                            .offset(y: 1)
-                    } else {
-                        Image(systemName: iconName)
-                            .font(.system(size: 22))
-                        Text(label)
-                            .font(.system(size: 10, weight: .medium))
-                            .lineLimit(1)
-                    }
-                } else {
                     if id == "velora" {
                         Text("V")
                             .font(.custom("Stardom", size: fontSize + 4).weight(.bold))
@@ -415,11 +388,8 @@ struct TabButton: View {
                             .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
                             .clipShape(Capsule())
                     }
-                }
             }
             .foregroundColor(isActive ? (isDarkMode ? .white : .black) : .gray)
-            .frame(maxWidth: isBottomNav ? .infinity : nil)
-            .padding(.vertical, isBottomNav ? 6 : 0)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -630,8 +600,8 @@ struct QueuePanel: View {
                         }
                     }
                 }
-                .padding(.horizontal, ScreenTier.isSE ? 10 : 16)
-                .padding(.bottom, 20)
+                .padding(.horizontal, ScreenTier.isSmall ? 10.0 : 16.0)
+                .padding(.vertical, ScreenTier.isSmall ? 8.0 : 10.0)
             }
         }
         .frame(width: 380)
@@ -819,7 +789,7 @@ public struct ToggleButton: View {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .bold))
                 Text(label)
-                    .font(.system(size: ScreenTier.isSE ? 12 : 14, weight: .bold))
+                    .font(.custom("ClashDisplay-Medium", size: ScreenTier.isSmall ? 13 : 15))
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
@@ -834,36 +804,4 @@ public struct ToggleButton: View {
         .buttonStyle(PlainButtonStyle())
     }
 }
-// MARK: - Bottom Navigation Bar
-public struct BottomNavigationBar: View {
-    @Binding var activeTab: String
-    let isDarkMode: Bool
-    let isPlayingTab: Bool
-    let onAction: () -> Void
-    
-    public init(activeTab: Binding<String>, isDarkMode: Bool, isPlayingTab: Bool, onAction: @escaping () -> Void) {
-        self._activeTab = activeTab
-        self.isDarkMode = isDarkMode
-        self.isPlayingTab = isPlayingTab
-        self.onAction = onAction
-    }
-    
-    public var body: some View {
-        HStack(spacing: 0) {
-            TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "velora", label: "Velora", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-            TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction, isBottomNav: true)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity)
-        .background(
-            Rectangle()
-                .fill(Color.black.opacity(0.85))
-                .ignoresSafeArea(edges: .bottom)
-        )
-    }
-}
+
