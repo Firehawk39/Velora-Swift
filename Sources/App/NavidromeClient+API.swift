@@ -407,7 +407,7 @@ extension NavidromeClient {
 
     func syncLosslessPlaylist() {
         Task.detached(priority: .background) {
-            let allTracks = await DatabaseManager.shared.getAllTracks()
+            let allTracks = DatabaseManager.shared.getAllTracks()
             let flacIds = allTracks.filter { $0.suffix?.lowercased() == "flac" }.map { $0.id }
             guard !flacIds.isEmpty else { return }
 
