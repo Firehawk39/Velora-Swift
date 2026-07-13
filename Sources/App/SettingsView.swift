@@ -1037,38 +1037,36 @@ struct HoldToDeleteButton: View {
             }
         }
         .frame(height: 68)
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard !isHolding, !didFire else { return }
-                    isHolding = true
-                    holdStart = Date()
-                    // Drive progress at 60fps via a repeating timer
-                    holdTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
-                        Task { @MainActor in
-                            guard let start = holdStart else { return }
-                            let elapsed = Date().timeIntervalSince(start)
-                            let p = CGFloat(min(elapsed / holdDuration, 1.0))
-                            withAnimation(.linear(duration: 1.0 / 60.0)) {
-                                progress = p
-                            }
-                            if p >= 1.0 {
-                                cancelHold()
-                                didFire = true
-                                action()
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 400_000_000)
-                                    withAnimation(.easeOut(duration: 0.4)) { progress = 0.0 }
-                                    didFire = false
-                                }
+        .onLongPressGesture(minimumDuration: 100000, maximumDistance: 10, perform: {}, onPressingChanged: { isPressing in
+            if isPressing {
+                guard !isHolding, !didFire else { return }
+                isHolding = true
+                holdStart = Date()
+                // Drive progress at 60fps via a repeating timer
+                holdTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
+                    Task { @MainActor in
+                        guard let start = holdStart else { return }
+                        let elapsed = Date().timeIntervalSince(start)
+                        let p = CGFloat(min(elapsed / holdDuration, 1.0))
+                        withAnimation(.linear(duration: 1.0 / 60.0)) {
+                            progress = p
+                        }
+                        if p >= 1.0 {
+                            cancelHold()
+                            didFire = true
+                            action()
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 400_000_000)
+                                withAnimation(.easeOut(duration: 0.4)) { progress = 0.0 }
+                                didFire = false
                             }
                         }
                     }
                 }
-                .onEnded { _ in
-                    if !didFire { cancelHold() }
-                }
-        )
+            } else {
+                if !didFire { cancelHold() }
+            }
+        })
         // Haptic pulse at 1s and 2s; strong at fire
         .onChange(of: Int(progress * holdDuration)) { second in
             if second == 1 || second == 2 {
