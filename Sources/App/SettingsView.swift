@@ -971,10 +971,9 @@ struct HoldToDeleteButton: View {
     private let holdDuration: Double = 2.0
 
     @State private var progress: CGFloat = 0.0
-    @State private var isHolding: Bool = false
-    @State private var holdTimer: Timer? = nil
     @State private var holdStart: Date? = nil
     @State private var didFire: Bool = false
+    @State private var hapticTask: Task<Void, Never>? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -983,7 +982,7 @@ struct HoldToDeleteButton: View {
                 RoundedRectangle(cornerRadius: 16)
                     .fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
 
-                // Red fill — grows from center outward (left + right simultaneously)
+                // Red fill — animated natively by SwiftUI
                 if progress > 0 {
                     Rectangle()
                         .fill(Color.red.opacity(0.22 + 0.18 * progress))
@@ -1013,13 +1012,21 @@ struct HoldToDeleteButton: View {
                                 cacheCleared ? .green :
                                 (progress > 0 ? .red : (isDark ? .white : .black))
                             )
-                        Text(
-                            progress > 0
-                            ? "Release to cancel — \(String(format: "%.0f", ceil(holdDuration - progress * holdDuration)))s"
-                            : subtitle
-                        )
-                        .font(.system(size: 12))
-                        .foregroundColor(progress > 0 ? Color.red.opacity(0.85) : .gray)
+                        
+                        // Use TimelineView to update the countdown text without disrupting animations
+                        if let start = holdStart, !didFire {
+                            TimelineView(.animation(minimumInterval: 0.1, paused: false)) { context in
+                                let elapsed = context.date.timeIntervalSince(start)
+                                let remaining = max(0, holdDuration - elapsed)
+                                Text("Release to cancel — \(String(format: "%.0f", ceil(remaining)))s")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color.red.opacity(0.85))
+                            }
+                        } else {
+                            Text(subtitle)
+                                .font(.system(size: 12))
+                                .foregroundColor(progress > 0 ? Color.red.opacity(0.85) : .gray)
+                        }
                     }
                     Spacer()
                     if cacheCleared {
@@ -1037,53 +1044,44 @@ struct HoldToDeleteButton: View {
             }
         }
         .frame(height: 68)
-        .onLongPressGesture(minimumDuration: 100000, maximumDistance: 10, perform: {}, onPressingChanged: { isPressing in
-            if isPressing {
-                guard !isHolding, !didFire else { return }
-                isHolding = true
-                holdStart = Date()
-                // Drive progress at 60fps via a repeating timer
-                holdTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
-                    Task { @MainActor in
-                        guard let start = holdStart else { return }
-                        let elapsed = Date().timeIntervalSince(start)
-                        let p = CGFloat(min(elapsed / holdDuration, 1.0))
-                        withAnimation(.linear(duration: 1.0 / 60.0)) {
-                            progress = p
-                        }
-                        if p >= 1.0 {
-                            cancelHold()
-                            didFire = true
-                            action()
-                            Task { @MainActor in
-                                try? await Task.sleep(nanoseconds: 400_000_000)
-                                withAnimation(.easeOut(duration: 0.4)) { progress = 0.0 }
-                                didFire = false
-                            }
+        .onLongPressGesture(
+            minimumDuration: holdDuration,
+            perform: {
+                didFire = true
+                action()
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    withAnimation(.easeOut(duration: 0.4)) { progress = 0.0 }
+                    didFire = false
+                }
+            },
+            onPressingChanged: { isPressing in
+                if isPressing {
+                    guard !didFire else { return }
+                    holdStart = Date()
+                    
+                    withAnimation(.linear(duration: holdDuration)) {
+                        progress = 1.0
+                    }
+                    
+                    // Schedule native haptics exactly on the seconds
+                    hapticTask = Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                        if !Task.isCancelled { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                        if !Task.isCancelled { UINotificationFeedbackGenerator().notificationOccurred(.warning) }
+                    }
+                } else {
+                    hapticTask?.cancel()
+                    hapticTask = nil
+                    holdStart = nil
+                    if !didFire {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                            progress = 0.0
                         }
                     }
                 }
-            } else {
-                if !didFire { cancelHold() }
             }
-        })
-        // Haptic pulse at 1s and 2s; strong at fire
-        .onChange(of: Int(progress * holdDuration)) { second in
-            if second == 1 || second == 2 {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } else if second >= Int(holdDuration) {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            }
-        }
-    }
-
-    private func cancelHold() {
-        holdTimer?.invalidate()
-        holdTimer = nil
-        holdStart = nil
-        isHolding = false
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
-            progress = 0.0
-        }
+        )
     }
 }
