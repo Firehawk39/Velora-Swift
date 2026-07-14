@@ -34,7 +34,7 @@ final class FanartManager: ObservableObject {
 
     // MARK: - TTL Helper
 
-    private func isNegativeCacheExpired(at url: URL, daysTTL: Int = 30) -> Bool {
+    private func isNegativeCacheExpired(at url: URL, daysTTL: Int = 7) -> Bool {
         guard let attr = try? FileManager.default.attributesOfItem(atPath: url.path),
               let modDate = attr[.modificationDate] as? Date else {
             return true // If we can't read it, assume expired so it gets cleaned up
@@ -648,7 +648,9 @@ final class FanartManager: ObservableObject {
             activeClearLogoFetches.remove(cacheKey)
             return
         }
-        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, _ in
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20.0
+        ThrottledNetworkManager.shared.enqueue(request: req) { [weak self] data, _, error in
             guard let self = self else { return }
             DispatchQueue.main.async {
                 if let data = data, let img = UIImage(data: data) {
@@ -662,8 +664,14 @@ final class FanartManager: ObservableObject {
                     if self.currentClearLogoArtist == artist {
                         withAnimation(.easeInOut(duration: 0.6)) { self.currentClearLogo = img }
                     }
+                } else if error != nil {
+                    // Network error (timeout, DNS, etc.) — do NOT negative cache.
+                    // The logo exists on Fanart.tv, we just failed to download the image.
+                    // Next sync pass will retry.
+                    AppLogger.shared.log("[Fanart] Clearlogo image download failed for \(artist) — will retry next pass", level: .warning)
                 } else {
-                    try? Data().write(to: localUrl)  // negative marker
+                    // Got data but it's not a valid image (corrupt/empty response) — negative cache
+                    try? Data().write(to: localUrl)
                 }
                 self.activeClearLogoFetches.remove(cacheKey)
             }
@@ -688,7 +696,9 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        ThrottledNetworkManager.shared.enqueue(url: url, priority: priority) { data, response, error in
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 15.0
+        ThrottledNetworkManager.shared.enqueue(request: req, priority: priority) { data, response, error in
             guard let data = data, error == nil else {
                 DispatchQueue.main.async { completion(nil) }
                 return
@@ -730,7 +740,9 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        ThrottledNetworkManager.shared.enqueue(url: url, priority: priority) { data, response, error in
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 15.0
+        ThrottledNetworkManager.shared.enqueue(request: req, priority: priority) { data, response, error in
             if let error = error {
                 let desc = error.localizedDescription
                 DispatchQueue.main.async {
@@ -811,7 +823,9 @@ final class FanartManager: ObservableObject {
             return
         }
 
-        ThrottledNetworkManager.shared.enqueue(url: url, priority: priority) { data, _, _ in
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20.0
+        ThrottledNetworkManager.shared.enqueue(request: req, priority: priority) { data, _, _ in
             if let data = data, let image = UIImage(data: data) {
                 try? data.write(to: localUrl)
 
@@ -879,6 +893,7 @@ final class FanartManager: ObservableObject {
 
         var request = URLRequest(url: url)
         request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 15.0
 
         ThrottledNetworkManager.shared.enqueue(request: request, priority: priority) { data, response, error in
             // CRITICAL: Distinguish network failures from genuine "not found" results.
