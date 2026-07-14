@@ -1,6 +1,14 @@
 import SwiftUI
 import Foundation
 
+/// Tri-state result for MBID resolution. Prevents transient network errors
+/// from permanently poisoning the negative cache with fake "not found" markers.
+enum MBIDResult: Sendable {
+    case found(String)
+    case notFound        // API returned valid response, artist genuinely doesn't exist
+    case networkError    // Timeout / circuit breaker / DNS — safe to retry later
+}
+
 @MainActor
 final class FanartManager: ObservableObject {
     static let shared = FanartManager()
@@ -33,6 +41,15 @@ final class FanartManager: ObservableObject {
         }
         let age = Date().timeIntervalSince(modDate)
         return age > TimeInterval(daysTTL * 24 * 60 * 60)
+    }
+
+    // MARK: - Deduplication Reset
+
+    /// Clears in-flight fetch guards so that a new sync pass can retry artists
+    /// that were blocked by a stuck or timed-out previous pass.
+    func resetActiveFetches() {
+        activeBackdropFetches.removeAll()
+        activeClearLogoFetches.removeAll()
     }
 
     // MARK: - Backdrops
@@ -172,11 +189,17 @@ final class FanartManager: ObservableObject {
         if index == 0, let validMBID = providedMbid, !validMBID.isEmpty {
             queryFanart(validMBID)
         } else {
-            self.getMBID(for: artist, priority: URLSessionTask.highPriority) { resolved in
-                if let resolved = resolved {
+            self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
+                switch result {
+                case .found(let resolved):
                     queryFanart(resolved)
-                } else {
+                case .notFound:
+                    // Genuinely not on MusicBrainz — write negative cache
                     try? Data().write(to: fileUrl)
+                    self.activeBackdropFetches.remove(key)
+                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                case .networkError:
+                    // Transient failure — do NOT write negative cache, allow retry on next pass
                     self.activeBackdropFetches.remove(key)
                     self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                 }
@@ -231,11 +254,16 @@ final class FanartManager: ObservableObject {
                 if index == 0, let validMBID = mbid, !validMBID.isEmpty {
                     Task { @MainActor in query(validMBID) }
                 } else {
-                    getMBID(for: artist, priority: URLSessionTask.lowPriority) { resolved in
-                        if let resolved = resolved {
+                    getMBIDSafe(for: artist, priority: URLSessionTask.lowPriority) { result in
+                        switch result {
+                        case .found(let resolved):
                             Task { @MainActor in query(resolved) }
-                        } else {
+                        case .notFound:
                             if NetworkMonitor.shared.isConnected { try? Data().write(to: fileUrl) }
+                            self.activeBackdropFetches.remove(key)
+                            continuation.resume(returning: false)
+                        case .networkError:
+                            // Transient — skip negative cache, allow retry
                             self.activeBackdropFetches.remove(key)
                             continuation.resume(returning: false)
                         }
@@ -281,11 +309,15 @@ final class FanartManager: ObservableObject {
             if let validMBID = mbid, !validMBID.isEmpty {
                 Task { @MainActor in query(validMBID) }
             } else {
-                getMBID(for: artist, priority: URLSessionTask.lowPriority) { resolved in
-                    if let resolved = resolved {
+                getMBIDSafe(for: artist, priority: URLSessionTask.lowPriority) { result in
+                    switch result {
+                    case .found(let resolved):
                         Task { @MainActor in query(resolved) }
-                    } else {
+                    case .notFound:
                         if NetworkMonitor.shared.isConnected { try? Data().write(to: fileUrl) }
+                        continuation.resume()
+                    case .networkError:
+                        // Transient — skip negative cache, allow retry
                         continuation.resume()
                     }
                 }
@@ -505,12 +537,16 @@ final class FanartManager: ObservableObject {
         if let m = mbid, !m.isEmpty {
             doFetch(m)
         } else {
-            getMBID(for: artist) { [weak self] resolved in
+            getMBIDSafe(for: artist) { [weak self] result in
                 guard let self = self else { return }
-                if let resolved = resolved {
+                switch result {
+                case .found(let resolved):
                     doFetch(resolved)
-                } else {
-                    try? Data().write(to: fileUrl)  // negative marker — no MBID found
+                case .notFound:
+                    try? Data().write(to: fileUrl)  // negative marker — genuinely no MBID
+                    self.activeClearLogoFetches.remove(key)
+                case .networkError:
+                    // Transient — do NOT poison cache, allow retry on next sync
                     self.activeClearLogoFetches.remove(key)
                 }
             }
@@ -591,10 +627,16 @@ final class FanartManager: ObservableObject {
         if let m = mbid, !m.isEmpty {
             resolve(m)
         } else {
-            getMBID(for: artist) { [weak self] resolved in
+            getMBIDSafe(for: artist) { [weak self] result in
                 guard let self = self else { return }
-                if let r = resolved { resolve(r) } else {
+                switch result {
+                case .found(let r):
+                    resolve(r)
+                case .notFound:
                     try? Data().write(to: fileUrl)
+                    self.activeClearLogoFetches.remove(key)
+                case .networkError:
+                    // Transient — skip negative cache, allow retry
                     self.activeClearLogoFetches.remove(key)
                 }
             }
@@ -812,24 +854,59 @@ final class FanartManager: ObservableObject {
         return primary.isEmpty ? name : primary
     }
 
+    /// Legacy convenience wrapper — used by fetchClearLogo/fetchArtistPortrait UI paths
+    /// that don't need tri-state error handling.
     nonisolated private func getMBID(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?) -> Void) {
+        getMBIDSafe(for: artistName, priority: priority) { result in
+            switch result {
+            case .found(let id): completion(id)
+            case .notFound, .networkError: completion(nil)
+            }
+        }
+    }
+
+    /// Tri-state MBID resolver that distinguishes "not found" from "network error".
+    /// Callers MUST only write negative cache markers on `.notFound`, never on `.networkError`.
+    nonisolated private func getMBIDSafe(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (MBIDResult) -> Void) {
         let primary = extractPrimaryArtist(artistName)
         let queryTerm = "artist:\"\(primary)\""
         let encodedQuery = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encodedQuery)&fmt=json"
         guard let url = URL(string: urlString) else {
-            DispatchQueue.main.async { completion(nil) }
+            DispatchQueue.main.async { completion(.notFound) }
             return
         }
 
         var request = URLRequest(url: url)
         request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
 
-        ThrottledNetworkManager.shared.enqueue(request: request, priority: priority) { data, _, _ in
+        ThrottledNetworkManager.shared.enqueue(request: request, priority: priority) { data, response, error in
+            // CRITICAL: Distinguish network failures from genuine "not found" results.
+            // A transient timeout or circuit breaker trip must NOT poison the negative cache.
+            if let error = error {
+                let nsError = error as NSError
+                let isTransient = nsError.code == NSURLErrorTimedOut ||
+                                  nsError.code == NSURLErrorCannotConnectToHost ||
+                                  nsError.code == NSURLErrorCannotFindHost ||
+                                  nsError.code == NSURLErrorNetworkConnectionLost ||
+                                  nsError.domain == "CircuitBreaker"
+                if isTransient {
+                    DispatchQueue.main.async { completion(.networkError) }
+                    return
+                }
+            }
+
+            // If we got HTTP 429 or 5xx, that's also transient
+            if let http = response as? HTTPURLResponse, (http.statusCode == 429 || http.statusCode >= 500) {
+                DispatchQueue.main.async { completion(.networkError) }
+                return
+            }
+
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
-                DispatchQueue.main.async { completion(nil) }
+                // Valid response but no results — artist genuinely not on MusicBrainz
+                DispatchQueue.main.async { completion(.notFound) }
                 return
             }
 
@@ -841,7 +918,7 @@ final class FanartManager: ObservableObject {
             if let exactMatch = artists.first(where: {
                 ($0["name"] as? String)?.lowercased() == lowerPrimary
             }), let id = exactMatch["id"] as? String {
-                DispatchQueue.main.async { completion(id) }
+                DispatchQueue.main.async { completion(.found(id)) }
                 return
             }
 
@@ -852,12 +929,12 @@ final class FanartManager: ObservableObject {
             let topScoreCandidates = artists.filter { ($0["score"] as? Int) == topScore }
             if topScore == 100, topScoreCandidates.count == 1,
                let id = topScoreCandidates.first?["id"] as? String {
-                DispatchQueue.main.async { completion(id) }
+                DispatchQueue.main.async { completion(.found(id)) }
                 return
             }
 
-            // 3. No reliable match found — return nil so callers don't show wrong art.
-            DispatchQueue.main.async { completion(nil) }
+            // 3. No reliable match found — this is a genuine "not found", not a network error.
+            DispatchQueue.main.async { completion(.notFound) }
         }
     }
 }

@@ -128,6 +128,9 @@ final class SyncManager: ObservableObject {
                 metadataStatus = passCount == 1 ? "Analyzing library..." : "Retrying incomplete items (pass \(passCount))..."
                 await Task.yield()
 
+                // Reset dedup guards so artists that failed due to stuck keys can be retried
+                fa.resetActiveFetches()
+
                 // Re-scan on every pass so we only work on what's still missing
                 var missingArtists = [Artist]()
                 for (index, artist) in artists.enumerated() {
