@@ -21,7 +21,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
         if host.contains("musicbrainz.org") {
             interval = 1.0 // Strict 1 request per second
         } else if host.contains("lrclib.net") {
-            interval = 0.5 // Safe 2 requests per second to avoid timeouts/tarpitting
+            interval = 1.5 // Extremely safe pacing to avoid 429s (1 request per 1.5s)
         } else {
             interval = 0.5 // Default 2 requests per second
         }
@@ -121,7 +121,7 @@ private class DomainThrottler: @unchecked Sendable {
         
         if isRateLimit || consecutiveFailures >= 3 {
             isCircuitOpen = true
-            let seconds = retryAfter ?? (host.contains("lrclib.net") ? 30.0 : 300.0)
+            let seconds = retryAfter ?? (host.contains("lrclib.net") ? 10.0 : 300.0)
             let targetResumeTime = Date().addingTimeInterval(seconds)
             if targetResumeTime > circuitResumeTime {
                 circuitResumeTime = targetResumeTime
