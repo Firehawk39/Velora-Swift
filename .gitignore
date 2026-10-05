@@ -6,3 +6,8 @@ Packages/
 DerivedData/
 *.swp
 *.lock
+
+# Secrets and local scripts
+.env
+run_mcp.ps1
+mcp_test.js
