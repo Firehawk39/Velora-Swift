@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 import UIKit
 
 // MARK: - Selectable Log Line (UITextView bridge)
@@ -38,6 +38,7 @@ private struct SelectableLogLine: UIViewRepresentable {
 
     /// Tell SwiftUI the exact height this text view needs so the parent
     /// LazyVStack never clips or over-allocates space for a line.
+    @available(iOS 16.0, *)
     func sizeThatFits(_ proposal: ProposedViewSize, uiView tv: UITextView, context: Context) -> CGSize? {
         let width = proposal.width ?? (UIScreen.main.bounds.width - 24)
         let size = tv.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))

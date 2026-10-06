@@ -835,9 +835,6 @@ struct LowThresholdRefreshControl: UIViewRepresentable {
                 rc.addTarget(context.coordinator,
                              action: #selector(Coordinator.handleRefresh),
                              for: .valueChanged)
-                if #available(iOS 15.4, *) {
-                    rc.triggerVerticalOffset = self.triggerOffset
-                }
                 sv.refreshControl = rc
             }
             if isRefreshing {
@@ -851,7 +848,7 @@ struct LowThresholdRefreshControl: UIViewRepresentable {
     class Coordinator: NSObject {
         var parent: LowThresholdRefreshControl
         init(_ p: LowThresholdRefreshControl) { parent = p }
-        @objc func handleRefresh() {
+        @MainActor @objc func handleRefresh() {
             parent.isRefreshing = true
             parent.onRefresh()
         }

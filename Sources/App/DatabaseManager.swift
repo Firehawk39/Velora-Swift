@@ -10,10 +10,6 @@ actor DatabaseManager {
     private let logger = OSLog(subsystem: "com.velora", category: "DatabaseManager")
 
     private init() {
-        setupDatabase()
-    }
-
-    private func setupDatabase() {
         let fileManager = FileManager.default
         let documentsUrl = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
         let dbUrl = documentsUrl.appendingPathComponent("velora.sqlite")

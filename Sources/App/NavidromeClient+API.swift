@@ -514,8 +514,10 @@ extension NavidromeClient {
                 self.syncLosslessPlaylist()
             }
             // Return the actual DB contents so callers get real data, not an empty array
-            let tracks = await DatabaseManager.shared.getAllTracks()
-            completion?(tracks)
+            Task {
+                let tracks = await DatabaseManager.shared.getAllTracks()
+                completion?(tracks)
+            }
         }
     }
 

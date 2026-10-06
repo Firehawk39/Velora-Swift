@@ -398,6 +398,7 @@ struct AppSettingsView: View {
     // Hold-to-delete state
     @State private var holdProgress: CGFloat = 0.0
     @State private var isHolding: Bool = false
+    @State private var isRefreshingSettings: Bool = false
     @State private var holdTimer: Timer? = nil
     
     @State private var statusTimer: Timer? = nil

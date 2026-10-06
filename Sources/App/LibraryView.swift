@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 final class LibraryDataCache: ObservableObject {
     static let shared = LibraryDataCache()
     @Published var allTracks: [Track] = []
@@ -266,7 +267,7 @@ private struct LibraryMenuView: View {
                     }
                     .padding(.horizontal, hPad)
                     let stats = [
-                        ("Tracks", "\(dataCache.allTracks.count)", "music.note", Color.blue),
+                        ("Tracks", "\(LibraryDataCache.shared.allTracks.count)", "music.note", Color.blue),
                         ("Playlists", "\(client.playlists.count)", "music.note.list", Color.green),
                         ("Albums", "\(client.albums.count)", "opticaldisc", Color.orange),
                         ("Artists", "\(client.artists.count)", "person.2", Color.teal)
