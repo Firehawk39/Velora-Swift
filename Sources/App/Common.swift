@@ -244,9 +244,9 @@ public struct ScrollViewOffsetTracker: UIViewRepresentable {
                 if let scrollView = view as? UIScrollView {
                     self.scrollView = scrollView
                     observation = scrollView.observe(\.contentOffset, options: [.initial, .new]) { [weak self] scrollView, _ in
-                        let base = scrollView.adjustedContentInset.top
-                        let offset = -(scrollView.contentOffset.y + base)
-                        Task { @MainActor [weak self] in
+                        MainActor.assumeIsolated {
+                            let base = scrollView.adjustedContentInset.top
+                            let offset = -(scrollView.contentOffset.y + base)
                             self?.onScroll?(offset)
                         }
                     }

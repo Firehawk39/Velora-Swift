@@ -223,9 +223,4 @@ actor DatabaseManager {
         return Track(id: id, title: title, album: album, artist: artist, duration: duration, coverArt: coverArt, artistId: artistId, albumId: albumId, created: created, isStarred: isStarred, playCount: playCount, suffix: suffix, track: trackNum, discNumber: discNumber)
     }
 
-    deinit {
-        if let db = db {
-            sqlite3_close(db)
-        }
-    }
 }
