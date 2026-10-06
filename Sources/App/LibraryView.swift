@@ -1,5 +1,19 @@
 import SwiftUI
 
+final class LibraryDataCache: ObservableObject {
+    static let shared = LibraryDataCache()
+    @Published var allTracks: [Track] = []
+    
+    func refresh() {
+        Task {
+            let tracks = await DatabaseManager.shared.getAllTracks()
+            await MainActor.run {
+                self.allTracks = tracks
+            }
+        }
+    }
+}
+
 @MainActor
 struct LibraryView: View {
     @EnvironmentObject var client: NavidromeClient
@@ -59,7 +73,9 @@ struct LibraryView: View {
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.2), value: activeCategory)
         .task {
-            if DatabaseManager.shared.getTrackCount() == 0 {
+            LibraryDataCache.shared.refresh()
+            let count = await DatabaseManager.shared.getTrackCount()
+            if count == 0 {
                 client.fetchEverything()
             }
         }
@@ -135,7 +151,7 @@ struct LibraryView: View {
                 if category == "songs" {
                     HStack(spacing: 8) {
                         Button(action: {
-                            playback.shufflePlay(tracks: DatabaseManager.shared.getAllTracks())
+                            playback.shufflePlay(tracks: LibraryDataCache.shared.allTracks)
                         }) {
                             Group {
                                 if isCompact {
@@ -250,7 +266,7 @@ private struct LibraryMenuView: View {
                     }
                     .padding(.horizontal, hPad)
                     let stats = [
-                        ("Tracks", "\(DatabaseManager.shared.getTrackCount())", "music.note", Color.blue),
+                        ("Tracks", "\(dataCache.allTracks.count)", "music.note", Color.blue),
                         ("Playlists", "\(client.playlists.count)", "music.note.list", Color.green),
                         ("Albums", "\(client.albums.count)", "opticaldisc", Color.orange),
                         ("Artists", "\(client.artists.count)", "person.2", Color.teal)
@@ -431,13 +447,14 @@ private struct ArtistGridView: View {
     let isCompact: Bool
     let showOfflineOnly: Bool
     var onArtistClick: ((String, String) -> Void)?
+    @ObservedObject var dataCache = LibraryDataCache.shared
 
     var body: some View {
         let base = client.artists
         let filtered: [Artist] = {
             if showOfflineOnly {
                 var offlineArtistIds = Set<String>()
-                for song in DatabaseManager.shared.getAllTracks() where playback.isDownloaded(song.id) {
+                for song in dataCache.allTracks where playback.isDownloaded(song.id) {
                     if let aid = song.artistId { offlineArtistIds.insert(aid) }
                 }
                 return base.filter { offlineArtistIds.contains($0.id) }
@@ -494,13 +511,14 @@ private struct AlbumGridView: View {
     let isDarkMode: Bool
     let isCompact: Bool
     let showOfflineOnly: Bool
+    @ObservedObject var dataCache = LibraryDataCache.shared
 
     var body: some View {
         let base = client.albums
         let filtered: [Album] = {
             if showOfflineOnly {
                 var offlineAlbumIds = Set<String>()
-                for song in DatabaseManager.shared.getAllTracks() where playback.isDownloaded(song.id) {
+                for song in dataCache.allTracks where playback.isDownloaded(song.id) {
                     if let aid = song.albumId { offlineAlbumIds.insert(aid) }
                 }
                 return base.filter { offlineAlbumIds.contains($0.id) }
@@ -622,9 +640,10 @@ private struct SongListView: View {
     let isDarkMode: Bool
     let isCompact: Bool
     let showOfflineOnly: Bool
+    @ObservedObject var dataCache = LibraryDataCache.shared
 
     var body: some View {
-        let base = DatabaseManager.shared.getAllTracks()
+        let base = dataCache.allTracks
         let filtered = showOfflineOnly ? playback.filterOffline(base) : base
 
         let sorted: [Track] = {

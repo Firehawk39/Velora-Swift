@@ -28,6 +28,7 @@ struct SettingsView: View {
     @State private var loginErrorMessage: String? = nil
 
     @State private var statusTimer: Timer? = nil
+    @State private var isRefreshingSettings = false
     enum ConnStatus { case idle, connecting, connected, error }
 
     // Accent colour — exactly matches web's #a8c7fa
@@ -423,6 +424,14 @@ struct AppSettingsView: View {
             
             ScrollView {
                 VStack(spacing: 48) {
+                    // Low-threshold pull-to-refresh — works on iPhone SE and iPad alike
+                    LowThresholdRefreshControl(isRefreshing: $isRefreshingSettings) {
+                        let size = client.getMediaCacheSize()
+                        DispatchQueue.main.async {
+                            self.cacheSize = size
+                            isRefreshingSettings = false
+                        }
+                    }
                     // Header
                     VStack(spacing: 8) {
                         Text("Settings")
@@ -772,12 +781,6 @@ struct AppSettingsView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .center)
-            }
-            .refreshable {
-                let size = client.getMediaCacheSize()
-                await MainActor.run {
-                    self.cacheSize = size
-                }
             }
             .onAppear {
                 let clientRef = client

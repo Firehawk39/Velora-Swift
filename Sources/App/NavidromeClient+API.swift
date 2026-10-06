@@ -42,8 +42,25 @@ extension NavidromeClient {
         guard NetworkMonitor.shared.isConnected else { return }
         // Fetch up to 100 albums, sorted by newest, so the Home screen "Recently added albums" section is correct
         guard let url = buildUrl(method: "getAlbumList.view", params: ["type": "recent", "size": "100"]) else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else { return }
+
+        var request = URLRequest(url: url)
+        // ETag conditional GET — if the server hasn't changed the list, skip all parsing
+        if let storedEtag = UserDefaults.standard.string(forKey: "etag_albums") {
+            request.setValue(storedEtag, forHTTPHeaderField: "If-None-Match")
+        }
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            if let error = error {
+                Task { @MainActor in self?.fetchError = "Albums: \(error.localizedDescription)" }
+                return
+            }
+            // 304 Not Modified — our cached data is still current, nothing to do
+            if let http = response as? HTTPURLResponse, http.statusCode == 304 { return }
+            guard let data = data else { return }
+            // Cache the new ETag for future conditional requests
+            if let http = response as? HTTPURLResponse, let etag = http.value(forHTTPHeaderField: "ETag") {
+                UserDefaults.standard.set(etag, forKey: "etag_albums")
+            }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let items = decoded.subsonicResponse?.albumList?.album ?? decoded.subsonicResponse?.albumList2?.album ?? []
@@ -58,6 +75,7 @@ extension NavidromeClient {
                         a.created = sub.created
                         return a
                     }
+                    self.fetchError = nil
                     self.saveOfflineMetadata()
                 }
             } catch { AppLogger.shared.log("Error decoding albums: \(error)", level: .error) }
@@ -75,8 +93,29 @@ extension NavidromeClient {
             completion?([])
             return
         }
-        URLSession.shared.dataTask(with: url) { data, _, error in
-            guard error == nil, let data = data else {
+
+        var request = URLRequest(url: url)
+        // ETag conditional GET — skip re-parsing if the artist list hasn't changed server-side
+        if let storedEtag = UserDefaults.standard.string(forKey: "etag_artists") {
+            request.setValue(storedEtag, forHTTPHeaderField: "If-None-Match")
+        }
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            if let error = error {
+                AppLogger.shared.log("Error fetching artists: \(error.localizedDescription)", level: .error)
+                Task { @MainActor in self?.fetchError = "Artists: \(error.localizedDescription)"; completion?([]) }
+                return
+            }
+            // 304 Not Modified — existing cached data is current
+            if let http = response as? HTTPURLResponse, http.statusCode == 304 {
+                Task { @MainActor [weak self] in completion?(self?.artists ?? []) }
+                return
+            }
+            // Cache the ETag for future requests
+            if let http = response as? HTTPURLResponse, let etag = http.value(forHTTPHeaderField: "ETag") {
+                UserDefaults.standard.set(etag, forKey: "etag_artists")
+            }
+            guard let data = data else {
                 Task { @MainActor in completion?([]) }
                 return
             }
@@ -100,6 +139,7 @@ extension NavidromeClient {
                         Artist(id: raw.id, name: raw.name, coverArt: self.getCoverArtUrl(id: raw.id))
                     }
                     self.artists = parsed
+                    self.fetchError = nil
                     self.saveOfflineMetadata()
                     completion?(parsed)
                 }
@@ -113,11 +153,16 @@ extension NavidromeClient {
     // MARK: - Album Tracks
 
     func fetchAlbumTracks(albumId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
-        guard NetworkMonitor.shared.isConnected else { completion([]); return }
-        guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { completion([]); return }
+        let fallback: @MainActor @Sendable () async -> Void = {
+            let offlineTracks = await DatabaseManager.shared.getTracks(albumId: albumId)
+            let downloadedTracks = PlaybackManager.shared?.filterOffline(offlineTracks) ?? offlineTracks
+            completion(downloadedTracks)
+        }
+        guard NetworkMonitor.shared.isConnected else { Task { @MainActor in await fallback() }; return }
+        guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { Task { @MainActor in await fallback() }; return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                Task { @MainActor in completion([]) }
+                Task { @MainActor in await fallback() }
                 return
             }
             do {
@@ -146,26 +191,27 @@ extension NavidromeClient {
     }
 
     func fetchArtistData(artistId: String, completion: @escaping @MainActor @Sendable ([Track], [Album], String?, String?) -> Void) {
-        guard NetworkMonitor.shared.isConnected else {
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                let artistName = self.artists.first(where: { $0.id == artistId })?.name ?? ""
-                let offlineAlbums = self.albums.filter { $0.artistId == artistId }
-                let albumIds = Set(offlineAlbums.map { $0.id })
-                let allTracks = DatabaseManager.shared.getAllTracks()
-                let offlineTracks = allTracks.filter {
-                    $0.artistId == artistId || (albumIds.contains($0.albumId ?? "")) || ($0.artist == artistName && !artistName.isEmpty)
-                }
-                // Filter to only downloaded tracks
-                let downloadedTracks = PlaybackManager.shared?.filterOffline(offlineTracks) ?? offlineTracks
-                completion(downloadedTracks, offlineAlbums, nil, nil)
+        let fallback: @MainActor @Sendable () -> Void = { [weak self] in
+            guard let self = self else { return }
+            let artistName = self.artists.first(where: { $0.id == artistId })?.name ?? ""
+            let offlineAlbums = self.albums.filter { $0.artistId == artistId }
+            let albumIds = Set(offlineAlbums.map { $0.id })
+            let allTracks = LibraryDataCache.shared.allTracks
+            let offlineTracks = allTracks.filter {
+                $0.artistId == artistId || (albumIds.contains($0.albumId ?? "")) || ($0.artist == artistName && !artistName.isEmpty)
             }
+            let downloadedTracks = PlaybackManager.shared?.filterOffline(offlineTracks) ?? offlineTracks
+            completion(downloadedTracks, offlineAlbums, nil, nil)
+        }
+
+        guard NetworkMonitor.shared.isConnected else {
+            Task { @MainActor in fallback() }
             return
         }
-        guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { completion([], [], nil, nil); return }
+        guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { Task { @MainActor in fallback() }; return }
         URLSession.shared.dataTask(with: url) { data, _, error in
             guard error == nil, let data = data else {
-                Task { @MainActor in completion([], [], nil, nil) }
+                Task { @MainActor in fallback() }
                 return
             }
             do {
@@ -243,21 +289,56 @@ extension NavidromeClient {
     // MARK: - Search
 
     func search(query: String, completion: @escaping @MainActor @Sendable ([Track], [Album], [Artist]) -> Void) {
+        let fallback: @MainActor @Sendable () -> Void = { [weak self] in
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lowerQuery = trimmed.lowercased()
+            
+            let allTracks = LibraryDataCache.shared.allTracks
+            let downloadedIds = PlaybackManager.shared?.downloadedTrackIds ?? Set<String>()
+            
+            var downloadedAlbumIds = Set<String>()
+            var downloadedArtistIds = Set<String>()
+            
+            var foundTracks: [Track] = []
+            for track in allTracks where downloadedIds.contains(track.id) {
+                if let aid = track.albumId { downloadedAlbumIds.insert(aid) }
+                if let artId = track.artistId { downloadedArtistIds.insert(artId) }
+                
+                if track.title.lowercased().contains(lowerQuery) ||
+                   (track.artist?.lowercased().contains(lowerQuery) ?? false) ||
+                   (track.album?.lowercased().contains(lowerQuery) ?? false) {
+                    foundTracks.append(track)
+                }
+            }
+            
+            let foundAlbums = self?.albums.filter { album in
+                (album.name.lowercased().contains(lowerQuery) || (album.artist?.lowercased().contains(lowerQuery) ?? false)) &&
+                downloadedAlbumIds.contains(album.id)
+            } ?? []
+            
+            let foundArtists = self?.artists.filter { artist in
+                artist.name.lowercased().contains(lowerQuery) &&
+                downloadedArtistIds.contains(artist.id)
+            } ?? []
+            
+            completion(foundTracks, foundAlbums, foundArtists)
+        }
+
         guard NetworkMonitor.shared.isConnected else {
-            completion([], [], []); return
+            Task { @MainActor in fallback() }; return
         }
         guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
-            completion([], [], []); return
+            Task { @MainActor in fallback() }; return
         }
         URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
                 AppLogger.shared.log("[Search] Network error: \(error.localizedDescription)", level: .error)
-                Task { @MainActor in completion([], [], []) }
+                Task { @MainActor in fallback() }
                 return
             }
             guard let data = data else {
                 AppLogger.shared.log("[Search] No data received from server", level: .info)
-                Task { @MainActor in completion([], [], []) }
+                Task { @MainActor in fallback() }
                 return
             }
             do {
@@ -407,7 +488,7 @@ extension NavidromeClient {
 
     func syncLosslessPlaylist() {
         Task.detached(priority: .background) {
-            let allTracks = DatabaseManager.shared.getAllTracks()
+            let allTracks = await DatabaseManager.shared.getAllTracks()
             let flacIds = allTracks.filter { $0.suffix?.lowercased() == "flac" }.map { $0.id }
             guard !flacIds.isEmpty else { return }
 
@@ -432,7 +513,9 @@ extension NavidromeClient {
             if success {
                 self.syncLosslessPlaylist()
             }
-            completion?([])
+            // Return the actual DB contents so callers get real data, not an empty array
+            let tracks = await DatabaseManager.shared.getAllTracks()
+            completion?(tracks)
         }
     }
 
@@ -471,7 +554,7 @@ extension NavidromeClient {
                     }
 
                     if !songs.isEmpty {
-                        DatabaseManager.shared.insertOrUpdateTracks(songs)
+                        await DatabaseManager.shared.insertOrUpdateTracks(songs)
                         self.fetchSongsPage(offset: offset + batchSize, batchSize: batchSize, completion: completion)
                     } else {
                         completion(true)
@@ -728,7 +811,7 @@ extension NavidromeClient {
             } else if submission {
                 Task { @MainActor in
                     guard let self = self else { return }
-                    if let track = DatabaseManager.shared.getTrack(id: id) {
+                    if let track = await DatabaseManager.shared.getTrack(id: id) {
                         self.recentlyPlayed.removeAll(where: { $0.id == id })
                         self.recentlyPlayed.insert(track, at: 0)
                         if self.recentlyPlayed.count > 15 {
@@ -879,7 +962,7 @@ extension NavidromeClient {
             guard let self = self else { return }
             self.artists.removeAll()
             self.albums.removeAll()
-            DatabaseManager.shared.clearTracks()
+            await DatabaseManager.shared.clearTracks()
             PlaybackManager.shared?.clearDownloadState()
             self.playlists.removeAll()
             self.recentlyPlayed.removeAll()

@@ -75,6 +75,9 @@ final class VeloraChatViewModel: ObservableObject {
     @Published var isStreaming: Bool = false
 
     private var engineBaseUrl: URL? {
+        if let aiServerStr = UserDefaults.standard.string(forKey: "velora_ai_url"), !aiServerStr.isEmpty {
+            return URL(string: aiServerStr)
+        }
         guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
               var components = URLComponents(string: serverStr) else {
             return URL(string: "http://localhost:8000/api/v1")

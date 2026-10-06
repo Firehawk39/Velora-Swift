@@ -16,6 +16,8 @@ struct HomeView: View {
     var onSeeAll: (() -> Void)? = nil
     var onScroll: ((CGFloat) -> Void)? = nil
 
+    @State private var isRefreshing = false
+
     // Greeting — matches the web's time-of-day logic
     var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
@@ -32,6 +34,16 @@ struct HomeView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
 
+                // Inject the low-threshold refresh control as the first child so it
+                // attaches to this ScrollView's UIScrollView, not a nested one.
+                LowThresholdRefreshControl(isRefreshing: $isRefreshing) {
+                    client.fetchAlbums()
+                    client.fetchArtists()
+                    // Give the fetches a moment then hide the spinner
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        isRefreshing = false
+                    }
+                }
 
                 Spacer().frame(height: ScreenTier.isSmall ? 110 : (isCompact ? 80 : 100))
 
@@ -69,10 +81,20 @@ struct HomeView: View {
                     Spacer().frame(height: 32)
                 }
 
-                // ── Artists ───────────────────────────────────────────
-                let offlineArtists = !network.isConnected ? client.artists.filter { artist in
-                    DatabaseManager.shared.getTracks(artistId: artist.id).contains(where: { playback.isDownloaded($0.id) })
-                } : client.artists
+                let (offlineArtists, offlineAlbums): ([Artist], [Album]) = {
+                    if network.isConnected { return (client.artists, client.albums) }
+                    let downloadedTrackIds = playback.downloadedTrackIds
+                    var downloadedAlbumIds = Set<String>()
+                    var downloadedArtistIds = Set<String>()
+                    for track in LibraryDataCache.shared.allTracks where downloadedTrackIds.contains(track.id) {
+                        if let aid = track.albumId { downloadedAlbumIds.insert(aid) }
+                        if let artId = track.artistId { downloadedArtistIds.insert(artId) }
+                    }
+                    return (
+                        client.artists.filter { downloadedArtistIds.contains($0.id) },
+                        client.albums.filter { downloadedAlbumIds.contains($0.id) }
+                    )
+                }()
 
                 if !offlineArtists.isEmpty || network.isConnected {
                     SectionHeader(title: "Artists", isDark: isDark, hPad: hPad, onSeeAll: onSeeAll)
@@ -100,9 +122,6 @@ struct HomeView: View {
                 }
 
                 // ── Recently Added Albums ─────────────────────────────
-                let offlineAlbums = !network.isConnected ? client.albums.filter { album in
-                    DatabaseManager.shared.getTracks(albumId: album.id).contains(where: { playback.isDownloaded($0.id) })
-                } : client.albums
 
                 if !offlineAlbums.isEmpty || network.isConnected {
                     SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad, onSeeAll: onSeeAll)
@@ -140,10 +159,6 @@ struct HomeView: View {
             )
         }
         .ignoresSafeArea(edges: .top)
-        .refreshable {
-            client.fetchAlbums()
-            client.fetchArtists()
-        }
     }
 }
 

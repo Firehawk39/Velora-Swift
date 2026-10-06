@@ -269,7 +269,7 @@ final class SyncManager: ObservableObject {
 
         Task {
             let tracks: [Track]
-            let allTracks = DatabaseManager.shared.getAllTracks()
+            let allTracks = await DatabaseManager.shared.getAllTracks()
             if allTracks.isEmpty {
                 lyricsStatus = "Fetching song list..."
                 tracks = await withCheckedContinuation { continuation in
@@ -431,7 +431,7 @@ final class SyncManager: ObservableObject {
 
             // 1. Ensure we actually have the songs list
             let tracks: [Track]
-            let allTracks = DatabaseManager.shared.getAllTracks()
+            let allTracks = await DatabaseManager.shared.getAllTracks()
             if allTracks.isEmpty {
                 mediaStatus = "Fetching song list..."
                 tracks = await withCheckedContinuation { continuation in
@@ -585,7 +585,7 @@ final class SyncManager: ObservableObject {
             let fileManager = FileManager.default
 
             // Wait for client to have songs loaded
-            let allTracks = DatabaseManager.shared.getAllTracks()
+            let allTracks = await DatabaseManager.shared.getAllTracks()
             if allTracks.isEmpty {
                 repairStatus = "Fetching track list..."
                 await withCheckedContinuation { continuation in

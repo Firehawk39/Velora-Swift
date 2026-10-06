@@ -45,6 +45,10 @@ struct ContentView: View {
         let playbackInstance = PlaybackManager(client: clientInstance)
         _client = StateObject(wrappedValue: clientInstance)
         _playback = StateObject(wrappedValue: playbackInstance)
+        // Re-queue any downloads that were in-flight when the app was last killed.
+        // loadDownloadedTracks() runs first (inside PlaybackManager.init), so finished
+        // tracks are already in the index and won't be re-downloaded.
+        playbackInstance.restorePendingDownloads()
     }
 
     @ObservedObject private var network = NetworkMonitor.shared
@@ -195,8 +199,6 @@ struct ContentView: View {
                         artistStack.append((id: id, name: name))
                     }
                 })
-            case "velora":
-                VeloraChatView()
             case "now-playing":
                 NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle, onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {

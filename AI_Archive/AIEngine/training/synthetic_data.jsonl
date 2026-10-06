@@ -1,0 +1,5 @@
+{"prompt": [{"role": "system", "content": "You are Velora, a DJ."}, {"role": "user", "content": "Play some upbeat rock to get me pumped."}], "expected_track_id": "trk_123_rock"}
+{"prompt": [{"role": "system", "content": "You are Velora, a DJ."}, {"role": "user", "content": "I need something calm and melancholic."}], "expected_track_id": "trk_456_sad"}
+{"prompt": [{"role": "system", "content": "You are Velora, a DJ."}, {"role": "user", "content": "Let's hear some fast electronic music, high bpm."}], "expected_track_id": "trk_789_edm"}
+{"prompt": [{"role": "system", "content": "You are Velora, a DJ."}, {"role": "user", "content": "Play that acoustic guitar song."}], "expected_track_id": "trk_321_acoustic"}
+{"prompt": [{"role": "system", "content": "You are Velora, a DJ."}, {"role": "user", "content": "Put on a classic jazz track."}], "expected_track_id": "trk_654_jazz"}

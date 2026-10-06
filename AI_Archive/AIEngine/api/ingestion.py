@@ -10,6 +10,7 @@ router = APIRouter()
 class ScanRequest(BaseModel):
     track_id: str
     file_path: str
+    tags: str = ""
 
 MUSIC_DIR = "/music"
 
@@ -47,6 +48,7 @@ async def scan_all_tracks(background_tasks: BackgroundTasks):
     queued_count = 0
     supported_exts = {'.mp3', '.flac', '.wav', '.m4a', '.ogg'}
     
+    tracks_to_process = []
     for root, _, files in os.walk(MUSIC_DIR):
         for file in files:
             ext = os.path.splitext(file)[1].lower()
@@ -59,8 +61,15 @@ async def scan_all_tracks(background_tasks: BackgroundTasks):
                 if track_id not in existing_ids:
                     # Use filename as fallback tags so AI knows the song name
                     tags = os.path.basename(file_path)
-                    background_tasks.add_task(process_track, track_id, file_path, tags)
+                    tracks_to_process.append((track_id, file_path, tags))
                     queued_count += 1
+                    
+    def process_batch(tracks):
+        for t_id, f_path, t_tags in tracks:
+            process_track(t_id, f_path, t_tags)
+            
+    if tracks_to_process:
+        background_tasks.add_task(process_batch, tracks_to_process)
                     
     return {
         "status": "accepted",

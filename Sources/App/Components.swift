@@ -283,7 +283,6 @@ struct AppHeader: View {
         HStack(spacing: 0) {
             TabButton(id: "home", label: "Home", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "library", label: "Library", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
-            TabButton(id: "velora", label: "Velora", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "search", label: "Search", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
             TabButton(id: "now-playing", label: "Playing", activeTab: $activeTab, isDarkMode: isDarkMode, isPlayingTab: isPlayingTab, onAction: onAction)
         }
@@ -372,22 +371,12 @@ struct TabButton: View {
             }
         }) {
             VStack(spacing: 4) {
-                    if id == "velora" {
-                        Text("V")
-                            .font(.custom("Stardom", size: fontSize + 4).weight(.bold))
-                            .padding(.horizontal, horizontalPadding)
-                            .padding(.vertical, verticalPadding)
-                            .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
-                            .clipShape(Capsule())
-                            .offset(y: 1) // optical alignment for Stardom
-                    } else {
-                        Text(label)
-                            .font(.system(size: fontSize, weight: isActive ? .bold : .medium))
-                            .padding(.horizontal, horizontalPadding)
-                            .padding(.vertical, verticalPadding)
-                            .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
-                            .clipShape(Capsule())
-                    }
+                Text(label)
+                    .font(.system(size: fontSize, weight: isActive ? .bold : .medium))
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.vertical, verticalPadding)
+                    .background(isActive ? (isPlayingTab || isDarkMode ? Color.white.opacity(0.15) : Color.white) : Color.clear)
+                    .clipShape(Capsule())
             }
             .foregroundColor(isActive ? (isDarkMode ? .white : .black) : .gray)
         }
@@ -805,3 +794,74 @@ public struct ToggleButton: View {
     }
 }
 
+
+// MARK: - Low-Threshold Refresh Control
+// SwiftUI's .refreshable{} uses UIRefreshControl internally but doesn't expose the
+// trigger distance. On iPhone SE (4") the default ~80pt threshold is too large.
+// This component injects a UIRefreshControl directly into the enclosing UIScrollView
+// and lowers triggerVerticalOffset on small screens so a shorter pull fires the spinner.
+//
+// Usage: place as the FIRST child inside a ScrollView:
+//   ScrollView {
+//       LowThresholdRefreshControl(isRefreshing: $isRefreshing) { /* work */ }
+//       // ... rest of content
+//   }
+struct LowThresholdRefreshControl: UIViewRepresentable {
+    @Binding var isRefreshing: Bool
+    let onRefresh: () -> Void
+
+    private var triggerOffset: CGFloat {
+        let minDim = min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+        if minDim <= 330 { return 36 }   // iPhone SE 1st gen (320pt)
+        if minDim <= 375 { return 48 }   // iPhone 8 / SE 3rd gen
+        if minDim <= 430 { return 60 }   // Standard / Plus iPhones
+        return 70                         // iPads
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UIView {
+        let v = UIView(frame: .zero)
+        v.isHidden = true
+        v.isUserInteractionEnabled = false
+        return v
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            guard let sv = uiView.firstScrollViewParent() else { return }
+            if sv.refreshControl == nil {
+                let rc = UIRefreshControl()
+                rc.addTarget(context.coordinator,
+                             action: #selector(Coordinator.handleRefresh),
+                             for: .valueChanged)
+                if #available(iOS 15.4, *) {
+                    rc.triggerVerticalOffset = self.triggerOffset
+                }
+                sv.refreshControl = rc
+            }
+            if isRefreshing {
+                sv.refreshControl?.beginRefreshing()
+            } else {
+                sv.refreshControl?.endRefreshing()
+            }
+        }
+    }
+
+    class Coordinator: NSObject {
+        var parent: LowThresholdRefreshControl
+        init(_ p: LowThresholdRefreshControl) { parent = p }
+        @objc func handleRefresh() {
+            parent.isRefreshing = true
+            parent.onRefresh()
+        }
+    }
+}
+
+private extension UIView {
+    func firstScrollViewParent() -> UIScrollView? {
+        var v: UIView? = superview
+        while let c = v { if let sv = c as? UIScrollView { return sv }; v = c.superview }
+        return nil
+    }
+}

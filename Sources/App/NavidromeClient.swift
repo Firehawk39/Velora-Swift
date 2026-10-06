@@ -8,6 +8,8 @@ final class NavidromeClient: ObservableObject {
     @Published var albums: [Album] = []
     @Published var recentlyPlayed: [Track] = []
     @Published var playlists: [Playlist] = []
+    /// Set when any background fetch fails — the UI can observe this to surface an error banner.
+    @Published var fetchError: String? = nil
 
     private var pendingSaveTask: Task<Void, Never>?
 

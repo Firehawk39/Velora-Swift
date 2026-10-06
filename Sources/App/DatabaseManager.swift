@@ -2,10 +2,11 @@ import Foundation
 import SQLite3
 import os.log
 
-final class DatabaseManager: @unchecked Sendable {
+internal let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+actor DatabaseManager {
     static let shared = DatabaseManager()
     private var db: OpaquePointer?
-    private let queue = DispatchQueue(label: "com.velora.db", qos: .userInitiated)
     private let logger = OSLog(subsystem: "com.velora", category: "DatabaseManager")
 
     private init() {
@@ -55,168 +56,152 @@ final class DatabaseManager: @unchecked Sendable {
     }
 
     func insertOrUpdateTracks(_ tracks: [Track]) {
-        queue.async {
-            guard let db = self.db else { return }
+        guard let db = self.db else { return }
 
-            sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
+        sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
 
-            let insertStatementString = """
-            INSERT INTO Tracks (id, title, album, artist, duration, coverArt, artistId, albumId, created, isStarred, playCount, suffix, track, discNumber)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-            title=excluded.title, album=excluded.album, artist=excluded.artist, duration=excluded.duration, coverArt=excluded.coverArt, artistId=excluded.artistId, albumId=excluded.albumId, created=excluded.created, isStarred=excluded.isStarred, playCount=excluded.playCount, suffix=excluded.suffix, track=excluded.track, discNumber=excluded.discNumber;
-            """
+        let insertStatementString = """
+        INSERT INTO Tracks (id, title, album, artist, duration, coverArt, artistId, albumId, created, isStarred, playCount, suffix, track, discNumber)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+        title=excluded.title, album=excluded.album, artist=excluded.artist, duration=excluded.duration, coverArt=excluded.coverArt, artistId=excluded.artistId, albumId=excluded.albumId, created=excluded.created, isStarred=excluded.isStarred, playCount=excluded.playCount, suffix=excluded.suffix, track=excluded.track, discNumber=excluded.discNumber;
+        """
 
-            var insertStatement: OpaquePointer?
-            if sqlite3_prepare_v2(db, insertStatementString, -1, &insertStatement, nil) == SQLITE_OK {
-                for track in tracks {
-                    sqlite3_bind_text(insertStatement, 1, (track.id as NSString).utf8String, -1, nil)
-                    sqlite3_bind_text(insertStatement, 2, (track.title as NSString).utf8String, -1, nil)
-                    
-                    if let album = track.album { sqlite3_bind_text(insertStatement, 3, (album as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(insertStatement, 3) }
-                    if let artist = track.artist { sqlite3_bind_text(insertStatement, 4, (artist as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(insertStatement, 4) }
-                    if let duration = track.duration { sqlite3_bind_int(insertStatement, 5, Int32(duration)) } else { sqlite3_bind_null(insertStatement, 5) }
-                    if let coverArt = track.coverArt { sqlite3_bind_text(insertStatement, 6, (coverArt as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(insertStatement, 6) }
-                    if let artistId = track.artistId { sqlite3_bind_text(insertStatement, 7, (artistId as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(insertStatement, 7) }
-                    if let albumId = track.albumId { sqlite3_bind_text(insertStatement, 8, (albumId as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(insertStatement, 8) }
-                    if let created = track.created { sqlite3_bind_text(insertStatement, 9, (created as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(insertStatement, 9) }
-                    
-                    sqlite3_bind_int(insertStatement, 10, track.isStarred ? 1 : 0)
-                    if let playCount = track.playCount { sqlite3_bind_int(insertStatement, 11, Int32(playCount)) } else { sqlite3_bind_null(insertStatement, 11) }
-                    
-                    if let suffix = track.suffix { sqlite3_bind_text(insertStatement, 12, (suffix as NSString).utf8String, -1, nil) } else { sqlite3_bind_null(insertStatement, 12) }
-                    if let trackNum = track.track { sqlite3_bind_int(insertStatement, 13, Int32(trackNum)) } else { sqlite3_bind_null(insertStatement, 13) }
-                    if let discNumber = track.discNumber { sqlite3_bind_int(insertStatement, 14, Int32(discNumber)) } else { sqlite3_bind_null(insertStatement, 14) }
+        var insertStatement: OpaquePointer?
+        if sqlite3_prepare_v2(db, insertStatementString, -1, &insertStatement, nil) == SQLITE_OK {
+            for track in tracks {
+                sqlite3_bind_text(insertStatement, 1, (track.id as NSString).utf8String, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(insertStatement, 2, (track.title as NSString).utf8String, -1, SQLITE_TRANSIENT)
+                
+                if let album = track.album { sqlite3_bind_text(insertStatement, 3, (album as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 3) }
+                if let artist = track.artist { sqlite3_bind_text(insertStatement, 4, (artist as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 4) }
+                if let duration = track.duration { sqlite3_bind_int(insertStatement, 5, Int32(duration)) } else { sqlite3_bind_null(insertStatement, 5) }
+                if let coverArt = track.coverArt { sqlite3_bind_text(insertStatement, 6, (coverArt as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 6) }
+                if let artistId = track.artistId { sqlite3_bind_text(insertStatement, 7, (artistId as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 7) }
+                if let albumId = track.albumId { sqlite3_bind_text(insertStatement, 8, (albumId as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 8) }
+                if let created = track.created { sqlite3_bind_text(insertStatement, 9, (created as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 9) }
+                
+                sqlite3_bind_int(insertStatement, 10, track.isStarred ? 1 : 0)
+                if let playCount = track.playCount { sqlite3_bind_int(insertStatement, 11, Int32(playCount)) } else { sqlite3_bind_null(insertStatement, 11) }
+                
+                if let suffix = track.suffix { sqlite3_bind_text(insertStatement, 12, (suffix as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 12) }
+                if let trackNum = track.track { sqlite3_bind_int(insertStatement, 13, Int32(trackNum)) } else { sqlite3_bind_null(insertStatement, 13) }
+                if let discNumber = track.discNumber { sqlite3_bind_int(insertStatement, 14, Int32(discNumber)) } else { sqlite3_bind_null(insertStatement, 14) }
 
-                    if sqlite3_step(insertStatement) != SQLITE_DONE {
-                        os_log("Could not insert row.", log: self.logger, type: .error)
-                    }
-                    sqlite3_reset(insertStatement)
+                if sqlite3_step(insertStatement) != SQLITE_DONE {
+                    os_log("Could not insert row.", log: self.logger, type: .error)
                 }
-            } else {
-                os_log("INSERT statement could not be prepared.", log: self.logger, type: .error)
+                sqlite3_reset(insertStatement)
             }
-            sqlite3_finalize(insertStatement)
-
-            sqlite3_exec(db, "COMMIT TRANSACTION", nil, nil, nil)
+        } else {
+            os_log("INSERT statement could not be prepared.", log: self.logger, type: .error)
         }
+        sqlite3_finalize(insertStatement)
+
+        sqlite3_exec(db, "COMMIT TRANSACTION", nil, nil, nil)
     }
 
     func clearTracks() {
-        queue.async {
-            guard let db = self.db else { return }
-            sqlite3_exec(db, "DELETE FROM Tracks", nil, nil, nil)
-        }
+        guard let db = self.db else { return }
+        sqlite3_exec(db, "DELETE FROM Tracks", nil, nil, nil)
     }
 
     func getTrack(id: String) -> Track? {
-        return queue.sync {
-            guard let db = self.db else { return nil }
-            let query = "SELECT * FROM Tracks WHERE id = ? LIMIT 1;"
-            var statement: OpaquePointer?
-            var result: Track?
+        guard let db = self.db else { return nil }
+        let query = "SELECT * FROM Tracks WHERE id = ? LIMIT 1;"
+        var statement: OpaquePointer?
+        var result: Track?
 
-            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-                sqlite3_bind_text(statement, 1, (id as NSString).utf8String, -1, nil)
-                if sqlite3_step(statement) == SQLITE_ROW {
-                    result = parseTrack(statement)
-                }
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (id as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(statement) == SQLITE_ROW {
+                result = parseTrack(statement)
             }
-            sqlite3_finalize(statement)
-            return result
         }
+        sqlite3_finalize(statement)
+        return result
     }
 
     func getTracks(albumId: String) -> [Track] {
-        return queue.sync {
-            guard let db = self.db else { return [] }
-            let query = "SELECT * FROM Tracks WHERE albumId = ? ORDER BY discNumber ASC, track ASC;"
-            var statement: OpaquePointer?
-            var results: [Track] = []
+        guard let db = self.db else { return [] }
+        let query = "SELECT * FROM Tracks WHERE albumId = ? ORDER BY discNumber ASC, track ASC;"
+        var statement: OpaquePointer?
+        var results: [Track] = []
 
-            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-                sqlite3_bind_text(statement, 1, (albumId as NSString).utf8String, -1, nil)
-                while sqlite3_step(statement) == SQLITE_ROW {
-                    if let track = parseTrack(statement) { results.append(track) }
-                }
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (albumId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let track = parseTrack(statement) { results.append(track) }
             }
-            sqlite3_finalize(statement)
-            return results
         }
+        sqlite3_finalize(statement)
+        return results
     }
 
     func getTracks(artistId: String) -> [Track] {
-        return queue.sync {
-            guard let db = self.db else { return [] }
-            let query = "SELECT * FROM Tracks WHERE artistId = ?;"
-            var statement: OpaquePointer?
-            var results: [Track] = []
+        guard let db = self.db else { return [] }
+        let query = "SELECT * FROM Tracks WHERE artistId = ?;"
+        var statement: OpaquePointer?
+        var results: [Track] = []
 
-            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-                sqlite3_bind_text(statement, 1, (artistId as NSString).utf8String, -1, nil)
-                while sqlite3_step(statement) == SQLITE_ROW {
-                    if let track = parseTrack(statement) { results.append(track) }
-                }
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (artistId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let track = parseTrack(statement) { results.append(track) }
             }
-            sqlite3_finalize(statement)
-            return results
         }
+        sqlite3_finalize(statement)
+        return results
     }
 
     func getTrackCount() -> Int {
-        return queue.sync {
-            guard let db = self.db else { return 0 }
-            let query = "SELECT COUNT(*) FROM Tracks;"
-            var statement: OpaquePointer?
-            var count = 0
+        guard let db = self.db else { return 0 }
+        let query = "SELECT COUNT(*) FROM Tracks;"
+        var statement: OpaquePointer?
+        var count = 0
 
-            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-                if sqlite3_step(statement) == SQLITE_ROW {
-                    count = Int(sqlite3_column_int(statement, 0))
-                }
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            if sqlite3_step(statement) == SQLITE_ROW {
+                count = Int(sqlite3_column_int(statement, 0))
             }
-            sqlite3_finalize(statement)
-            return count
         }
+        sqlite3_finalize(statement)
+        return count
     }
 
     func getAllTracks() -> [Track] {
-        return queue.sync {
-            guard let db = self.db else { return [] }
-            let query = "SELECT * FROM Tracks;"
-            var statement: OpaquePointer?
-            var results: [Track] = []
+        guard let db = self.db else { return [] }
+        let query = "SELECT * FROM Tracks;"
+        var statement: OpaquePointer?
+        var results: [Track] = []
 
-            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-                while sqlite3_step(statement) == SQLITE_ROW {
-                    if let track = parseTrack(statement) { results.append(track) }
-                }
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let track = parseTrack(statement) { results.append(track) }
             }
-            sqlite3_finalize(statement)
-            return results
         }
+        sqlite3_finalize(statement)
+        return results
     }
 
     func searchTracks(query text: String) -> [Track] {
-        return queue.sync {
-            guard let db = self.db else { return [] }
-            let query = "SELECT * FROM Tracks WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? LIMIT 50;"
-            var statement: OpaquePointer?
-            var results: [Track] = []
+        guard let db = self.db else { return [] }
+        let query = "SELECT * FROM Tracks WHERE title LIKE ? OR artist LIKE ? OR album LIKE ? LIMIT 50;"
+        var statement: OpaquePointer?
+        var results: [Track] = []
 
-            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-                let searchString = "%\(text)%"
-                sqlite3_bind_text(statement, 1, (searchString as NSString).utf8String, -1, nil)
-                sqlite3_bind_text(statement, 2, (searchString as NSString).utf8String, -1, nil)
-                sqlite3_bind_text(statement, 3, (searchString as NSString).utf8String, -1, nil)
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            let searchString = "%\(text)%"
+            sqlite3_bind_text(statement, 1, (searchString as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 2, (searchString as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 3, (searchString as NSString).utf8String, -1, SQLITE_TRANSIENT)
 
-                while sqlite3_step(statement) == SQLITE_ROW {
-                    if let track = parseTrack(statement) { results.append(track) }
-                }
+            while sqlite3_step(statement) == SQLITE_ROW {
+                if let track = parseTrack(statement) { results.append(track) }
             }
-            sqlite3_finalize(statement)
-            return results
         }
+        sqlite3_finalize(statement)
+        return results
     }
 
     private func parseTrack(_ statement: OpaquePointer?) -> Track? {
