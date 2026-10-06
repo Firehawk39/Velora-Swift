@@ -2,7 +2,7 @@ workflows:
   velora-native-jailbreak:
     name: Velora Native (Jailbreak Optimized)
     max_build_duration: 60
-    instance_type: mac_mini_m2
+    instance_type: mac_mini_m1
     environment:
       xcode: latest
       vars:
