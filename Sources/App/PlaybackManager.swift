@@ -1182,6 +1182,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
+        // THROTTLE: Only update the UI roughly every 512KB to prevent MainActor CPU flooding
+        let interval: Int64 = 524_288
+        let justCrossedBoundary = (totalBytesWritten / interval) > ((totalBytesWritten - bytesWritten) / interval)
+        if !justCrossedBoundary && totalBytesWritten < totalBytesExpectedToWrite {
+            return
+        }
+        
         let trackId = String(desc[..<separatorIdx])
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
 
