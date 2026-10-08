@@ -182,6 +182,13 @@ final class FanartManager: ObservableObject {
             doCycle(cachedMbid)
             return
         }
+        
+        let logoSidecarUrl = self.clearLogoDir.appendingPathComponent("logo_" + sanitizeFileName(primaryArtist) + ".mbid")
+        if let data = try? Data(contentsOf: logoSidecarUrl), let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !cachedMbid.isEmpty {
+            try? cachedMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+            doCycle(cachedMbid)
+            return
+        }
 
         self.getMBIDSafe(for: primaryArtist, priority: URLSessionTask.highPriority) { [weak self] result in
             guard let self = self else { return }
@@ -234,11 +241,15 @@ final class FanartManager: ObservableObject {
 
         // 3. Resolve MBID and Fetch
         if index == 0, let validMBID = providedMbid, !validMBID.isEmpty {
+            let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+            try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
             queryFanart(validMBID)
         } else {
             self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
                 switch result {
                 case .found(let resolved):
+                    let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+                    try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
                     queryFanart(resolved)
                 case .notFound:
                     // Genuinely not on MusicBrainz — write negative cache
