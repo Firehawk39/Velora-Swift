@@ -475,7 +475,7 @@ struct AppSettingsView: View {
                                     }
                                 }
                                 
-                                Text(connectionMode == 0 ? "Using local server URL" : (connectionMode == 1 ? "Using remote server (zrok.io)" : "Forcing offline mode (No network requests)"))
+                                Text(connectionMode == 0 ? "Using local server URL" : (connectionMode == 1 ? "Using remote server URL" : "Forcing offline mode (No network requests)"))
                                     .font(.system(size: 12))
                                     .foregroundColor(.gray)
                             }
