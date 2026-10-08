@@ -83,7 +83,7 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
     public var body: some View {
         Group {
             if let url = url, url.isFileURL {
-                if let uiImage = UIImage(contentsOfFile: url.path) {
+                if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
                     content(Image(uiImage: uiImage))
                 } else {
                     placeholder()
