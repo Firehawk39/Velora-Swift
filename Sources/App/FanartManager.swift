@@ -149,30 +149,41 @@ final class FanartManager: ObservableObject {
         }
     }
 
-    /// Fetches a new random backdrop from Fanart.tv, overwrites the current cache, and updates the UI instantly.
     func cycleBackdrop(for artists: [String], artistId: String? = nil) {
         guard !artists.isEmpty else { return }
         let primaryArtist = artists[0]
         let key = getCacheKey(artistName: primaryArtist, artistId: artistId)
         let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
+        let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+
+        let doCycle: (String) -> Void = { [weak self] resolvedMBID in
+            guard let self = self else { return }
+            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
+            self.fetchFromFanart(urlString: urlString, type: .background, artistName: primaryArtist, randomize: true, priority: URLSessionTask.highPriority) { url, isEmpty in
+                if let url = url {
+                    AppLogger.shared.log("[Fanart] Cycling backdrop to random URL for \(primaryArtist)")
+                    self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, priority: URLSessionTask.highPriority) { image in
+                        if let img = image, self.currentArtistName == primaryArtist {
+                            withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
+                        }
+                    }
+                } else {
+                    AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist)")
+                }
+            }
+        }
+
+        if let data = try? Data(contentsOf: sidecarUrl), let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !cachedMbid.isEmpty {
+            doCycle(cachedMbid)
+            return
+        }
 
         self.getMBIDSafe(for: primaryArtist, priority: URLSessionTask.highPriority) { [weak self] result in
             guard let self = self else { return }
             switch result {
             case .found(let resolvedMBID):
-                let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
-                self.fetchFromFanart(urlString: urlString, type: .background, artistName: primaryArtist, randomize: true, priority: URLSessionTask.highPriority) { url, isEmpty in
-                    if let url = url {
-                        AppLogger.shared.log("[Fanart] Cycling backdrop to random URL for \(primaryArtist)")
-                        self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, priority: URLSessionTask.highPriority) { image in
-                            if let img = image, self.currentArtistName == primaryArtist {
-                                withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
-                            }
-                        }
-                    } else {
-                        AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist)")
-                    }
-                }
+                try? resolvedMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                doCycle(resolvedMBID)
             case .notFound, .networkError:
                 AppLogger.shared.log("[Fanart] Cannot cycle backdrop — MBID not found or network error.")
             }
@@ -800,7 +811,20 @@ final class FanartManager: ObservableObject {
                     if type == .background {
                         if let bgs = json["artistbackground"] as? [[String: Any]], !bgs.isEmpty {
                             let hashValue = self.stableHash(artistName.lowercased())
-                            let index = randomize ? Int.random(in: 0..<bgs.count) : (abs(hashValue) % bgs.count)
+                            let defaultIndex = abs(hashValue) % bgs.count
+                            var index = defaultIndex
+                            
+                            if randomize && bgs.count > 1 {
+                                // Guarantee we pick a DIFFERENT backdrop than the default one on the first cycle
+                                var newIndex = Int.random(in: 0..<bgs.count)
+                                while newIndex == defaultIndex {
+                                    newIndex = Int.random(in: 0..<bgs.count)
+                                }
+                                index = newIndex
+                            } else if randomize && bgs.count == 1 {
+                                AppLogger.shared.log("[Fanart] Only 1 backdrop exists for \(artistName), cannot cycle.")
+                            }
+                            
                             let selected = bgs[index]["url"] as? String
                             DispatchQueue.main.async { completion(selected, false) }
                             return
