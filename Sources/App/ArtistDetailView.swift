@@ -84,8 +84,6 @@ struct ArtistDetailView: View {
         }
         .onAppear {
             fetchArtistData()
-            FanartManager.shared.fetchBackdrop(for: [artistName], artistId: artistId, mbid: nil, allowNetwork: true)
-            FanartManager.shared.fetchClearLogo(for: artistName, mbid: nil)
         }
     }
 
