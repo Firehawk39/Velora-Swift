@@ -831,7 +831,7 @@ struct NowPlayingView: View {
         } label: {
             Group {
                 if isCyclingBackdrop {
-                    LoadingCircle(size: 20, strokeWidth: 2.5, accentColor: .white)
+                    LoadingCircle(size: 28, strokeWidth: 3, accentColor: .red)
                 } else {
                     Image(systemName: "photo.on.rectangle.angled")
                 }
