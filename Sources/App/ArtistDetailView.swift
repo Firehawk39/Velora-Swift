@@ -465,6 +465,18 @@ struct ArtistBackdropView: View {
                         .clipped()
                         .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                         .opacity(isDarkMode ? 0.35 : 0.25)
+                } else {
+                    SelfHealingAsyncImage(url: URL(string: client.getCoverArtUrl(id: artistId, size: 600))) { img in
+                        img.resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                            .clipped()
+                            .blur(radius: 100, opaque: true)
+                            .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                            .opacity(isDarkMode ? 0.45 : 0.25)
+                    } placeholder: {
+                        Color.clear
+                    }
                 }
             }
             .overlay(
