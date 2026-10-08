@@ -448,7 +448,6 @@ struct ArtistBackdropView: View {
     let isDarkMode: Bool
     let client: NavidromeClient
     
-    @StateObject private var fanart = FanartManager()
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass) var vSizeClass
     
@@ -470,28 +469,18 @@ struct ArtistBackdropView: View {
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
                 
-                if let backdrop = fanart.currentBackdrop {
-                    Image(uiImage: backdrop)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                        .clipped()
-                        .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                        .opacity(isDarkMode ? 0.35 : 0.25)
+                if ScreenTier.isSE {
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
+                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
+                            isDarkMode ? .black : .white
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 } else {
-                    if ScreenTier.isSE {
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
-                                Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
-                                isDarkMode ? .black : .white
-                            ]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    } else {
-                        AlbumAmbientGradientView(colors: artistPalette)
-                    }
+                    AlbumAmbientGradientView(colors: artistPalette)
                 }
             }
             .overlay(
@@ -516,7 +505,6 @@ struct ArtistBackdropView: View {
             )
         }
         .onAppear {
-            fanart.fetchBackdrop(for: [artistName], artistId: artistId, mbid: nil, allowNetwork: true)
             fetchColors()
         }
     }
