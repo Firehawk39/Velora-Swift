@@ -144,6 +144,7 @@ final class FanartManager: ObservableObject {
                 } else {
                     self.currentArtistName = primaryArtist
                     self.fetchBackdropRecursive(artists: artists, index: 0, artistId: artistId, providedMbid: mbid, allowNetwork: allowNetwork)
+                }
             }
         }
     }
