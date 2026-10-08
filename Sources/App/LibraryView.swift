@@ -544,7 +544,12 @@ private struct AlbumGridView: View {
                                     img.resizable()
                                         .scaledToFill()
                                 } placeholder: {
-                                    Color.gray.opacity(0.1)
+                                    ZStack {
+                                        Color.gray.opacity(isDarkMode ? 0.2 : 0.1)
+                                        Image(systemName: "music.note")
+                                            .font(.system(size: isCompact ? 24 : 32))
+                                            .foregroundColor(.gray.opacity(0.5))
+                                    }
                                 }
                             )
                             .clipped()
@@ -588,7 +593,12 @@ private struct AlbumGridView: View {
                             img.resizable()
                                 .scaledToFill()
                         } placeholder: {
-                            Color.gray.opacity(0.1)
+                            ZStack {
+                                Color.gray.opacity(isDarkMode ? 0.2 : 0.1)
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.gray.opacity(0.5))
+                            }
                         }
                         .frame(width: isCompact ? 50 : 60, height: isCompact ? 50 : 60)
                         .clipped()

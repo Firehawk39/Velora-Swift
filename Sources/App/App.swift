@@ -53,9 +53,10 @@ struct VeloraApp: App {
         for dir in dirs {
             guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { continue }
             for file in files {
-                if let attrs = try? file.resourceValues(forKeys: [.fileSizeKey]),
-                   let size = attrs.fileSize, size < 100 {
-                    try? fm.removeItem(at: file)
+                if let attrs = try? file.resourceValues(forKeys: [.fileSizeKey]), let size = attrs.fileSize {
+                    if size < 1000 || UIImage(contentsOfFile: file.path) == nil {
+                        try? fm.removeItem(at: file)
+                    }
                 }
             }
         }

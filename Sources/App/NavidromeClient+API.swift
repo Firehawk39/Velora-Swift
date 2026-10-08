@@ -597,7 +597,11 @@ extension NavidromeClient {
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
                     return
                 }
-                try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
+                if let data = try? Data(contentsOf: tempLocation), UIImage(data: data) != nil {
+                    try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
+                } else {
+                    AppLogger.shared.log("Failed to save cover art for \(id): Not a valid image.")
+                }
             } catch {
                 AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
             }
