@@ -1183,7 +1183,15 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
-        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        var progress: Double
+        if totalBytesExpectedToWrite != NSURLSessionTransferSizeUnknown {
+            progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        } else {
+            // Server omitted Content-Length (e.g. chunked transfer). 
+            // Fake a progress curve that approaches 95% to give visual feedback.
+            let mbDownloaded = Double(totalBytesWritten) / 1_048_576.0
+            progress = 0.95 * (1.0 - exp(-mbDownloaded / 12.0))
+        }
 
         let now = Date()
 
