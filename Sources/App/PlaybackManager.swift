@@ -103,6 +103,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadQueue: [Track] = []
     private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
+    private var lastProgressUpdateTimes: [String: TimeInterval] = [:]
     /// Concurrent download slots.
     /// Normal/playback: 10 (conservative — doesn’t compete with audio streaming).
     /// Bulk “Download All Music”: bumped via setBulkDownloadMode(true) to 50.
@@ -1194,6 +1195,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
 
         let now = Date()
+        let currentTime = CACurrentMediaTime()
+        let lastUpdate = lastProgressUpdateTimes[trackId] ?? 0
+        
+        // Throttle UI updates to roughly 10fps to prevent CPU saturation on fast local networks
+        guard currentTime - lastUpdate > 0.1 || progress >= 1.0 else { return }
+        lastProgressUpdateTimes[trackId] = currentTime
 
         Task { @MainActor in
             self.downloadProgress[trackId] = progress
