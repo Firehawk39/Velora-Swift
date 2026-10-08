@@ -873,7 +873,8 @@ extension NavidromeClient {
         URLSession.shared.dataTask(with: url) { data, response, error in
             let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(extractArtId(from: id)).jpg")
             guard error == nil, let data = data, !data.isEmpty,
-                  let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                  let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  UIImage(data: data) != nil else {
                 // Write a 0-byte poison marker so SyncManager stops endlessly re-fetching this missing asset.
                 // 'Repair Sync' will still detect it, delete it, and correctly re-attempt downloading it.
                 try? FileManager.default.createDirectory(at: localUrl.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -81,20 +81,30 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
     }
 
     public var body: some View {
-        AsyncImage(url: url) { phase in
-            if let image = phase.image {
-                content(image)
-                    .onAppear { retryCount = 0 } // Reset on success
-            } else if phase.error != nil {
-                placeholder()
-                    .onAppear {
-                        scheduleRetry()
-                    }
+        Group {
+            if let url = url, url.isFileURL {
+                if let uiImage = UIImage(contentsOfFile: url.path) {
+                    content(Image(uiImage: uiImage))
+                } else {
+                    placeholder()
+                }
             } else {
-                placeholder() // Loading state
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        content(image)
+                            .onAppear { retryCount = 0 } // Reset on success
+                    } else if phase.error != nil {
+                        placeholder()
+                            .onAppear {
+                                scheduleRetry()
+                            }
+                    } else {
+                        placeholder() // Loading state
+                    }
+                }
+                .id(reloadTrigger)
             }
         }
-        .id(reloadTrigger)
     }
 
     private func scheduleRetry() {
