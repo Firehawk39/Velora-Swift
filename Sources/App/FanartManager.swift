@@ -832,7 +832,7 @@ final class FanartManager: ObservableObject {
                         if let bgs = json["artistbackground"] as? [[String: Any]], !bgs.isEmpty {
                             let hashValue = self.stableHash(artistName.lowercased())
                             let defaultIndex = abs(hashValue) % bgs.count
-                            var index = defaultIndex
+                            let index = defaultIndex
                             
                             if randomize && bgs.count > 1 {
                                 Task { @MainActor in
