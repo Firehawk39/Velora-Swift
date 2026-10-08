@@ -939,23 +939,40 @@ final class FanartManager: ObservableObject {
         }
     }
 
+    private var mbidCache: [String: String] = [:]
+    private var activeMbidFetches: [String: [(MBIDResult) -> Void]] = [:]
+
     /// Tri-state MBID resolver that distinguishes "not found" from "network error".
     /// Callers MUST only write negative cache markers on `.notFound`, never on `.networkError`.
     nonisolated private func getMBIDSafe(for artistName: String, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (MBIDResult) -> Void) {
         let primary = extractPrimaryArtist(artistName)
-        let queryTerm = "artist:\"\(primary)\""
-        let encodedQuery = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encodedQuery)&fmt=json"
-        guard let url = URL(string: urlString) else {
-            DispatchQueue.main.async { completion(.notFound) }
-            return
-        }
+        
+        Task { @MainActor in
+            if let cached = FanartManager.shared.mbidCache[primary] {
+                completion(.found(cached))
+                return
+            }
+            
+            // Deduplicate in-flight requests
+            if FanartManager.shared.activeMbidFetches[primary] != nil {
+                FanartManager.shared.activeMbidFetches[primary]?.append(completion)
+                return
+            }
+            FanartManager.shared.activeMbidFetches[primary] = [completion]
+            
+            let queryTerm = "artist:\"\(primary)\""
+            let encodedQuery = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encodedQuery)&fmt=json"
+            guard let url = URL(string: urlString) else {
+                FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound)
+                return
+            }
 
-        var request = URLRequest(url: url)
-        request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 15.0
+            var request = URLRequest(url: url)
+            request.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
+            request.timeoutInterval = 15.0
 
-        ThrottledNetworkManager.shared.enqueue(request: request, priority: priority) { data, response, error in
+            ThrottledNetworkManager.shared.enqueue(request: request, priority: priority) { data, response, error in
             // CRITICAL: Distinguish network failures from genuine "not found" results.
             // A transient timeout or circuit breaker trip must NOT poison the negative cache.
             if let error = error {
@@ -966,14 +983,14 @@ final class FanartManager: ObservableObject {
                                   nsError.code == NSURLErrorNetworkConnectionLost ||
                                   nsError.domain == "CircuitBreaker"
                 if isTransient {
-                    DispatchQueue.main.async { completion(.networkError) }
+                    Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .networkError) }
                     return
                 }
             }
 
             // If we got HTTP 429 or 5xx, that's also transient
             if let http = response as? HTTPURLResponse, (http.statusCode == 429 || http.statusCode >= 500) {
-                DispatchQueue.main.async { completion(.networkError) }
+                Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .networkError) }
                 return
             }
 
@@ -981,7 +998,7 @@ final class FanartManager: ObservableObject {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
                 // Valid response but no results — artist genuinely not on MusicBrainz
-                DispatchQueue.main.async { completion(.notFound) }
+                Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound) }
                 return
             }
 
@@ -993,7 +1010,10 @@ final class FanartManager: ObservableObject {
             if let exactMatch = artists.first(where: {
                 ($0["name"] as? String)?.lowercased() == lowerPrimary
             }), let id = exactMatch["id"] as? String {
-                DispatchQueue.main.async { completion(.found(id)) }
+                Task { @MainActor in
+                    FanartManager.shared.mbidCache[primary] = id
+                    FanartManager.shared.resolveMbidFetches(for: primary, with: .found(id))
+                }
                 return
             }
 
@@ -1004,12 +1024,23 @@ final class FanartManager: ObservableObject {
             let topScoreCandidates = artists.filter { ($0["score"] as? Int) == topScore }
             if topScore == 100, topScoreCandidates.count == 1,
                let id = topScoreCandidates.first?["id"] as? String {
-                DispatchQueue.main.async { completion(.found(id)) }
+                Task { @MainActor in
+                    FanartManager.shared.mbidCache[primary] = id
+                    FanartManager.shared.resolveMbidFetches(for: primary, with: .found(id))
+                }
                 return
             }
 
             // 3. No reliable match found — this is a genuine "not found", not a network error.
-            DispatchQueue.main.async { completion(.notFound) }
+            Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound) }
+        }
+    }
+
+    @MainActor
+    private func resolveMbidFetches(for artist: String, with result: MBIDResult) {
+        let callbacks = activeMbidFetches.removeValue(forKey: artist) ?? []
+        for callback in callbacks {
+            callback(result)
         }
     }
 }
