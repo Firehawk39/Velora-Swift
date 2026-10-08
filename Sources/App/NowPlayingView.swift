@@ -27,6 +27,7 @@ struct NowPlayingView: View {
     // Explicitly managed state to prevent flickering/mixing up of artist portrait
     @State private var artistPortraitImage: UIImage? = nil
     @State private var currentPortraitArtistId: String? = nil
+    @State private var isCyclingBackdrop: Bool = false
     
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
@@ -818,20 +819,30 @@ struct NowPlayingView: View {
     private var cycleBackdropButton: some View {
         Button {
             resetIdleTimer()
-            if let track = playback.currentTrack {
+            if let track = playback.currentTrack, !isCyclingBackdrop {
                 let artists = [track.primaryArtist].filter { !$0.isEmpty }
                 if !artists.isEmpty {
-                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId)
+                    isCyclingBackdrop = true
+                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId) {
+                        isCyclingBackdrop = false
+                    }
                 }
             }
         } label: {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 16, weight: .bold))
-                .frame(width: 44, height: 44)
-                .background(Color.black.opacity(0.5))
-                .foregroundColor(.white)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+            Group {
+                if isCyclingBackdrop {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                } else {
+                    Image(systemName: "photo.on.rectangle.angled")
+                }
+            }
+            .font(.system(size: 16, weight: .bold))
+            .frame(width: 44, height: 44)
+            .background(Color.black.opacity(0.5))
+            .foregroundColor(.white)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
         .accessibilityLabel("Change Backdrop")
     }

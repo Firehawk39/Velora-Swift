@@ -149,8 +149,11 @@ final class FanartManager: ObservableObject {
         }
     }
 
-    func cycleBackdrop(for artists: [String], artistId: String? = nil) {
-        guard !artists.isEmpty else { return }
+    func cycleBackdrop(for artists: [String], artistId: String? = nil, completion: @escaping @MainActor () -> Void = {}) {
+        guard !artists.isEmpty else {
+            completion()
+            return
+        }
         let primaryArtist = artists[0]
         let key = getCacheKey(artistName: primaryArtist, artistId: artistId)
         let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
@@ -166,9 +169,11 @@ final class FanartManager: ObservableObject {
                         if let img = image, self.currentArtistName == primaryArtist {
                             withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
                         }
+                        completion()
                     }
                 } else {
                     AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist)")
+                    completion()
                 }
             }
         }
@@ -186,6 +191,7 @@ final class FanartManager: ObservableObject {
                 doCycle(resolvedMBID)
             case .notFound, .networkError:
                 AppLogger.shared.log("[Fanart] Cannot cycle backdrop — MBID not found or network error.")
+                completion()
             }
         }
     }
