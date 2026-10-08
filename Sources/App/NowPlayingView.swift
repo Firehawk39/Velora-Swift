@@ -831,8 +831,7 @@ struct NowPlayingView: View {
         } label: {
             Group {
                 if isCyclingBackdrop {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    LoadingCircle(size: 20, strokeWidth: 2.5, accentColor: .white)
                 } else {
                     Image(systemName: "photo.on.rectangle.angled")
                 }
