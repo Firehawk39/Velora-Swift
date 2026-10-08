@@ -792,6 +792,9 @@ final class FanartManager: ObservableObject {
 
     private enum FanartType { case background, portrait, clearlogo }
 
+    // Stores the current cycle index for each artist so cycling is sequential
+    private var backdropCycleIndices: [String: Int] = [:]
+
     nonisolated private func fetchFromFanart(urlString: String, type: FanartType, artistName: String, randomize: Bool = false, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (String?, Bool) -> Void) {
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil, false) }
@@ -832,12 +835,14 @@ final class FanartManager: ObservableObject {
                             var index = defaultIndex
                             
                             if randomize && bgs.count > 1 {
-                                // Guarantee we pick a DIFFERENT backdrop than the default one on the first cycle
-                                var newIndex = Int.random(in: 0..<bgs.count)
-                                while newIndex == defaultIndex {
-                                    newIndex = Int.random(in: 0..<bgs.count)
+                                Task { @MainActor in
+                                    let current = FanartManager.shared.backdropCycleIndices[artistName] ?? defaultIndex
+                                    let nextIndex = (current + 1) % bgs.count
+                                    FanartManager.shared.backdropCycleIndices[artistName] = nextIndex
+                                    let selected = bgs[nextIndex]["url"] as? String
+                                    completion(selected, false)
                                 }
-                                index = newIndex
+                                return
                             } else if randomize && bgs.count == 1 {
                                 AppLogger.shared.log("[Fanart] Only 1 backdrop exists for \(artistName), cannot cycle.")
                             }
