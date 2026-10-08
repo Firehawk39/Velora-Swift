@@ -449,11 +449,9 @@ struct ArtistBackdropView: View {
     let client: NavidromeClient
     
     @StateObject private var fanart = FanartManager()
+    @EnvironmentObject var playback: PlaybackManager
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass) var vSizeClass
-    
-    @State private var artistPalette: [UIColor] = [.black, .black, .black, .black, .black]
-    @State private var artistPrimaryColor: UIColor = .black
     
     var isCompact: Bool { hSizeClass == .compact }
     var isLandscape: Bool {
@@ -480,19 +478,17 @@ struct ArtistBackdropView: View {
                         .opacity(isDarkMode ? 0.35 : 0.25)
                 } else {
                     if isCompact && !isLandscape {
-                        // PORTRAIT IPHONE: Use Dynamic Gradient
                         LinearGradient(
                             gradient: Gradient(colors: [
-                                Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
-                                Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
+                                Color(playback.currentPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
+                                Color(playback.currentPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
                                 isDarkMode ? .black : .white
                             ]),
                             startPoint: .top,
                             endPoint: .bottom
                         )
                     } else {
-                        // LANDSCAPE OR IPAD: Ambient Mesh Gradient
-                        AlbumAmbientGradientView(colors: artistPalette)
+                        AlbumAmbientGradientView(colors: playback.currentPalette)
                     }
                 }
             }
@@ -519,27 +515,6 @@ struct ArtistBackdropView: View {
         }
         .onAppear {
             fanart.fetchBackdrop(for: [artistName], artistId: artistId, mbid: nil, allowNetwork: true)
-            fetchColors()
-        }
-    }
-    
-    private func fetchColors() {
-        guard let url = URL(string: client.getCoverArtUrl(id: artistId, size: 600)) else { return }
-        Task.detached {
-            var fetchedData: Data? = nil
-            if url.isFileURL {
-                fetchedData = try? Data(contentsOf: url)
-            } else {
-                fetchedData = try? await URLSession.shared.data(from: url).0
-            }
-            if let data = fetchedData, let img = UIImage(data: data) {
-                let primary = img.dominantColor() ?? .black
-                let palette = img.extractPalette(count: 5)
-                await MainActor.run {
-                    self.artistPrimaryColor = primary
-                    self.artistPalette = palette
-                }
-            }
         }
     }
 }
