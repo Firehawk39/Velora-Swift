@@ -822,13 +822,9 @@ struct NowPlayingView: View {
             if let track = playback.currentTrack, !isCyclingBackdrop {
                 let artists = [track.primaryArtist].filter { !$0.isEmpty }
                 if !artists.isEmpty {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isCyclingBackdrop = true
-                    }
+                    isCyclingBackdrop = true
                     FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId) {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isCyclingBackdrop = false
-                        }
+                        isCyclingBackdrop = false
                     }
                 }
             }
