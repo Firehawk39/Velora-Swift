@@ -55,9 +55,10 @@ struct ContentView: View {
     @State private var tabScrollOffset: CGFloat = 0
     @State private var rawScrollOffset: CGFloat = 0
 
-
-
-
+    // Tab Reset Triggers
+    @State private var libraryResetTrigger = UUID()
+    @State private var homeResetTrigger = UUID()
+    @State private var searchResetTrigger = UUID()
     var body: some View {
         GeometryReader { outerGeo in
             ZStack(alignment: .top) {
@@ -79,6 +80,11 @@ struct ContentView: View {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             artistStack.removeAll()
                             artistDetailOffset = 0
+                            
+                            // Reset active tab's internal navigation state
+                            if activeTab == "library" { libraryResetTrigger = UUID() }
+                            else if activeTab == "home" { homeResetTrigger = UUID() }
+                            else if activeTab == "search" { searchResetTrigger = UUID() }
                         }
                     },
                     scrollOffset: rawScrollOffset
@@ -185,12 +191,14 @@ struct ContentView: View {
                         activeTab = "library"
                     }
                 }, onScroll: { val in rawScrollOffset = val })
+                .id(homeResetTrigger)
             case "library":
                 LibraryView(onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         artistStack.append((id: id, name: name))
                     }
                 }, onScroll: { val in rawScrollOffset = val })
+                .id(libraryResetTrigger)
             case "settings":
                 AppSettingsView()
             case "search":
@@ -199,6 +207,7 @@ struct ContentView: View {
                         artistStack.append((id: id, name: name))
                     }
                 })
+                .id(searchResetTrigger)
             case "now-playing":
                 NowPlayingView(isQueueOpen: $isQueueOpen, isIdle: $isIdle, onArtistClick: { id, name in
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
