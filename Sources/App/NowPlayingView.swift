@@ -96,6 +96,7 @@ struct NowPlayingView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                                 .clipped()
+                                .id(backdrop)
                                 .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                                 .opacity(isIdle ? 0.45 : 0.35)
                         } else {
