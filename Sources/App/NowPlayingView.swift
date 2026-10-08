@@ -78,8 +78,8 @@ struct NowPlayingView: View {
             ZStack {
                 // Dynamic Ambient Background
                 Group {
-                    if isCompact && !isLandscape {
-                        // PORTRAIT IPHONE: Use Dynamic Gradient (No Blur)
+                    if ScreenTier.isSE {
+                        // LOW-POWER DEVICE: Use Dynamic Gradient (No Blur)
                         LinearGradient(
                             gradient: Gradient(colors: [
                                 Color(playback.currentPrimaryColor).opacity(0.8),

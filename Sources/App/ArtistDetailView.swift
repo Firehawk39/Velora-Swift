@@ -477,7 +477,7 @@ struct ArtistBackdropView: View {
                         .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                         .opacity(isDarkMode ? 0.35 : 0.25)
                 } else {
-                    if isCompact && !isLandscape {
+                    if ScreenTier.isSE {
                         LinearGradient(
                             gradient: Gradient(colors: [
                                 Color(playback.currentPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
