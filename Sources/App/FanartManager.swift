@@ -438,6 +438,9 @@ final class FanartManager: ObservableObject {
     // MARK: - Clear Logos
 
     private var activeClearLogoFetches = Set<String>()
+    
+    // Cycle offsets for sequential backdrop cycling
+    private var backdropCycleOffsets: [String: Int] = [:]
     private var currentClearLogoArtist: String?
 
     /// Fetch the hdmusiclogo (transparent PNG) for `artist` and update `currentClearLogo`.
@@ -820,15 +823,18 @@ final class FanartManager: ObservableObject {
                             let defaultIndex = abs(hashValue) % bgs.count
                             var index = defaultIndex
                             
-                            if randomize && bgs.count > 1 {
-                                // Guarantee we pick a DIFFERENT backdrop than the default one on the first cycle
-                                var newIndex = Int.random(in: 0..<bgs.count)
-                                while newIndex == defaultIndex {
-                                    newIndex = Int.random(in: 0..<bgs.count)
+                            if randomize {
+                                if bgs.count > 1 {
+                                    // Sequential cycling: increment the offset for this artist
+                                    let currentOffset = FanartManager.shared.backdropCycleOffsets[artistName.lowercased()] ?? 0
+                                    let nextOffset = currentOffset + 1
+                                    FanartManager.shared.backdropCycleOffsets[artistName.lowercased()] = nextOffset
+                                    
+                                    // Calculate the new index sequentially
+                                    index = (defaultIndex + nextOffset) % bgs.count
+                                } else {
+                                    AppLogger.shared.log("[Fanart] Only 1 backdrop exists for \(artistName), cannot cycle.")
                                 }
-                                index = newIndex
-                            } else if randomize && bgs.count == 1 {
-                                AppLogger.shared.log("[Fanart] Only 1 backdrop exists for \(artistName), cannot cycle.")
                             }
                             
                             let selected = bgs[index]["url"] as? String
