@@ -475,6 +475,7 @@ struct NowPlayingView: View {
                         HStack {
                             Spacer()
                             HStack(spacing: 12) {
+                                cycleBackdropButton
                                 lyricsButton
                                 queueButton
                                 downloadButton
@@ -811,6 +812,27 @@ struct NowPlayingView: View {
             }
         }
         .accessibilityLabel("Download")
+    }
+
+    private var cycleBackdropButton: some View {
+        Button {
+            resetIdleTimer()
+            if let track = playback.currentTrack {
+                let artists = [track.primaryArtist].filter { !$0.isEmpty }
+                if !artists.isEmpty {
+                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId)
+                }
+            }
+        } label: {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 16, weight: .bold))
+                .frame(width: 44, height: 44)
+                .background(Color.black.opacity(0.5))
+                .foregroundColor(.white)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+        }
+        .accessibilityLabel("Change Backdrop")
     }
 
     private var inlineLyricsView: some View {
