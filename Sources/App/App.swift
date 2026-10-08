@@ -63,9 +63,13 @@ struct VeloraApp: App {
 
 
     private func setupURLCache() {
-        // Configure a robust cache for album arts and metadata
-        // 50 MB in-memory, 500 MB on-disk
-        let cache = URLCache(memoryCapacity: 50 * 1024 * 1024,
+        // Dynamic Hardware Profiling for RAM
+        let physicalMemory = ProcessInfo.processInfo.physicalMemory // in bytes
+        // 50 MB minimum, up to 10% of physical memory (capped at 500MB max)
+        let maxMemoryCache = min(Int(Double(physicalMemory) * 0.10), 500 * 1024 * 1024)
+        let memoryCacheSize = max(50 * 1024 * 1024, maxMemoryCache)
+
+        let cache = URLCache(memoryCapacity: memoryCacheSize,
                              diskCapacity: 500 * 1024 * 1024,
                              diskPath: "velora_media_cache")
         URLCache.shared = cache

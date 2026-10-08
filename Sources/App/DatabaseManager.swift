@@ -19,6 +19,9 @@ actor DatabaseManager {
             return
         }
 
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
+        sqlite3_exec(db, "PRAGMA synchronous=NORMAL;", nil, nil, nil)
+
         let createTableString = """
         CREATE TABLE IF NOT EXISTS Tracks(
             id TEXT PRIMARY KEY,

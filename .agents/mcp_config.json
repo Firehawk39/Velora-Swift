@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "navidrome": {
+      "command": "npx.cmd",
+      "args": [
+        "-y",
+        "navidrome-mcp"
+      ],
+      "env": {
+        "NAVIDROME_URL": "http://umbrel.local:4533",
+        "NAVIDROME_USERNAME": "Harsh",
+        "NAVIDROME_PASSWORD": "123"
+      }
+    }
+  }
+}

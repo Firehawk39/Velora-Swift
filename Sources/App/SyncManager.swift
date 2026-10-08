@@ -118,7 +118,10 @@ final class SyncManager: ObservableObject {
 
             let fa = FanartManager.shared
             let mb = MusicBrainzManager.shared
-            let maxConcurrent = 50 // Massive concurrency for Navidrome; ThrottledNetworkManager handles external limits safely
+            let activeCores = ProcessInfo.processInfo.activeProcessorCount
+            let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
+            // Scale dynamically based on RAM and CPU cores. iPhone SE (2GB) -> ~20-30, iPad M1 (8GB) -> ~150+
+            let maxConcurrent = min(200, max(25, Int(physicalMemoryGB * Double(activeCores) * 3)))
             let startTime = Date()
 
             // Keep looping until all artists are confirmed complete (handles partial failures in one go)
@@ -286,7 +289,9 @@ final class SyncManager: ObservableObject {
             let lyricsDir = VeloraStorage.lyrics
             // ThrottledNetworkManager handles the pacing and circuit breaking globally.
             // We dispatch in large batches to keep the pipeline full without overloading memory.
-            let maxConcurrent = 50
+            let activeCores = ProcessInfo.processInfo.activeProcessorCount
+            let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
+            let maxConcurrent = min(200, max(25, Int(physicalMemoryGB * Double(activeCores) * 3)))
             let totalTasks = Double(tracks.count)
             let startTime = Date()
 
