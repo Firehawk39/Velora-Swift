@@ -152,10 +152,28 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         } else {
             configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
         }
+        
+        // UNLOCK RAW NETWORK SPEED
+        configuration.isDiscretionary = false // Tell iOS NOT to delay this for battery savings
+        configuration.networkServiceType = .responsiveData // Prioritize low-latency, high-throughput
+        configuration.waitsForConnectivity = true
+        if #available(iOS 13.0, *) {
+            configuration.allowsExpensiveNetworkAccess = true
+            configuration.allowsConstrainedNetworkAccess = true
+        }
 
         // Maximize connections to the same host for faster concurrent downloads
         configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
-        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+        
+        // CRITICAL PERFORMANCE FIX: 
+        // Never use .main for delegateQueue on fast connections.
+        // It forces all network I/O events onto the UI thread, artificially capping speed.
+        let backgroundQueue = OperationQueue()
+        backgroundQueue.name = "com.velora.downloads"
+        backgroundQueue.qualityOfService = .userInitiated
+        backgroundQueue.maxConcurrentOperationCount = maxConcurrentDownloads
+
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: backgroundQueue)
         _downloadSession = session
         return session
     }
