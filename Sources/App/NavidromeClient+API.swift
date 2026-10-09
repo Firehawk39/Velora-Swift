@@ -11,7 +11,7 @@ extension NavidromeClient {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10.0
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(request: request) { data, _, error in
             if let error = error {
                 let desc = error.localizedDescription
                 Task { @MainActor in completion(false, desc) }
@@ -32,7 +32,7 @@ extension NavidromeClient {
             } catch {
                 Task { @MainActor in completion(false, "Failed to parse server response.") }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Fetch Recently Played
@@ -49,7 +49,7 @@ extension NavidromeClient {
             request.setValue(storedEtag, forHTTPHeaderField: "If-None-Match")
         }
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        ThrottledNetworkManager.shared.enqueue(request: request) { [weak self] data, response, error in
             if let error = error {
                 Task { @MainActor in self?.fetchError = "Albums: \(error.localizedDescription)" }
                 return
@@ -79,7 +79,7 @@ extension NavidromeClient {
                     self.saveOfflineMetadata()
                 }
             } catch { AppLogger.shared.log("Error decoding albums: \(error)", level: .error) }
-        }.resume()
+        }
     }
 
     // MARK: - Fetch Artists
@@ -100,7 +100,7 @@ extension NavidromeClient {
             request.setValue(storedEtag, forHTTPHeaderField: "If-None-Match")
         }
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        ThrottledNetworkManager.shared.enqueue(request: request) { [weak self] data, response, error in
             if let error = error {
                 AppLogger.shared.log("Error fetching artists: \(error.localizedDescription)", level: .error)
                 Task { @MainActor in self?.fetchError = "Artists: \(error.localizedDescription)"; completion?([]) }
@@ -147,7 +147,7 @@ extension NavidromeClient {
                 AppLogger.shared.log("Error decoding artists: \(error)", level: .error)
                 Task { @MainActor in completion?([]) }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Album Tracks
@@ -160,7 +160,7 @@ extension NavidromeClient {
         }
         guard NetworkMonitor.shared.isConnected else { Task { @MainActor in await fallback() }; return }
         guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { Task { @MainActor in await fallback() }; return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in await fallback() }
                 return
@@ -187,7 +187,7 @@ extension NavidromeClient {
             } catch {
                 Task { @MainActor in completion([]) }
             }
-        }.resume()
+        }
     }
 
     func fetchArtistData(artistId: String, completion: @escaping @MainActor @Sendable ([Track], [Album], String?, String?) -> Void) {
@@ -209,7 +209,7 @@ extension NavidromeClient {
             return
         }
         guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { Task { @MainActor in fallback() }; return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in fallback() }
                 return
@@ -265,13 +265,13 @@ extension NavidromeClient {
                 AppLogger.shared.log("Error decoding artist details: \(error)", level: .error)
                 Task { @MainActor in completion([], [], nil, nil) }
             }
-        }.resume()
+        }
     }
 
     func fetchArtistInfo(artistId: String, completion: @escaping @MainActor @Sendable (SubsonicArtistInfo?) -> Void) {
         guard NetworkMonitor.shared.isConnected else { completion(nil); return }
         guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil); return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in completion(nil) }
                 return
@@ -283,7 +283,7 @@ extension NavidromeClient {
             } catch {
                 Task { @MainActor in completion(nil) }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Search
@@ -330,7 +330,7 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
             Task { @MainActor in fallback() }; return
         }
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             if let error = error {
                 AppLogger.shared.log("[Search] Network error: \(error.localizedDescription)", level: .error)
                 Task { @MainActor in fallback() }
@@ -379,7 +379,7 @@ extension NavidromeClient {
                 AppLogger.shared.log("[Search] JSON decode error: \(error)", level: .error)
                 Task { @MainActor in completion([], [], []) }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Playlists
@@ -387,7 +387,7 @@ extension NavidromeClient {
     func fetchPlaylists() {
         guard NetworkMonitor.shared.isConnected else { return }
         guard let url = buildUrl(method: "getPlaylists.view") else { return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
@@ -401,13 +401,13 @@ extension NavidromeClient {
                     self.saveOfflineMetadata()
                 }
             } catch { AppLogger.shared.log("Error decoding playlists: \(error)", level: .error) }
-        }.resume()
+        }
     }
 
     func fetchPlaylistTracks(playlistId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
         guard NetworkMonitor.shared.isConnected else { completion([]); return }
         guard let url = buildUrl(method: "getPlaylist.view", params: ["id": playlistId]) else { completion([]); return }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in completion([]) }
                 return
@@ -434,7 +434,7 @@ extension NavidromeClient {
             } catch {
                 Task { @MainActor in completion([]) }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Playlist Management
@@ -445,14 +445,14 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "createPlaylist.view", params: ["name": name], extraItems: extra) else {
             completion(false); return
         }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             let success = error == nil
             Task { @MainActor [weak self] in
                 guard let self = self else { completion(success); return }
                 if success { self.fetchPlaylists() }
                 completion(success)
             }
-        }.resume()
+        }
     }
 
     func deletePlaylist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
@@ -460,14 +460,14 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "deletePlaylist.view", params: ["id": id]) else {
             completion(false); return
         }
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             let success = error == nil
             Task { @MainActor [weak self] in
                 guard let self = self else { completion(success); return }
                 if success { self.fetchPlaylists() }
                 completion(success)
             }
-        }.resume()
+        }
     }
 
     func updatePlaylist(id: String, songIdsToAdd: [String] = [], songIndicesToRemove: [Int] = [], completion: @escaping @MainActor @Sendable (Bool) -> Void) {
@@ -480,10 +480,10 @@ extension NavidromeClient {
             completion(false); return
         }
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             let success = error == nil
             Task { @MainActor in completion(success) }
-        }.resume()
+        }
     }
 
     func syncLosslessPlaylist() {
@@ -531,7 +531,7 @@ extension NavidromeClient {
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in completion(false) }
                 return
@@ -566,7 +566,7 @@ extension NavidromeClient {
                 AppLogger.shared.log("Error decoding search3.view at offset \(offset): \(error)")
                 Task { @MainActor in completion(false) }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Cover Art Caching
@@ -588,8 +588,8 @@ extension NavidromeClient {
         guard NetworkMonitor.shared.isConnected else { return }
         guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
 
-        URLSession.shared.downloadTask(with: url) { tempLocation, response, error in
-            guard let tempLocation = tempLocation, error == nil else {
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
+            guard let data = data, error == nil else {
                 AppLogger.shared.log("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
                 return
             }
@@ -597,18 +597,44 @@ extension NavidromeClient {
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
                     return
                 }
-                if let data = try? Data(contentsOf: tempLocation), UIImage(data: data) != nil {
-                    try FileManager.default.moveItem(at: tempLocation, to: destinationUrl)
+                if let data = data, UIImage(data: data) != nil {
+                    try data.write(to: destinationUrl)
                 } else {
                     AppLogger.shared.log("Failed to save cover art for \(id): Not a valid image.")
                 }
             } catch {
                 AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
             }
-        }.resume()
+        }
     }
-
     // MARK: - Lyrics
+    
+    func downloadArtistPortrait(id: String) {
+        let portraitDir = VeloraStorage.artistPortraits
+        let destinationUrl = portraitDir.appendingPathComponent("\(id).jpg")
+
+        if FileManager.default.fileExists(atPath: destinationUrl.path) {
+            if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
+               let size = attr[.size] as? Int64, size > 0 {
+                return // Valid cache exists
+            } else {
+                try? FileManager.default.removeItem(at: destinationUrl)
+            }
+        }
+
+        guard NetworkMonitor.shared.isConnected else { return }
+        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
+
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
+            guard let data = data, error == nil else { return }
+            do {
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 { return }
+                if UIImage(data: data) != nil {
+                    try data.write(to: destinationUrl)
+                }
+            } catch {}
+        }
+    }
 
     func fetchLyrics(trackId: String, artist: String, title: String, duration: Double, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let lyricsDir = VeloraStorage.lyrics
@@ -811,7 +837,7 @@ extension NavidromeClient {
             "time": "\(Int(Date().timeIntervalSince1970 * 1000))",
             "submission": submission ? "true" : "false"
         ]) else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] _, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] _, _, error in
             if let error = error {
                 AppLogger.shared.log("Scrobble error: \(error)", level: .error)
             } else if submission {
@@ -827,7 +853,7 @@ extension NavidromeClient {
                     }
                 }
             }
-        }.resume()
+        }
     }
 
     /// Called on reconnect (inside fetchEverything) to flush any queued offline scrobbles.
@@ -870,7 +896,7 @@ extension NavidromeClient {
             Task { @MainActor in completion(false) }
             return
         }
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(extractArtId(from: id)).jpg")
             guard error == nil, let data = data, !data.isEmpty,
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
@@ -889,7 +915,7 @@ extension NavidromeClient {
             } catch {
                 Task { @MainActor in completion(false) }
             }
-        }.resume()
+        }
     }
 
     func fetchArtist(id: String, completion: @escaping @MainActor @Sendable (Bool) -> Void) {
@@ -902,7 +928,7 @@ extension NavidromeClient {
             Task { @MainActor in completion(false) }
             return
         }
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
             guard error == nil, let data = data, !data.isEmpty,
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
@@ -920,7 +946,7 @@ extension NavidromeClient {
             } catch {
                 Task { @MainActor in completion(false) }
             }
-        }.resume()
+        }
     }
 
     // MARK: - Cache Management

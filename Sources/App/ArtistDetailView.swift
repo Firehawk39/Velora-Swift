@@ -509,7 +509,8 @@ struct ArtistBackdropView: View {
     }
     
     private func fetchColors() {
-        guard let url = URL(string: client.getCoverArtUrl(id: artistId, size: 600)) else { return }
+        let fallbackUrl = client.getCoverArtUrl(id: artistId, size: 600)
+        guard let url = resolveArtistPortraitUrl(id: artistId, serverUrl: fallbackUrl) else { return }
         Task.detached {
             var fetchedData: Data? = nil
             if url.isFileURL {

@@ -200,6 +200,8 @@ final class SyncManager: ObservableObject {
                                     let hasImage = (info?.mediumImageUrl != nil && info?.mediumImageUrl?.isEmpty == false) || (info?.largeImageUrl != nil && info?.largeImageUrl?.isEmpty == false)
                                     if !hasImage {
                                         await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
+                                    } else {
+                                        client.downloadArtistPortrait(id: artist.id)
                                     }
 
                                     await withCheckedContinuation { cont in
