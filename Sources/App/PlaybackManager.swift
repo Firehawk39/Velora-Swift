@@ -103,8 +103,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadQueue: [Track] = []
     private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
-    nonisolated(unsafe) private var progressLock = NSLock()
-    nonisolated(unsafe) private var lastProgressUpdateTimes: [String: TimeInterval] = [:]
     /// Concurrent download slots.
     /// Normal/playback: 10 (conservative — doesn’t compete with audio streaming).
     /// Bulk “Download All Music”: bumped via setBulkDownloadMode(true) to 50.
@@ -113,10 +111,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
     private let maxRetries = 3
-    private let pendingDownloadsKey = "velora_pending_downloads"
-    /// Server URL at the time downloadSession was created — used to detect config changes.
-    private var downloadSessionServerUrl: String = ""
-    private var _downloadSession: URLSession?
 
     private var player: AVQueuePlayer?
     private var artworkRetryCount = 0
@@ -131,18 +125,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     var client: NavidromeClient
 
-    /// Returns the shared download session, recreating it if the server URL has changed
-    /// since the session was last built. This ensures that a user who changes their
-    /// Navidrome server in Settings always downloads from the correct host.
-    private var downloadSession: URLSession {
+    private lazy var downloadSession: URLSession = {
         let serverUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
-        if let existing = _downloadSession, downloadSessionServerUrl == serverUrl {
-            return existing
-        }
-        // Invalidate old session gracefully (lets active tasks finish before teardown)
-        _downloadSession?.finishTasksAndInvalidate()
-        downloadSessionServerUrl = serverUrl
-
         let isLocalNetwork = serverUrl.contains("192.168.") || serverUrl.contains("10.") || serverUrl.contains("172.") || serverUrl.contains(".local") || serverUrl.contains("localhost") || serverUrl.contains("127.0.0.1")
 
         let configuration: URLSessionConfiguration
@@ -153,31 +137,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         } else {
             configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
         }
-        
-        // UNLOCK RAW NETWORK SPEED
-        configuration.isDiscretionary = false // Tell iOS NOT to delay this for battery savings
-        configuration.networkServiceType = .responsiveData // Prioritize low-latency, high-throughput
-        configuration.waitsForConnectivity = true
-        if #available(iOS 13.0, *) {
-            configuration.allowsExpensiveNetworkAccess = true
-            configuration.allowsConstrainedNetworkAccess = true
-        }
 
         // Maximize connections to the same host for faster concurrent downloads
         configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
-        
-        // CRITICAL PERFORMANCE FIX: 
-        // Never use .main for delegateQueue on fast connections.
-        // It forces all network I/O events onto the UI thread, artificially capping speed.
-        let backgroundQueue = OperationQueue()
-        backgroundQueue.name = "com.velora.downloads"
-        backgroundQueue.qualityOfService = .userInitiated
-        backgroundQueue.maxConcurrentOperationCount = maxConcurrentDownloads
-
-        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: backgroundQueue)
-        _downloadSession = session
-        return session
-    }
+        return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+    }()
 
     init(client: NavidromeClient) {
         self.client = client
@@ -188,54 +152,19 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         // Bind to IntegrityManager's indexed IDs
         self.downloadedTrackIds = integrityManager.downloadedIds
+        // Use a simple sink or notification to keep it in sync
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in }
 
         loadDownloadedTracks()
 
-        // Listen for app termination to persist the pending queue
+        // Listen for app termination to clear now playing info
         NotificationCenter.default.addObserver(self, selector: #selector(handleTerminate), name: UIApplication.willTerminateNotification, object: nil)
-        // Also persist on background transition — iOS may not call willTerminate on force-quit
-        NotificationCenter.default.addObserver(self, selector: #selector(handleBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
     }
 
     @objc private func handleTerminate() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         player?.pause()
-        savePendingDownloads()
         cancelAllDownloads()
-    }
-
-    @objc private func handleBackground() {
-        // Persist the pending download queue whenever the app backgrounds so a
-        // force-quit by the OS doesn't lose the user's queued downloads.
-        savePendingDownloads()
-    }
-
-    /// Saves the IDs of all queued and active downloads to UserDefaults.
-    /// Called on background / terminate so the queue survives app death.
-    private func savePendingDownloads() {
-        let queued = downloadQueue.map { $0.id }
-        let active = Array(activeDownloadTasksByTrackId.keys)
-        let all = Array(Set(queued + active)) // deduplicate
-        UserDefaults.standard.set(all, forKey: pendingDownloadsKey)
-    }
-
-    /// Restores the pending download queue that was saved before the last app death.
-    /// Must be called after `loadDownloadedTracks()` so that already-finished
-    /// downloads are not re-queued.
-    func restorePendingDownloads() {
-        let ids = UserDefaults.standard.stringArray(forKey: pendingDownloadsKey) ?? []
-        guard !ids.isEmpty else { return }
-        // Clear the persisted list immediately so it isn't re-applied on a crash-loop
-        UserDefaults.standard.removeObject(forKey: pendingDownloadsKey)
-        AppLogger.shared.log("[Download] Restoring \(ids.count) pending download(s) from last session.", level: .info)
-        Task { @MainActor in
-            for id in ids {
-                guard !self.isDownloaded(id) else { continue }
-                if let track = await DatabaseManager.shared.getTrack(id: id) {
-                    self.downloadTrack(track)
-                }
-            }
-        }
     }
 
     func cancelAllDownloads() {
@@ -451,7 +380,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         // Track progress — capture player instance to prevent stale-observer race condition
         guard let capturedPlayer = player else { return }
         timeObserver = capturedPlayer.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
         ) { [weak self] time in
             MainActor.assumeIsolated {
@@ -462,6 +391,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
                 self.progress = time.seconds
                 self.duration = item.duration.seconds
+                self.updateNowPlayingInfo()
 
                 // Scrobble / Add to recently played at 30% completion
                 if !self.hasScrobbledCurrentTrack, self.duration > 0 {
@@ -982,9 +912,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let tracksDirectory = VeloraStorage.tracks
         Task {
             do {
-                // Ensure the directory exists before scanning (first install, or wiped storage)
-                try FileManager.default.createDirectory(at: tracksDirectory, withIntermediateDirectories: true)
-
                 // Perform the directory contents scanning on a background thread to prevent UI freezing
                 let fileURLs = try await Task.detached(priority: .userInitiated) {
                     try FileManager.default.contentsOfDirectory(at: tracksDirectory, includingPropertiesForKeys: nil)
@@ -996,10 +923,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 self.downloadedTrackIds = self.integrityManager.downloadedIds
                 self.objectWillChange.send()
             } catch {
-                // Directory creation or scan failed — log and continue with an empty set.
-                // This is non-fatal; downloads will still work, they'll just re-queue.
-                AppLogger.shared.log("[Download] Could not scan tracks directory: \(error.localizedDescription)", level: .error)
-                try? FileManager.default.createDirectory(at: tracksDirectory, withIntermediateDirectories: true)
+                AppLogger.shared.log("Error loading downloaded tracks: \(error)", level: .error)
             }
         }
     }
@@ -1047,14 +971,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func deleteAlbumDownloads(albumId: String) {
-        let tracks = LibraryDataCache.shared.allTracks.filter { $0.albumId == albumId }
+        let tracks = DatabaseManager.shared.getTracks(albumId: albumId)
         for track in tracks {
             if isDownloaded(track.id) { deleteDownload(trackId: track.id) }
         }
     }
 
     func deleteArtistDownloads(artistId: String) {
-        let tracks = LibraryDataCache.shared.allTracks.filter { $0.artistId == artistId }
+        let tracks = DatabaseManager.shared.getTracks(artistId: artistId)
         for track in tracks {
             if isDownloaded(track.id) { deleteDownload(trackId: track.id) }
         }
@@ -1062,7 +986,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     /// Returns (downloaded, total) count for an album
     func albumDownloadStatus(albumId: String) -> (downloaded: Int, total: Int) {
-        let tracks = LibraryDataCache.shared.allTracks.filter { $0.albumId == albumId }
+        let tracks = DatabaseManager.shared.getTracks(albumId: albumId)
         let downloaded = tracks.filter { isDownloaded($0.id) }.count
         return (downloaded, tracks.count)
     }
@@ -1074,7 +998,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func downloadAlbum(albumId: String) {
-        let tracks = LibraryDataCache.shared.allTracks.filter { $0.albumId == albumId }
+        let tracks = DatabaseManager.shared.getTracks(albumId: albumId)
         for track in tracks {
             downloadTrack(track)
         }
@@ -1135,11 +1059,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         case .normal:
             downloadQueue.append(track)
         }
-        // Check if there's saved resume data from a previous session for this track
-        let resumeFile = VeloraStorage.root.appendingPathComponent("resume_\(track.id).dat")
-        if FileManager.default.fileExists(atPath: resumeFile.path) {
-            AppLogger.shared.log("[Download] Found resume data for \(track.id) — will use it.", level: .info)
-        }
         processQueue()
     }
 
@@ -1163,17 +1082,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
 
-        // Check for resume data saved from a previous session (background download interrupted by OS)
-        let resumeFile = VeloraStorage.root.appendingPathComponent("resume_\(track.id).dat")
-        let task: URLSessionDownloadTask
-        if let resumeData = try? Data(contentsOf: resumeFile) {
-            AppLogger.shared.log("[Download] Resuming \(track.id) from \(resumeData.count) bytes of saved state.", level: .info)
-            task = downloadSession.downloadTask(withResumeData: resumeData)
-            try? FileManager.default.removeItem(at: resumeFile) // Consumed — remove to avoid accidental reuse
-        } else {
-            AppLogger.shared.log("[Download] Starting fresh download for \(track.id) from \(url.absoluteString)", level: .info)
-            task = downloadSession.downloadTask(with: url)
-        }
+        AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
+        let task = downloadSession.downloadTask(with: url)
         task.taskDescription = "\(track.id)|\(track.suffix?.lowercased() ?? "mp3")"
         downloadTasks[task.taskIdentifier] = track.id
         activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
@@ -1203,28 +1113,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
-        var progress: Double
-        if totalBytesExpectedToWrite != NSURLSessionTransferSizeUnknown {
-            progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        } else {
-            // Server omitted Content-Length (e.g. chunked transfer). 
-            // Fake a progress curve that approaches 95% to give visual feedback.
-            let mbDownloaded = Double(totalBytesWritten) / 1_048_576.0
-            progress = 0.95 * (1.0 - exp(-mbDownloaded / 12.0))
-        }
+        let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
 
         let now = Date()
-        let currentTime = CACurrentMediaTime()
-        
-        progressLock.lock()
-        let lastUpdate = lastProgressUpdateTimes[trackId] ?? 0
-        // Throttle UI updates to roughly 10fps to prevent CPU saturation on fast local networks
-        guard currentTime - lastUpdate > 0.1 || progress >= 1.0 else {
-            progressLock.unlock()
-            return
-        }
-        lastProgressUpdateTimes[trackId] = currentTime
-        progressLock.unlock()
 
         Task { @MainActor in
             self.downloadProgress[trackId] = progress
@@ -1284,30 +1175,23 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                          let delay = pow(2.0, Double(retries))
                          Task {
                              try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                             if let track = (await DatabaseManager.shared.getTrack(id: trackId)) ?? self.queue.first(where: { $0.id == trackId }) {
+                             if let track = DatabaseManager.shared.getTrack(id: trackId) ?? self.queue.first(where: { $0.id == trackId }) {
                                  self.downloadProgress[trackId] = nil
                                  self.downloadTrack(track)
                              }
                          }
                      } else {
-                         // Max retries exceeded for corrupt file — mark as failed and clean up everything
                          self.failedDownloadIds.insert(trackId)
                          self.downloadProgress.removeValue(forKey: trackId)
-                         self.downloadETAs.removeValue(forKey: trackId)
-                         self.downloadStartTimes.removeValue(forKey: trackId)
                          self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
-                         self.downloadRetryCount.removeValue(forKey: trackId)
                      }
                 } else {
-                     // Success — register and wipe ALL per-track tracking state, including
-                     // the stale retry counter so a re-download after deletion gets a full 3 retries.
                      IntegrityManager.shared.registerDownload(trackId: trackId, fileName: destinationUrl.lastPathComponent, size: fileSize)
                      self.downloadedTrackIds.insert(trackId)
                      self.downloadProgress.removeValue(forKey: trackId)
                      self.downloadETAs.removeValue(forKey: trackId)
                      self.downloadStartTimes.removeValue(forKey: trackId)
                      self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
-                     self.downloadRetryCount.removeValue(forKey: trackId)  // ← fresh budget for next download
                      self.objectWillChange.send()
                 }
             }
@@ -1327,38 +1211,19 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         guard let desc = task.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
 
-        // Capture any resume data iOS provides when a background download is interrupted.
-        // We save this to disk so the next launch can pick up exactly where it left off
-        // instead of restarting from byte 0.
-        let resumeData = (error as NSError?)?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
-
         Task { @MainActor in
             self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
-            self.downloadTasks.removeValue(forKey: task.taskIdentifier)
 
             if let error = error {
                 let nsError = error as NSError
-                if nsError.code == NSURLErrorCancelled {
-                    // Intentional cancel (user action or app termination) — do not retry.
-                    // Save resume data if the OS provided any so the next launch can continue.
-                    if let data = resumeData {
-                        let resumeFile = VeloraStorage.root.appendingPathComponent("resume_\(trackId).dat")
-                        try? data.write(to: resumeFile)
-                        AppLogger.shared.log("[Download] Saved \(data.count) bytes of resume data for \(trackId).", level: .info)
-                    }
-                    // Cancelled tasks still hold a concurrency slot — release it
-                    self.activeDownloadCount = max(0, self.activeDownloadCount - 1)
-                    self.processQueue()
-                } else {
-                    // Genuine network failure — retry with exponential back-off
+                if nsError.code != NSURLErrorCancelled {
                     let retries = self.downloadRetryCount[trackId, default: 0]
                     if retries < self.maxRetries {
                         self.downloadRetryCount[trackId] = retries + 1
                         let delay = pow(2.0, Double(retries))
-                        AppLogger.shared.log("[Download] Network error for \(trackId). Retry \(retries + 1)/\(self.maxRetries) in \(Int(delay))s.", level: .warning)
                         Task {
                             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                            if let track = (await DatabaseManager.shared.getTrack(id: trackId)) ?? self.queue.first(where: { $0.id == trackId }) {
+                            if let track = DatabaseManager.shared.getTrack(id: trackId) ?? self.queue.first(where: { $0.id == trackId }) {
                                 self.downloadProgress[trackId] = nil
                                 self.downloadTrack(track)
                             }
@@ -1370,16 +1235,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                         self.downloadStartTimes.removeValue(forKey: trackId)
                         self.downloadRetryCount.removeValue(forKey: trackId)
                     }
-                    // Release concurrency slot and continue queue processing
-                    self.activeDownloadCount = max(0, self.activeDownloadCount - 1)
-                    self.processQueue()
                 }
-            } else {
-                // No error means didFinishDownloadingTo already handled this task successfully.
-                // Release the concurrency slot it was holding and pump the queue.
-                self.activeDownloadCount = max(0, self.activeDownloadCount - 1)
-                self.processQueue()
             }
+            self.downloadTasks.removeValue(forKey: task.taskIdentifier)
+            self.activeDownloadCount -= 1
+            self.processQueue()
         }
     }
 
