@@ -27,6 +27,9 @@ jobs:
             -sdk iphoneos \
             ARCHS=arm64 \
             TARGETED_DEVICE_FAMILY="1,2" \
+            DEPLOYMENT_POSTPROCESSING=YES \
+            STRIP_INSTALLED_PRODUCT=YES \
+            STRIP_SWIFT_SYMBOLS=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -65,9 +68,10 @@ jobs:
           mkdir -p "Payload/Velora.app"
           PAYLOAD_APP="Payload/Velora.app"
           
-          # 3. Copy binary and make it executable
+          # 3. Copy binary, make it executable, and strip symbols to match Codemagic 1.71MB size
           cp "$BINARY_PATH" "$PAYLOAD_APP/$BINARY_NAME"
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
+          xcrun strip -S -x "$PAYLOAD_APP/$BINARY_NAME" 2>/dev/null || xcrun strip "$PAYLOAD_APP/$BINARY_NAME" 2>/dev/null || true
           
           # 4. Collect and inject resources (Fonts, Assets, etc.)
           # Explicitly copy the font from source as fallback to ensure it exists
