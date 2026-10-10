@@ -201,7 +201,7 @@ final class SyncManager: ObservableObject {
                                     if !hasImage {
                                         await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
                                     } else {
-                                        client.downloadArtistPortrait(id: artist.id)
+                                        await client.downloadArtistPortrait(id: artist.id)
                                     }
 
                                     await withCheckedContinuation { cont in

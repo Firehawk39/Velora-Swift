@@ -597,7 +597,7 @@ extension NavidromeClient {
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
                     return
                 }
-                if let data = data, UIImage(data: data) != nil {
+                if UIImage(data: data) != nil {
                     try data.write(to: destinationUrl)
                 } else {
                     AppLogger.shared.log("Failed to save cover art for \(id): Not a valid image.")
