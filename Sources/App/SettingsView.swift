@@ -561,6 +561,10 @@ struct AppSettingsView: View {
                                     } else {
                                         Button(action: {
                                             customFanartApiKey = ""
+                                            UserDefaults.standard.removeObject(forKey: "velora_last_active_fanart_key")
+                                            FanartManager.shared.wipeNegativeFanartCaches()
+                                            AssetRegistry.shared.resetFanartUnavailableRecords()
+                                            refreshAudit()
                                         }) {
                                             Text("Clear")
                                                 .font(.system(size: 12, weight: .semibold))
@@ -574,6 +578,18 @@ struct AppSettingsView: View {
                                     .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
                                     .autocapitalization(.none)
                                     .disableAutocorrection(true)
+                                    .onChange(of: customFanartApiKey) { newKey in
+                                        let trimmed = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !trimmed.isEmpty {
+                                            UserDefaults.standard.set(trimmed, forKey: "velora_last_active_fanart_key")
+                                            FanartManager.shared.handleApiKeyUpdated()
+                                        } else {
+                                            UserDefaults.standard.removeObject(forKey: "velora_last_active_fanart_key")
+                                            FanartManager.shared.wipeNegativeFanartCaches()
+                                            AssetRegistry.shared.resetFanartUnavailableRecords()
+                                        }
+                                        refreshAudit()
+                                    }
 
                                 Text("Fetches high-res artist backdrops and portraits. If empty, Fanart calls are skipped.")
                                     .font(.system(size: 12))
@@ -1027,6 +1043,7 @@ struct AppSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .onAppear {
+                FanartManager.shared.checkAndInvalidateIfKeyChanged()
                 let clientRef = client
                 DispatchQueue.global(qos: .background).async {
                     let size = clientRef.getMediaCacheSize()

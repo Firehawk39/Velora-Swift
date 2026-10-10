@@ -134,4 +134,14 @@ final class AssetRegistry {
         isDirty = true
         save()
     }
+
+    // MARK: - Fanart Reset
+    /// Wipes unavailable backdrop and logo records so that entering or updating a Fanart API key
+    /// allows all artists to be queried again without false "not available" blocks.
+    func resetFanartUnavailableRecords() {
+        data.unavailableBackdrops.removeAll()
+        data.unavailableLogos.removeAll()
+        isDirty = true
+        save()
+    }
 }

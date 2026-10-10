@@ -47,6 +47,50 @@ final class FanartManager: ObservableObject {
         self.backdropDir   = VeloraStorage.backdrops
         self.portraitDir   = VeloraStorage.artistPortraits
         self.clearLogoDir  = VeloraStorage.clearLogos
+        checkAndInvalidateIfKeyChanged()
+    }
+
+    // MARK: - API Key Lifecycle & Cache Invalidation
+
+    /// Wipes 0-byte negative cache markers from disk.
+    func wipeNegativeFanartCaches() {
+        let fm = FileManager.default
+        if let files = try? fm.contentsOfDirectory(at: backdropDir, includingPropertiesForKeys: [.fileSizeKey]) {
+            for file in files {
+                let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
+                if size <= 100 {
+                    try? fm.removeItem(at: file)
+                }
+            }
+        }
+        if let files = try? fm.contentsOfDirectory(at: clearLogoDir, includingPropertiesForKeys: [.fileSizeKey]) {
+            for file in files {
+                let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
+                if size <= 100 {
+                    try? fm.removeItem(at: file)
+                }
+            }
+        }
+        AppLogger.shared.log("[Fanart] Negative cache markers purged.", level: .info)
+    }
+
+    /// Called when the user configures, updates, or pastes a new Fanart API key.
+    func handleApiKeyUpdated() {
+        wipeNegativeFanartCaches()
+        AssetRegistry.shared.resetFanartUnavailableRecords()
+    }
+
+    /// Automatically detects if the configured Fanart key changed from the last recorded session.
+    /// Resets false negative records so user isn't permanently locked out of Fanart downloads.
+    func checkAndInvalidateIfKeyChanged() {
+        let currentKey = fanartApiKey ?? ""
+        let lastKey = UserDefaults.standard.string(forKey: "velora_last_active_fanart_key") ?? ""
+        if currentKey != lastKey {
+            UserDefaults.standard.set(currentKey, forKey: "velora_last_active_fanart_key")
+            if !currentKey.isEmpty {
+                handleApiKeyUpdated()
+            }
+        }
     }
 
     // MARK: - TTL Helper
@@ -96,35 +140,49 @@ final class FanartManager: ObservableObject {
     func hasBackdrop(for artist: String, artistId: String? = nil) -> Bool {
         let key = getCacheKey(artistName: artist, artistId: artistId)
         let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
-        return FileManager.default.fileExists(atPath: fileUrl.path)
+        guard FileManager.default.fileExists(atPath: fileUrl.path) else { return false }
+        let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+        return size > 100
     }
 
-    /// Returns true if a valid backdrop exists OR it was verified unavailable on Fanart.tv
+    /// Returns true if a valid backdrop exists OR it was verified unavailable on Fanart.tv (only if Fanart is configured)
     func hasCheckedBackdrop(for artist: String, artistId: String? = nil) -> Bool {
         let key = getCacheKey(artistName: artist, artistId: artistId)
         let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
-        if FileManager.default.fileExists(atPath: fileUrl.path) { return true }
-        return AssetRegistry.shared.isBackdropUnavailable(key: key)
+        if FileManager.default.fileExists(atPath: fileUrl.path) {
+            let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+            if size > 100 { return true }
+            return isFanartConfigured
+        }
+        return isFanartConfigured && AssetRegistry.shared.isBackdropUnavailable(key: key)
     }
 
     func hasPortrait(for artist: String) -> Bool {
         let sanitized = sanitizeFileName(artist)
         let fileUrl = self.portraitDir.appendingPathComponent(sanitized + ".jpg")
-        return FileManager.default.fileExists(atPath: fileUrl.path)
+        guard FileManager.default.fileExists(atPath: fileUrl.path) else { return false }
+        let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+        return size > 100
     }
 
     func hasClearLogo(for artist: String) -> Bool {
         let key = "logo_" + sanitizeFileName(artist)
         let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
-        return fileManager.fileExists(atPath: fileUrl.path)
+        guard fileManager.fileExists(atPath: fileUrl.path) else { return false }
+        let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+        return size > 100
     }
 
-    /// Returns true if a valid clear logo exists OR it was verified unavailable on Fanart.tv
+    /// Returns true if a valid clear logo exists OR it was verified unavailable on Fanart.tv (only if Fanart is configured)
     func hasCheckedClearLogo(for artist: String) -> Bool {
         let key = "logo_" + sanitizeFileName(artist)
         let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
-        if fileManager.fileExists(atPath: fileUrl.path) { return true }
-        return AssetRegistry.shared.isLogoUnavailable(key: key)
+        if fileManager.fileExists(atPath: fileUrl.path) {
+            let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+            if size > 100 { return true }
+            return isFanartConfigured
+        }
+        return isFanartConfigured && AssetRegistry.shared.isLogoUnavailable(key: key)
     }
 
     func fetchBackdrop(for artists: [String], artistId: String? = nil, mbid: String? = nil, allowNetwork: Bool = true) {
@@ -351,11 +409,16 @@ final class FanartManager: ObservableObject {
             let fileUrl = backdropDir.appendingPathComponent(key + ".jpg")
 
             if fileManager.fileExists(atPath: fileUrl.path) {
-                if let attr = try? fileManager.attributesOfItem(atPath: fileUrl.path), let size = attr[.size] as? Int64, size > 0 {
+                let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+                if size > 100 {
                     return // Found a valid image!
                 }
-                if index == artists.count - 1 { return } // Last fallback artist has a marker, we're done
-                continue // Current artist has marker, try next
+                if isNegativeCacheExpired(at: fileUrl) {
+                    try? fileManager.removeItem(at: fileUrl)
+                } else {
+                    if index == artists.count - 1 { return } // Last fallback artist has a marker, we're done
+                    continue // Current artist has marker, try next
+                }
             }
 
             let alreadyFetching = activeBackdropFetches.contains(key)

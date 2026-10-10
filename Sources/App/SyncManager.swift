@@ -144,12 +144,13 @@ final class SyncManager: ObservableObject {
             let startTime = Date()
 
             // Pre-flight check: determine what's truly missing
+            fa.checkAndInvalidateIfKeyChanged()
             var initialMissingArtists = [Artist]()
             for (index, artist) in artists.enumerated() {
                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                 let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
-                let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
-                let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
+                let hasBackdrop = fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true
+                let hasLogo = fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true
                 let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
                 if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
                     initialMissingArtists.append(artist)
@@ -196,8 +197,8 @@ final class SyncManager: ObservableObject {
                 for (index, artist) in missingArtists.enumerated() {
                     let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                     let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
-                    let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
-                    let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
+                    let hasBackdrop = fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true
+                    let hasLogo = fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true
                     let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
                     if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
                         missingArtistsThisPass.append(artist)
@@ -246,8 +247,8 @@ final class SyncManager: ObservableObject {
                                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                                 let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
                                 let hasArtist = await mb.hasArtistMetadata(for: artist.primaryName)
-                                let hasBackdrop = await fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
-                                let hasClearLogo = await fa.hasCheckedClearLogo(for: artist.primaryName)
+                                let hasBackdrop = await (fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true)
+                                let hasClearLogo = await (fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true)
                                 if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
                                     let info: SubsonicArtistInfo? = await withCheckedContinuation { continuation in
                                         Task { @MainActor in
@@ -328,13 +329,15 @@ final class SyncManager: ObservableObject {
 
             // Register permanently unavailable items so subsequent sync taps complete in milliseconds
             for artist in missingArtists {
-                let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
-                if !fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) {
-                    AssetRegistry.shared.markBackdropUnavailable(key: backdropKey)
-                }
-                if !fa.hasCheckedClearLogo(for: artist.primaryName) {
-                    let logoKey = "logo_" + fa.sanitizeFileName(artist.primaryName)
-                    AssetRegistry.shared.markLogoUnavailable(key: logoKey)
+                if fa.isFanartConfigured {
+                    let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
+                    if !fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) {
+                        AssetRegistry.shared.markBackdropUnavailable(key: backdropKey)
+                    }
+                    if !fa.hasCheckedClearLogo(for: artist.primaryName) {
+                        let logoKey = "logo_" + fa.sanitizeFileName(artist.primaryName)
+                        AssetRegistry.shared.markLogoUnavailable(key: logoKey)
+                    }
                 }
                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                 if !isValidImageFile(at: localPortraitUrl) {
@@ -731,6 +734,12 @@ final class SyncManager: ObservableObject {
             var missingCoverArtIds: Set<String> = []
             var missingArtistPortraitIds: Set<String> = []
             var missingLyricsIds: [(id: String, artist: String, title: String, duration: Double)] = []
+            var missingBackdropArtists: Set<String> = []
+            var missingLogoArtists: Set<String> = []
+            let fa = FanartManager.shared
+            if fa.isFanartConfigured {
+                fa.checkAndInvalidateIfKeyChanged()
+            }
 
             repairStatus = "Auditing library integrity..."
 
@@ -769,10 +778,22 @@ final class SyncManager: ObservableObject {
                     missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
                 }
 
+                // 4. Check Fanart Backdrops & Clear Logos
+                if fa.isFanartConfigured {
+                    let artistName = track.primaryArtist
+                    let artId = track.artistId ?? track.primaryArtist
+                    if !fa.hasBackdrop(for: artistName, artistId: artId) && !AssetRegistry.shared.isBackdropUnavailable(key: fa.getCacheKey(artistName: artistName, artistId: artId)) {
+                        missingBackdropArtists.insert(artistName)
+                    }
+                    if !fa.hasClearLogo(for: artistName) && !AssetRegistry.shared.isLogoUnavailable(key: "logo_" + fa.sanitizeFileName(artistName)) {
+                        missingLogoArtists.insert(artistName)
+                    }
+                }
+
                 if index % 50 == 0 { await Task.yield() }
             }
 
-            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count
+            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count + missingBackdropArtists.count + missingLogoArtists.count
             if totalTasks == 0 {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 finalizeRepairSync("Library is 100% healthy. All \(localTracks.count) offline tracks verified.")
@@ -829,6 +850,48 @@ final class SyncManager: ObservableObject {
                                         client.fetchArtist(id: id) { _ in cont.resume() }
                                     }
                                 }
+                            }
+                        }
+                    }
+                    tasksCompleted += Double(batch.count)
+                    repairedCount += batch.count
+                    repairProgress = tasksCompleted / Double(totalTasks)
+                    startIndex += repairBatchSize
+                }
+            }
+
+            // Repair Fanart Backdrops
+            if !missingBackdropArtists.isEmpty && isRepairing {
+                let items = Array(missingBackdropArtists)
+                var startIndex = 0
+                while startIndex < items.count && isRepairing {
+                    let endIndex = min(startIndex + repairBatchSize, items.count)
+                    let batch = Array(items[startIndex..<endIndex])
+                    await withTaskGroup(of: Void.self) { group in
+                        for name in batch {
+                            group.addTask {
+                                await fa.downloadBackdropSilently(for: [name])
+                            }
+                        }
+                    }
+                    tasksCompleted += Double(batch.count)
+                    repairedCount += batch.count
+                    repairProgress = tasksCompleted / Double(totalTasks)
+                    startIndex += repairBatchSize
+                }
+            }
+
+            // Repair Fanart Clear Logos
+            if !missingLogoArtists.isEmpty && isRepairing {
+                let items = Array(missingLogoArtists)
+                var startIndex = 0
+                while startIndex < items.count && isRepairing {
+                    let endIndex = min(startIndex + repairBatchSize, items.count)
+                    let batch = Array(items[startIndex..<endIndex])
+                    await withTaskGroup(of: Void.self) { group in
+                        for name in batch {
+                            group.addTask {
+                                await fa.downloadClearLogoSilently(for: name)
                             }
                         }
                     }

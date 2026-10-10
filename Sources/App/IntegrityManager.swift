@@ -255,8 +255,13 @@ final class IntegrityManager: ObservableObject {
 
         // Merge with AssetRegistry records
         unlistedPortraitsCount = max(unlistedPortraitsCount, AssetRegistry.shared.unavailablePortraitsCount)
-        unlistedBackdropsCount = max(unlistedBackdropsCount, AssetRegistry.shared.unavailableBackdropsCount)
-        unlistedLogosCount = max(unlistedLogosCount, AssetRegistry.shared.unavailableLogosCount)
+        if FanartManager.shared.isFanartConfigured {
+            unlistedBackdropsCount = max(unlistedBackdropsCount, AssetRegistry.shared.unavailableBackdropsCount)
+            unlistedLogosCount = max(unlistedLogosCount, AssetRegistry.shared.unavailableLogosCount)
+        } else {
+            unlistedBackdropsCount = 0
+            unlistedLogosCount = 0
+        }
         instrumentalCount = max(instrumentalCount, AssetRegistry.shared.unavailableLyricsCount)
 
         return LibraryAuditStats(
