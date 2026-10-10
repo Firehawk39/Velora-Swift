@@ -45,10 +45,6 @@ struct ContentView: View {
         let playbackInstance = PlaybackManager(client: clientInstance)
         _client = StateObject(wrappedValue: clientInstance)
         _playback = StateObject(wrappedValue: playbackInstance)
-        // Re-queue any downloads that were in-flight when the app was last killed.
-        // loadDownloadedTracks() runs first (inside PlaybackManager.init), so finished
-        // tracks are already in the index and won't be re-downloaded.
-        playbackInstance.restorePendingDownloads()
     }
 
     @ObservedObject private var network = NetworkMonitor.shared
