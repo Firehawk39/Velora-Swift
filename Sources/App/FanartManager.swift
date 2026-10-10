@@ -224,66 +224,20 @@ final class FanartManager: ObservableObject {
 
         activeBackdropFetches.insert(key)
 
-        var queryFanart: (@MainActor @Sendable (String, Bool) -> Void)!
-        queryFanart = { resolvedMBID, isProvided in
-            AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
-            let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
-            self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url, isEmpty in
-                if let url = url {
-                    AppLogger.shared.log("[Fanart] Found backdrop URL for \(artist)")
-                    self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, priority: URLSessionTask.highPriority) { image in
-                        self.activeBackdropFetches.remove(key)
-                    }
-                } else {
-                    if isEmpty {
-                        if isProvided {
-                            // The provided MBID from Navidrome was likely wrong (e.g. an Album MBID).
-                            // Delete the bad sidecar and fallback to MusicBrainz.
-                            AppLogger.shared.log("[Fanart] Provided MBID \(resolvedMBID) failed for \(artist). Falling back to MusicBrainz.")
-                            let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
-                            try? FileManager.default.removeItem(at: sidecarUrl)
-                            
-                            self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
-                                switch result {
-                                case .found(let newMBID):
-                                    try? newMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                                    // Call queryFanart again with the newly resolved MBID, marking it as NOT provided
-                                    Task { @MainActor in queryFanart(newMBID, false) }
-                                case .notFound:
-                                    try? Data().write(to: fileUrl)
-                                    self.activeBackdropFetches.remove(key)
-                                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-                                case .networkError:
-                                    self.activeBackdropFetches.remove(key)
-                                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-                                }
-                            }
-                            return
-                        } else {
-                            AppLogger.shared.log("[Fanart] No backdrop found for \(artist)")
-                            try? Data().write(to: fileUrl)
-                        }
-                    } else {
-                        AppLogger.shared.log("[Fanart] Fetch failed/rate-limited for \(artist)")
-                    }
-                    self.activeBackdropFetches.remove(key)
-                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-                }
-            }
-        }
-
         // 3. Resolve MBID and Fetch
         if index == 0, let validMBID = providedMbid, !validMBID.isEmpty {
             let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
             try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-            queryFanart(validMBID, true)
+            self.executeFanartQuery(resolvedMBID: validMBID, isProvided: true, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
         } else {
             self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
                 switch result {
                 case .found(let resolved):
                     let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
                     try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                    Task { @MainActor in queryFanart(resolved, false) }
+                    Task { @MainActor in
+                        self.executeFanartQuery(resolvedMBID: resolved, isProvided: false, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+                    }
                 case .notFound:
                     // Genuinely not on MusicBrainz — write negative cache
                     try? Data().write(to: fileUrl)
@@ -294,6 +248,64 @@ final class FanartManager: ObservableObject {
                     self.activeBackdropFetches.remove(key)
                     self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                 }
+            }
+        }
+    }
+
+    private func executeFanartQuery(
+        resolvedMBID: String,
+        isProvided: Bool,
+        artist: String,
+        primaryArtist: String,
+        key: String,
+        fileUrl: URL,
+        artists: [String],
+        index: Int,
+        allowNetwork: Bool
+    ) {
+        AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
+        let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
+        self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url, isEmpty in
+            if let url = url {
+                AppLogger.shared.log("[Fanart] Found backdrop URL for \(artist)")
+                self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, priority: URLSessionTask.highPriority) { image in
+                    self.activeBackdropFetches.remove(key)
+                }
+            } else {
+                if isEmpty {
+                    if isProvided {
+                        // The provided MBID from Navidrome was likely wrong (e.g. an Album MBID).
+                        // Delete the bad sidecar and fallback to MusicBrainz.
+                        AppLogger.shared.log("[Fanart] Provided MBID \(resolvedMBID) failed for \(artist). Falling back to MusicBrainz.")
+                        let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+                        try? FileManager.default.removeItem(at: sidecarUrl)
+                        
+                        self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
+                            switch result {
+                            case .found(let newMBID):
+                                try? newMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                                Task { @MainActor in
+                                    self.executeFanartQuery(resolvedMBID: newMBID, isProvided: false, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+                                }
+                            case .notFound:
+                                try? Data().write(to: fileUrl)
+                                self.activeBackdropFetches.remove(key)
+                                self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                            case .networkError:
+                                self.activeBackdropFetches.remove(key)
+                                self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                            }
+                        }
+                        return
+                    } else {
+                        AppLogger.shared.log("[Fanart] No backdrop found for \(artist)")
+                        try? Data().write(to: fileUrl)
+                    }
+                } else {
+                    AppLogger.shared.log("[Fanart] Fetch failed/rate-limited for \(artist)")
+                }
+                self.activeBackdropFetches.remove(key)
+                self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
             }
         }
     }
