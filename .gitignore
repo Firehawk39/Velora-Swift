@@ -11,3 +11,4 @@ DerivedData/
 .env
 run_mcp.ps1
 mcp_test.js
+scratch/

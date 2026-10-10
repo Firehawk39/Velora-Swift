@@ -152,11 +152,11 @@ extension NavidromeClient {
 
     // MARK: - Album Tracks
 
-    func fetchAlbumTracks(albumId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
+    func fetchAlbumTracks(albumId: String, albumName: String? = nil, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
         let fallback: @MainActor @Sendable () async -> Void = {
-            let offlineTracks = await DatabaseManager.shared.getTracks(albumId: albumId)
+            let offlineTracks = await DatabaseManager.shared.getTracks(albumId: albumId, albumName: albumName)
             let downloadedTracks = PlaybackManager.shared?.filterOffline(offlineTracks) ?? offlineTracks
-            completion(downloadedTracks)
+            completion(downloadedTracks.isEmpty ? offlineTracks : downloadedTracks)
         }
         guard NetworkMonitor.shared.isConnected else { Task { @MainActor in await fallback() }; return }
         guard let url = buildUrl(method: "getAlbum.view", params: ["id": albumId]) else { Task { @MainActor in await fallback() }; return }
@@ -185,33 +185,42 @@ extension NavidromeClient {
                     completion(tracks)
                 }
             } catch {
-                Task { @MainActor in completion([]) }
+                Task { @MainActor in await fallback() }
             }
         }
     }
 
-    func fetchArtistData(artistId: String, completion: @escaping @MainActor @Sendable ([Track], [Album], String?, String?) -> Void) {
-        let fallback: @MainActor @Sendable () -> Void = { [weak self] in
+    func fetchArtistData(artistId: String, artistName: String? = nil, completion: @escaping @MainActor @Sendable ([Track], [Album], String?, String?) -> Void) {
+        let fallback: @MainActor @Sendable () async -> Void = { [weak self] in
             guard let self = self else { return }
-            let artistName = self.artists.first(where: { $0.id == artistId })?.name ?? ""
-            let offlineAlbums = self.albums.filter { $0.artistId == artistId }
-            let albumIds = Set(offlineAlbums.map { $0.id })
-            let allTracks = LibraryDataCache.shared.allTracks
-            let offlineTracks = allTracks.filter {
-                $0.artistId == artistId || (albumIds.contains($0.albumId ?? "")) || ($0.artist == artistName && !artistName.isEmpty)
+            let resolvedName = artistName ?? (self.artists.first(where: { $0.id == artistId })?.name ?? "")
+            var offlineTracks = await DatabaseManager.shared.getTracks(artistId: artistId, artistName: resolvedName)
+            if offlineTracks.isEmpty {
+                let allTracks = await DatabaseManager.shared.getAllTracks()
+                offlineTracks = allTracks.filter {
+                    $0.artistId == artistId || ($0.artist?.lowercased() == resolvedName.lowercased() && !resolvedName.isEmpty)
+                }
             }
             let downloadedTracks = PlaybackManager.shared?.filterOffline(offlineTracks) ?? offlineTracks
-            completion(downloadedTracks, offlineAlbums, nil, nil)
+            let finalTracks = downloadedTracks.isEmpty ? offlineTracks : downloadedTracks
+            
+            var offlineAlbums = self.albums.filter { $0.artistId == artistId || ($0.artist?.lowercased() == resolvedName.lowercased() && !resolvedName.isEmpty) }
+            if offlineAlbums.isEmpty {
+                offlineAlbums = LibraryDataCache.shared.synthesizeAlbums(from: finalTracks)
+            }
+            
+            let cachedBio = MusicBrainzManager.shared.getArtistBiography(for: resolvedName)
+            completion(finalTracks, offlineAlbums, cachedBio, nil)
         }
 
         guard NetworkMonitor.shared.isConnected else {
-            Task { @MainActor in fallback() }
+            Task { @MainActor in await fallback() }
             return
         }
-        guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { Task { @MainActor in fallback() }; return }
+        guard let url = buildUrl(method: "getArtist.view", params: ["id": artistId]) else { Task { @MainActor in await fallback() }; return }
         ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
             guard error == nil, let data = data else {
-                Task { @MainActor in fallback() }
+                Task { @MainActor in await fallback() }
                 return
             }
             do {
@@ -244,7 +253,7 @@ extension NavidromeClient {
 
                     for album in albumsData {
                         group.enter()
-                        self.fetchAlbumTracks(albumId: album.id) { tracks in
+                        self.fetchAlbumTracks(albumId: album.id, albumName: album.name) { tracks in
                             allTracks.append(contentsOf: tracks)
                             group.leave()
                         }
@@ -263,7 +272,7 @@ extension NavidromeClient {
                 }
             } catch {
                 AppLogger.shared.log("Error decoding artist details: \(error)", level: .error)
-                Task { @MainActor in completion([], [], nil, nil) }
+                Task { @MainActor in await fallback() }
             }
         }
     }
@@ -289,56 +298,47 @@ extension NavidromeClient {
     // MARK: - Search
 
     func search(query: String, completion: @escaping @MainActor @Sendable ([Track], [Album], [Artist]) -> Void) {
-        let fallback: @MainActor @Sendable () -> Void = { [weak self] in
+        let fallback: @MainActor @Sendable () async -> Void = { [weak self] in
+            guard let self = self else { return }
             let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            let lowerQuery = trimmed.lowercased()
+            guard !trimmed.isEmpty else { completion([], [], []); return }
             
-            let allTracks = LibraryDataCache.shared.allTracks
+            let foundTracks = await DatabaseManager.shared.searchTracks(query: trimmed)
             let downloadedIds = PlaybackManager.shared?.downloadedTrackIds ?? Set<String>()
+            let offlineTracks = foundTracks.filter { downloadedIds.isEmpty || downloadedIds.contains($0.id) }
             
-            var downloadedAlbumIds = Set<String>()
-            var downloadedArtistIds = Set<String>()
-            
-            var foundTracks: [Track] = []
-            for track in allTracks where downloadedIds.contains(track.id) {
-                if let aid = track.albumId { downloadedAlbumIds.insert(aid) }
-                if let artId = track.artistId { downloadedArtistIds.insert(artId) }
-                
-                if track.title.lowercased().contains(lowerQuery) ||
-                   (track.artist?.lowercased().contains(lowerQuery) ?? false) ||
-                   (track.album?.lowercased().contains(lowerQuery) ?? false) {
-                    foundTracks.append(track)
-                }
+            var foundAlbums = self.albums.filter { album in
+                album.name.localizedCaseInsensitiveContains(trimmed) || (album.artist?.localizedCaseInsensitiveContains(trimmed) ?? false)
             }
-            
-            let foundAlbums = self?.albums.filter { album in
-                (album.name.lowercased().contains(lowerQuery) || (album.artist?.lowercased().contains(lowerQuery) ?? false)) &&
-                downloadedAlbumIds.contains(album.id)
-            } ?? []
-            
-            let foundArtists = self?.artists.filter { artist in
-                artist.name.lowercased().contains(lowerQuery) &&
-                downloadedArtistIds.contains(artist.id)
-            } ?? []
-            
-            completion(foundTracks, foundAlbums, foundArtists)
+            if foundAlbums.isEmpty && !offlineTracks.isEmpty {
+                foundAlbums = LibraryDataCache.shared.synthesizeAlbums(from: offlineTracks)
+            }
+
+            var foundArtists = self.artists.filter { artist in
+                artist.name.localizedCaseInsensitiveContains(trimmed)
+            }
+            if foundArtists.isEmpty && !offlineTracks.isEmpty {
+                foundArtists = LibraryDataCache.shared.synthesizeArtists(from: offlineTracks)
+            }
+
+            completion(offlineTracks, foundAlbums, foundArtists)
         }
 
         guard NetworkMonitor.shared.isConnected else {
-            Task { @MainActor in fallback() }; return
+            Task { @MainActor in await fallback() }; return
         }
         guard let url = buildUrl(method: "search3.view", params: ["query": query]) else {
-            Task { @MainActor in fallback() }; return
+            Task { @MainActor in await fallback() }; return
         }
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             if let error = error {
                 AppLogger.shared.log("[Search] Network error: \(error.localizedDescription)", level: .error)
-                Task { @MainActor in fallback() }
+                Task { @MainActor in await fallback() }
                 return
             }
             guard let data = data else {
                 AppLogger.shared.log("[Search] No data received from server", level: .info)
-                Task { @MainActor in fallback() }
+                Task { @MainActor in await fallback() }
                 return
             }
             do {
@@ -377,7 +377,7 @@ extension NavidromeClient {
                 }
             } catch {
                 AppLogger.shared.log("[Search] JSON decode error: \(error)", level: .error)
-                Task { @MainActor in completion([], [], []) }
+                Task { @MainActor in await fallback() }
             }
         }
     }
@@ -645,15 +645,9 @@ extension NavidromeClient {
             let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8)
             if let lyrics = cachedLyrics, !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if lyrics.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
-                    // Offline: trust the cache to avoid pointless waits
-                    // Online:  fall through and retry — the cache may have been written during
-                    //          a bad network run (sync timeout) and LRCLIB may have lyrics now.
-                    if !isOnline {
-                        completion(nil)
-                        return
-                    }
-                    // Delete the stale NO_LYRICS marker so we can overwrite it on success
-                    try? FileManager.default.removeItem(at: cacheFile)
+                    // Valid negative cache: Verified instrumental or unavailable on LRCLIB
+                    completion(nil)
+                    return
                 } else {
                     completion(lyrics)
                     return
@@ -663,7 +657,6 @@ extension NavidromeClient {
                 completion(nil)
                 return
             }
-            // Empty file + online: fall through and retry fetching
         }
 
 
@@ -686,6 +679,9 @@ extension NavidromeClient {
                 // Save empty file so we don't retry forever on un-lyric-able songs (404 Not Found)
                 try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
+                await MainActor.run {
+                    AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
+                }
                 completion(nil)
             } catch {
                 // Network error or 429 Rate Limited. Do NOT poison the cache.
@@ -1026,6 +1022,15 @@ extension NavidromeClient {
 
         Task { @MainActor in
             IntegrityManager.shared.clearAll()
+            AssetRegistry.shared.resetUnavailableRecords()
+            UserDefaults.standard.removeObject(forKey: "velora_last_metadata_status")
+            UserDefaults.standard.removeObject(forKey: "velora_last_lyrics_status")
+            UserDefaults.standard.removeObject(forKey: "velora_last_media_status")
+            UserDefaults.standard.removeObject(forKey: "velora_last_repair_status")
+            SyncManager.shared.metadataStatus = ""
+            SyncManager.shared.lyricsStatus = ""
+            SyncManager.shared.mediaStatus = ""
+            SyncManager.shared.repairStatus = ""
         }
 
         fetchAlbums()

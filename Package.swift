@@ -47,6 +47,10 @@ let package = Package(
             resources: [
                 .process("Resources")
             ]
+        ),
+        .testTarget(
+            name: "VeloraTests",
+            path: "Tests/VeloraTests"
         )
     ],
     swiftLanguageModes: [.v6]

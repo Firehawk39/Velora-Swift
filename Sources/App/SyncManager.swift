@@ -8,25 +8,25 @@ final class SyncManager: ObservableObject {
     // Metadata Sync State
     @Published var isSyncingMetadata: Bool = false
     @Published var metadataProgress: Double = 0.0
-    @Published var metadataStatus: String = ""
+    @Published var metadataStatus: String = UserDefaults.standard.string(forKey: "velora_last_metadata_status") ?? ""
     @Published var metadataEta: String = ""
 
     // Lyrics Sync State
     @Published var isSyncingLyrics: Bool = false
     @Published var lyricsProgress: Double = 0.0
-    @Published var lyricsStatus: String = ""
+    @Published var lyricsStatus: String = UserDefaults.standard.string(forKey: "velora_last_lyrics_status") ?? ""
     @Published var lyricsEta: String = ""
 
     // Media Sync State
     @Published var isSyncingMedia: Bool = false
     @Published var mediaProgress: Double = 0.0
-    @Published var mediaStatus: String = ""
+    @Published var mediaStatus: String = UserDefaults.standard.string(forKey: "velora_last_media_status") ?? ""
     @Published var mediaEta: String = ""
 
     // Repair Sync State
     @Published var isRepairing: Bool = false
     @Published var repairProgress: Double = 0.0
-    @Published var repairStatus: String = ""
+    @Published var repairStatus: String = UserDefaults.standard.string(forKey: "velora_last_repair_status") ?? ""
 
     enum SyncType {
         case none
@@ -71,6 +71,23 @@ final class SyncManager: ObservableObject {
 
     private var client: NavidromeClient?
     private var playback: PlaybackManager?
+    private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+
+    private func beginBackgroundExecution(name: String) {
+        if backgroundTaskId == .invalid {
+            backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+                self?.endBackgroundExecution()
+            }
+        }
+    }
+
+    private func endBackgroundExecution() {
+        if backgroundTaskId != .invalid {
+            let id = backgroundTaskId
+            backgroundTaskId = .invalid
+            UIApplication.shared.endBackgroundTask(id)
+        }
+    }
 
     func configure(client: NavidromeClient, playback: PlaybackManager) {
         self.client = client
@@ -86,6 +103,7 @@ final class SyncManager: ObservableObject {
         metadataProgress = 0.0
         metadataEta = ""
         metadataStatus = "Starting metadata sync..."
+        beginBackgroundExecution(name: "VeloraMetadataSync")
 
         Task {
             // 1. Ensure artists are loaded
@@ -124,6 +142,44 @@ final class SyncManager: ObservableObject {
             let maxConcurrent = min(200, max(25, Int(physicalMemoryGB * Double(activeCores) * 3)))
             let startTime = Date()
 
+            // Pre-flight check: determine what's truly missing
+            var initialMissingArtists = [Artist]()
+            for (index, artist) in artists.enumerated() {
+                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
+                let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
+                let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+                let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
+                let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
+                if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
+                    initialMissingArtists.append(artist)
+                }
+                if index % 100 == 0 { await Task.yield() }
+            }
+
+            var initialMissingAlbums = [Album]()
+            for (index, album) in albums.enumerated() {
+                let artistName = album.artist ?? "Unknown Artist"
+                let albumKey = "\(artistName)_\(album.name)"
+                let rawArtId = album.coverArt ?? album.id
+                let cleanArtId = extractArtId(from: rawArtId)
+                let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+                let hasCover = isValidImageFile(at: localArtUrl)
+                let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
+                if !(hasCover && hasMeta) {
+                    initialMissingAlbums.append(album)
+                }
+                if index % 100 == 0 { await Task.yield() }
+            }
+
+            if initialMissingArtists.isEmpty && initialMissingAlbums.isEmpty {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                finalizeMetadataSync("All metadata cached • Up to date")
+                return
+            }
+
+            var missingArtists = initialMissingArtists
+            var missingAlbums = initialMissingAlbums
+
             // Keep looping until all artists are confirmed complete (handles partial failures in one go)
             var passCount = 0
             repeat {
@@ -135,28 +191,36 @@ final class SyncManager: ObservableObject {
                 fa.resetActiveFetches()
 
                 // Re-scan on every pass so we only work on what's still missing
-                var missingArtists = [Artist]()
-                for (index, artist) in artists.enumerated() {
+                var missingArtistsThisPass = [Artist]()
+                for (index, artist) in missingArtists.enumerated() {
                     let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                    let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
-                    let localBackdropUrl = VeloraStorage.backdrops.appendingPathComponent(backdropKey + ".jpg")
-                    let hasLocalPortrait = isValidImageFile(at: localPortraitUrl)
-                    let hasBackdrop = isValidImageFile(at: localBackdropUrl)
-                    let hasArtist = mb.hasArtistMetadata(for: artist.primaryName)
-                    if !(hasLocalPortrait && hasArtist && hasBackdrop) {
-                        missingArtists.append(artist)
+                    let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
+                    let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+                    let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
+                    let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
+                    if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
+                        missingArtistsThisPass.append(artist)
                     }
                     if index % 100 == 0 { await Task.yield() }
                 }
 
-                var missingAlbums = [Album]()
-                for (index, album) in albums.enumerated() {
+                var missingAlbumsThisPass = [Album]()
+                for (index, album) in missingAlbums.enumerated() {
                     let artistName = album.artist ?? "Unknown Artist"
-                    if !mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
-                        missingAlbums.append(album)
+                    let albumKey = "\(artistName)_\(album.name)"
+                    let rawArtId = album.coverArt ?? album.id
+                    let cleanArtId = extractArtId(from: rawArtId)
+                    let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+                    let hasCover = isValidImageFile(at: localArtUrl)
+                    let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
+                    if !(hasCover && hasMeta) {
+                        missingAlbumsThisPass.append(album)
                     }
                     if index % 100 == 0 { await Task.yield() }
                 }
+
+                missingArtists = missingArtistsThisPass
+                missingAlbums = missingAlbumsThisPass
 
                 let totalMissing = Double(missingArtists.count + missingAlbums.count)
                 let totalAll = Double(artists.count + albums.count)
@@ -176,14 +240,13 @@ final class SyncManager: ObservableObject {
                     await withTaskGroup(of: Void.self) { group in
                         for (_, artist) in batch.enumerated() {
                             group.addTask {
-
                                 let mb = await MusicBrainzManager.shared
                                 let fa = await FanartManager.shared
                                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                                 let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
                                 let hasArtist = await mb.hasArtistMetadata(for: artist.primaryName)
-                                let hasBackdrop = await fa.hasBackdrop(for: artist.primaryName)
-                                let hasClearLogo = await fa.hasClearLogo(for: artist.primaryName)
+                                let hasBackdrop = await fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+                                let hasClearLogo = await fa.hasCheckedClearLogo(for: artist.primaryName)
                                 if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
                                     let info: SubsonicArtistInfo? = await withCheckedContinuation { continuation in
                                         Task { @MainActor in
@@ -226,7 +289,7 @@ final class SyncManager: ObservableObject {
                     }
                 }
 
-                // Phase B: Album Metadata
+                // Phase B: Album Metadata & Cover Art
                 var albumStartIndex = 0
                 while albumStartIndex < missingAlbums.count && isSyncingMetadata {
                     let endIndex = min(albumStartIndex + maxConcurrent, missingAlbums.count)
@@ -236,11 +299,16 @@ final class SyncManager: ObservableObject {
                     await withTaskGroup(of: Void.self) { group in
                         for (_, album) in batch.enumerated() {
                             group.addTask {
-
                                 let artistName = album.artist ?? "Unknown Artist"
                                 let mb = await MusicBrainzManager.shared
                                 if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)) {
                                     await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
+                                }
+                                let rawArtId = album.coverArt ?? album.id
+                                let cleanArtId = extractArtId(from: rawArtId)
+                                let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+                                if !isValidImageFile(at: localArtUrl) {
+                                    await client.downloadCoverArt(id: cleanArtId)
                                 }
                             }
                         }
@@ -257,6 +325,35 @@ final class SyncManager: ObservableObject {
             } while isSyncingMetadata && passCount < 5
             // Cap at 5 passes — if something still fails after that, it's a permanent API gap.
 
+            // Register permanently unavailable items so subsequent sync taps complete in milliseconds
+            for artist in missingArtists {
+                let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
+                if !fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) {
+                    AssetRegistry.shared.markBackdropUnavailable(key: backdropKey)
+                }
+                if !fa.hasCheckedClearLogo(for: artist.primaryName) {
+                    let logoKey = "logo_" + fa.sanitizeFileName(artist.primaryName)
+                    AssetRegistry.shared.markLogoUnavailable(key: logoKey)
+                }
+                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
+                if !isValidImageFile(at: localPortraitUrl) {
+                    AssetRegistry.shared.markPortraitUnavailable(artistId: artist.id)
+                }
+                if !mb.hasArtistMetadata(for: artist.primaryName) {
+                    AssetRegistry.shared.markArtistUnavailable(artistName: artist.primaryName)
+                }
+            }
+            for album in missingAlbums {
+                let artistName = album.artist ?? "Unknown Artist"
+                let albumKey = "\(artistName)_\(album.name)"
+                if !mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+                    AssetRegistry.shared.markAlbumUnavailable(albumKey: albumKey)
+                }
+            }
+
+            client.saveOfflineMetadata()
+            LibraryDataCache.shared.refresh()
+
             let skippedCount = (artists.count + albums.count)
             finalizeMetadataSync("Metadata Sync Complete — \(skippedCount) items confirmed")
         }
@@ -271,6 +368,7 @@ final class SyncManager: ObservableObject {
         lyricsProgress = 0.0
         lyricsEta = ""
         lyricsStatus = "Starting lyrics sync..."
+        beginBackgroundExecution(name: "VeloraLyricsSync")
 
         Task {
             let tracks: [Track]
@@ -300,17 +398,19 @@ final class SyncManager: ObservableObject {
             // First pass: build the list of truly missing songs
             var missingSongs = tracks.filter { song in
                 let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
-                guard FileManager.default.fileExists(atPath: cacheFile.path) else { return true }
-                // Also retry empty files — not NO_LYRICS, just blank
-                let size = (try? FileManager.default.attributesOfItem(atPath: cacheFile.path)[.size]) as? Int64 ?? 0
-                return size == 0
+                if FileManager.default.fileExists(atPath: cacheFile.path) {
+                    let size = (try? FileManager.default.attributesOfItem(atPath: cacheFile.path)[.size]) as? Int64 ?? 0
+                    if size > 0 { return false } // Already has lyrics or "NO_LYRICS"
+                }
+                return !AssetRegistry.shared.isLyricsUnavailable(trackId: song.id)
             }
             let skippedCount = tracks.count - missingSongs.count
             var tasksCompleted = Double(skippedCount)
             lyricsProgress = tasksCompleted / totalTasks
 
             if missingSongs.isEmpty {
-                finalizeLyricsSync("All \(Int(totalTasks)) tracks already have lyrics.")
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                finalizeLyricsSync("All \(Int(totalTasks)) tracks have lyrics cached • Up to date")
                 return
             }
 
@@ -408,11 +508,19 @@ final class SyncManager: ObservableObject {
                 }
             }
 
+            for song in missingSongs {
+                let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
+                if !FileManager.default.fileExists(atPath: cacheFile.path) {
+                    try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
+                }
+                AssetRegistry.shared.markLyricsUnavailable(trackId: song.id)
+            }
+
             let finalFailed = missingSongs.count
             if finalFailed > 0 {
-                finalizeLyricsSync("Lyrics Sync done. \(skippedCount) skipped, \(finalFailed) unavailable after retries.")
+                finalizeLyricsSync("Lyrics Sync Complete — \(tracks.count - finalFailed) cached, \(finalFailed) instrumental/unlisted")
             } else {
-                finalizeLyricsSync("Lyrics Sync Complete (\(skippedCount) already cached)")
+                finalizeLyricsSync("Lyrics Sync Complete — All \(tracks.count) tracks cached")
             }
         }
     }
@@ -429,6 +537,7 @@ final class SyncManager: ObservableObject {
         mediaProgress = 0.0
         mediaStatus = "Analyzing library..."
         mediaEta = ""
+        beginBackgroundExecution(name: "VeloraMediaSync")
 
         Task {
             // Unlock maximum download concurrency for the bulk operation.
@@ -490,9 +599,12 @@ final class SyncManager: ObservableObject {
             var stallCounter = 0
 
             let startTime = Date()
+            let trackIdSet = Set(tracksToDownload.map { $0.id })
             while isSyncingMedia {
-                let currentlyDownloaded = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
-                let currentlyFailed = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
+                let downloadedIds = playback?.downloadedTrackIds ?? []
+                let failedIds = playback?.failedDownloadIds ?? []
+                let currentlyDownloaded = downloadedIds.intersection(trackIdSet).count
+                let currentlyFailed = failedIds.intersection(trackIdSet).count
                 let totalCompleted = Double(alreadyDownloadedCount + currentlyDownloaded + currentlyFailed)
 
                 if currentlyDownloaded + currentlyFailed == 0 {
@@ -540,8 +652,10 @@ final class SyncManager: ObservableObject {
             }
 
             if isSyncingMedia {
-                let successCount = tracksToDownload.filter { playback?.isDownloaded($0.id) ?? false }.count
-                let failCount = tracksToDownload.filter { playback?.failedDownloadIds.contains($0.id) ?? false }.count
+                let downloadedIds = playback?.downloadedTrackIds ?? []
+                let failedIds = playback?.failedDownloadIds ?? []
+                let successCount = downloadedIds.intersection(trackIdSet).count
+                let failCount = failedIds.intersection(trackIdSet).count
 
                 if failCount > 0 {
                     finalizeMediaSync("Sync Finished with \(failCount) errors. (\(successCount) saved)")
@@ -555,17 +669,20 @@ final class SyncManager: ObservableObject {
     func stopMetadataSync() {
         isSyncingMetadata = false
         metadataStatus = "Sync Stopped"
+        if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
 
     func stopLyricsSync() {
         isSyncingLyrics = false
         lyricsStatus = "Sync Stopped"
+        if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
 
     func stopMediaSync() {
         isSyncingMedia = false
         mediaStatus = "Sync Stopped"
         playback?.setBulkDownloadMode(false)
+        if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
 
     func stopSync() {
@@ -573,11 +690,13 @@ final class SyncManager: ObservableObject {
         stopLyricsSync()
         stopMediaSync()
         stopRepairSync()
+        endBackgroundExecution()
     }
 
     func stopRepairSync() {
         isRepairing = false
         repairStatus = "Repair Stopped"
+        if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
 
     // MARK: - Repair Tools
@@ -587,16 +706,17 @@ final class SyncManager: ObservableObject {
         isRepairing = true
         repairProgress = 0.0
         repairStatus = "Scanning library for missing assets..."
+        beginBackgroundExecution(name: "VeloraRepairSync")
 
         Task {
             let fileManager = FileManager.default
 
             // Wait for client to have songs loaded
-            let allTracks = await DatabaseManager.shared.getAllTracks()
+            var allTracks = await DatabaseManager.shared.getAllTracks()
             if allTracks.isEmpty {
                 repairStatus = "Fetching track list..."
-                await withCheckedContinuation { continuation in
-                    client.fetchAllSongs { _ in continuation.resume() }
+                allTracks = await withCheckedContinuation { continuation in
+                    client.fetchAllSongs { songs in continuation.resume(returning: songs) }
                 }
             }
 
@@ -613,15 +733,20 @@ final class SyncManager: ObservableObject {
             var missingArtistPortraitIds: Set<String> = []
             var missingLyricsIds: [(id: String, artist: String, title: String, duration: Double)] = []
 
-            repairStatus = "Scanning \(localTracks.count) local tracks..."
+            repairStatus = "Auditing library integrity..."
 
             for (index, track) in localTracks.enumerated() {
+                // 0. Verify audio file on disk
+                if !(playback?.checkFileSystemForTrack(track.id) ?? false) {
+                    playback?.downloadTrack(track)
+                }
+
                 // 1. Check Cover Art
                 let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
                 let artId = extractArtId(from: rawArtId)
                 let artFile = VeloraStorage.coverArt.appendingPathComponent("\(artId).jpg")
                 if !isValidImageFile(at: artFile) {
-                    // Delete corrupt/poison file if it exists so repair can overwrite it
+                    // Delete corrupt file if it exists so repair can overwrite it
                     try? fileManager.removeItem(at: artFile)
                     missingCoverArtIds.insert(artId)
                 }
@@ -629,7 +754,7 @@ final class SyncManager: ObservableObject {
                 // 2. Check Artist Portrait
                 let artistId = track.artistId ?? track.primaryArtist
                 let portraitFile = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
-                if !isValidImageFile(at: portraitFile) {
+                if !isValidImageFile(at: portraitFile) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artistId) {
                     try? fileManager.removeItem(at: portraitFile)
                     missingArtistPortraitIds.insert(artistId)
                 }
@@ -637,18 +762,11 @@ final class SyncManager: ObservableObject {
                 // 3. Check Lyrics
                 let lyricsPath = VeloraStorage.lyrics.appendingPathComponent("\(track.id).txt").path
                 if fileManager.fileExists(atPath: lyricsPath) {
-                    if let size = (try? fileManager.attributesOfItem(atPath: lyricsPath)[.size]) as? Int64 {
-                        if size == 0 {
-                            try? fileManager.removeItem(atPath: lyricsPath)
-                            missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
-                        } else if size == 9 {
-                            if let content = try? String(contentsOfFile: lyricsPath, encoding: .utf8), content == "NO_LYRICS" {
-                                try? fileManager.removeItem(atPath: lyricsPath)
-                                missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
-                            }
-                        }
+                    if let size = (try? fileManager.attributesOfItem(atPath: lyricsPath)[.size]) as? Int64, size == 0 {
+                        try? fileManager.removeItem(atPath: lyricsPath)
+                        missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
                     }
-                } else {
+                } else if !AssetRegistry.shared.isLyricsUnavailable(trackId: track.id) {
                     missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
                 }
 
@@ -657,7 +775,8 @@ final class SyncManager: ObservableObject {
 
             let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count
             if totalTasks == 0 {
-                finalizeRepairSync("Library is perfectly healthy. No repairs needed.")
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                finalizeRepairSync("Library is 100% healthy. All \(localTracks.count) offline tracks verified.")
                 return
             }
 
@@ -792,11 +911,26 @@ final class SyncManager: ObservableObject {
                 lyricsFailed = pendingLyrics.count
                 if lyricsFailed > 0 {
                     AppLogger.shared.log("[RepairSync] \(lyricsFailed) songs unavailable after all retries (likely not in LRCLIB).", level: .warning)
+                    for req in pendingLyrics {
+                        let cacheFile = VeloraStorage.lyrics.appendingPathComponent("\(req.id).txt")
+                        if !FileManager.default.fileExists(atPath: cacheFile.path) {
+                            try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
+                        }
+                        AssetRegistry.shared.markLyricsUnavailable(trackId: req.id)
+                    }
                 }
             }
 
-            let failedNote = missingLyricsIds.isEmpty ? "" : ", \(missingLyricsIds.count - repairedCount + (missingCoverArtIds.count - repairedCount < 0 ? 0 : 0)) unavailable"
-            finalizeRepairSync("Repair complete. Fixed \(repairedCount) items.\(failedNote)")
+            // If any portraits still failed after repair, record in AssetRegistry
+            for id in missingArtistPortraitIds {
+                let portraitFile = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
+                if !isValidImageFile(at: portraitFile) {
+                    AssetRegistry.shared.markPortraitUnavailable(artistId: id)
+                }
+            }
+
+            let failedNote = (lyricsFailed > 0) ? ", \(lyricsFailed) unlisted" : ""
+            finalizeRepairSync("Repair complete. Fixed \(repairedCount) items\(failedNote).")
         }
     }
 
@@ -804,6 +938,10 @@ final class SyncManager: ObservableObject {
         self.isRepairing = false
         self.repairStatus = status
         self.repairProgress = 1.0
+        self.client?.saveOfflineMetadata()
+        LibraryDataCache.shared.refresh()
+        UserDefaults.standard.set(status, forKey: "velora_last_repair_status")
+        if !isSyncing { endBackgroundExecution() }
     }
 
     private func finalizeMetadataSync(_ status: String) {
@@ -811,6 +949,10 @@ final class SyncManager: ObservableObject {
         self.metadataStatus = status
         self.metadataProgress = 1.0
         self.metadataEta = ""
+        self.client?.saveOfflineMetadata()
+        LibraryDataCache.shared.refresh()
+        UserDefaults.standard.set(status, forKey: "velora_last_metadata_status")
+        if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
 
     private func finalizeLyricsSync(_ status: String) {
@@ -818,6 +960,9 @@ final class SyncManager: ObservableObject {
         self.lyricsStatus = status
         self.lyricsProgress = 1.0
         self.lyricsEta = ""
+        LibraryDataCache.shared.refresh()
+        UserDefaults.standard.set(status, forKey: "velora_last_lyrics_status")
+        if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
 
     private func finalizeMediaSync(_ status: String) {
@@ -827,6 +972,10 @@ final class SyncManager: ObservableObject {
         self.mediaEta = ""
         self.playback?.setBulkDownloadMode(false)   // restore normal concurrency
         self.playback?.refreshDownloadedTracks()
+        self.client?.saveOfflineMetadata()
+        LibraryDataCache.shared.refresh()
+        UserDefaults.standard.set(status, forKey: "velora_last_media_status")
+        if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
 
     /// Returns true only if a file exists AND is large enough to be a real image.

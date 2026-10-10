@@ -324,6 +324,7 @@ struct ContentView: View {
                let savedPass = String(data: savedPassData, encoding: .utf8) {
                 client.configure(url: activeUrl, user: savedUser, pass: savedPass)
                 client.loadOfflineMetadata()
+                LibraryDataCache.shared.refresh()
                 client.fetchEverything()
                 showSettings = false
             } else {

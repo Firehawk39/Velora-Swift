@@ -118,7 +118,7 @@ struct ArtistDetailView: View {
         Group {
             if isCompact {
                 VStack(spacing: ScreenTier.isSE ? 16 : 24) {
-                    artistLogo(size: ScreenTier.isSE ? 120 : 140)
+                    Spacer(minLength: 0)
 
                     VStack(spacing: 6) {
                         artistLabel
@@ -128,27 +128,23 @@ struct ArtistDetailView: View {
                     playAllButton
                         .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95)
                 }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: ScreenTier.isSE ? 280 : 340)
                 .padding(.horizontal, 24)
             } else {
                 VStack(alignment: .leading, spacing: 32) {
-                    ZStack(alignment: .topLeading) {
-                        Button(action: onBack) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(isDarkMode ? .white : .black)
-                                .frame(width: 36, height: 36)
-                                .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
-                                .clipShape(Circle())
-                        }
-                        .padding(.leading, 0)
-                        .padding(.top, 20)
-
-                        HStack {
-                            Spacer()
-                            artistLogo(size: 220)
-                            Spacer()
-                        }
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(isDarkMode ? .white : .black)
+                            .frame(width: 36, height: 36)
+                            .background(isDarkMode ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                            .clipShape(Circle())
                     }
+                    .padding(.leading, 0)
+                    .padding(.top, 20)
+
+                    Spacer(minLength: 0)
 
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 6) {
@@ -163,17 +159,14 @@ struct ArtistDetailView: View {
                     }
                     .padding(.top, 16)
                 }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 460)
                 .padding(.horizontal, 48)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, isCompact ? 60 : 160)
+        .padding(.top, isCompact ? 60 : 40)
         .padding(.bottom, 32)
-    }
-
-    private func artistLogo(size: CGFloat) -> some View {
-        ArtistPortraitView(artistId: artistId, size: size, client: client, isDarkMode: isDarkMode)
-            .id("portrait-\(artistId)")
     }
 
     private var artistLabel: some View {
@@ -364,7 +357,7 @@ struct ArtistDetailView: View {
 
     private func fetchArtistData() {
         isLoading = true
-        client.fetchArtistData(artistId: artistId) { tracks, albums, bio, mbid in
+        client.fetchArtistData(artistId: artistId, artistName: artistName) { tracks, albums, bio, mbid in
             DispatchQueue.main.async {
                 self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
                 self.favoriteSongs = tracks.filter { $0.isStarred }
@@ -458,10 +451,7 @@ struct ArtistBackdropView: View {
     
     var isCompact: Bool { hSizeClass == .compact }
     var isLandscape: Bool {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            return UIScreen.main.bounds.width > UIScreen.main.bounds.height
-        }
-        return vSizeClass == .compact
+        UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
 
     var body: some View {
@@ -474,22 +464,37 @@ struct ArtistBackdropView: View {
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
                     
-                if FileManager.default.fileExists(atPath: backdropUrl.path),
-                   let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
-                   let size = attr[.size] as? Int64, size > 0 {
-                    AsyncImage(url: backdropUrl) { phase in
-                        if let image = phase.image {
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        } else {
-                            fallbackGradient
-                        }
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
+                if isCompact && !isLandscape {
+                    // PORTRAIT IPHONE: Use Dynamic Gradient (No Fanart Backdrop)
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
+                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
+                            isDarkMode ? .black : .white
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
                 } else {
-                    fallbackGradient
+                    // LANDSCAPE OR IPAD: Use High-Fidelity Backdrop
+                    if FileManager.default.fileExists(atPath: backdropUrl.path),
+                       let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
+                       let size = attr[.size] as? Int64, size > 0 {
+                        AsyncImage(url: backdropUrl) { phase in
+                            if let image = phase.image {
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                            } else {
+                                fallbackGradient
+                            }
+                        }
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                    } else {
+                        fallbackGradient
+                    }
                 }
             }
             .overlay(

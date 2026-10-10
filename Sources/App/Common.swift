@@ -19,18 +19,33 @@ func extractArtId(from serverUrlOrId: String) -> String {
 }
 
 func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
-    // Try extracting the real ID from a server URL for local lookup
+    let fm = FileManager.default
+    let coverDir = VeloraStorage.coverArt
     let resolvedId = extractArtId(from: id)
-    let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(resolvedId).jpg")
+    
+    // Candidate IDs to check (handles 'al-' prefix mismatch between server and local disk)
+    var candidates: [String] = [resolvedId]
+    if resolvedId.hasPrefix("al-") {
+        candidates.append(String(resolvedId.dropFirst(3)))
+    } else {
+        candidates.append("al-" + resolvedId)
+    }
+    if let sUrl = serverUrl {
+        let extractedServerId = extractArtId(from: sUrl)
+        if !candidates.contains(extractedServerId) {
+            candidates.append(extractedServerId)
+        }
+    }
 
-    if FileManager.default.fileExists(atPath: localUrl.path) {
-        if let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
-           let size = attr[.size] as? Int64, size > 0 {
-            return localUrl // Valid local image
-        } else {
-            // It's a corrupted 0-byte marker
-            try? FileManager.default.removeItem(at: localUrl) // Self-heal by deleting it
-            // Fall through to return the serverUrl. If offline, AsyncImage will gracefully fail.
+    for candidate in candidates {
+        let localUrl = coverDir.appendingPathComponent("\(candidate).jpg")
+        if fm.fileExists(atPath: localUrl.path) {
+            if let attr = try? fm.attributesOfItem(atPath: localUrl.path),
+               let size = attr[.size] as? Int64, size > 100 {
+                return localUrl // Valid local image
+            } else {
+                try? fm.removeItem(at: localUrl) // Purge corrupt 0-byte file
+            }
         }
     }
 
@@ -38,17 +53,32 @@ func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
 }
 
 func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
+    let fm = FileManager.default
+    let portraitDir = VeloraStorage.artistPortraits
     let resolvedId = extractArtId(from: id)
-    let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(resolvedId).jpg")
+    
+    var candidates: [String] = [resolvedId]
+    if resolvedId.hasPrefix("ar-") {
+        candidates.append(String(resolvedId.dropFirst(3)))
+    } else {
+        candidates.append("ar-" + resolvedId)
+    }
+    if let sUrl = serverUrl {
+        let extractedServerId = extractArtId(from: sUrl)
+        if !candidates.contains(extractedServerId) {
+            candidates.append(extractedServerId)
+        }
+    }
 
-    if FileManager.default.fileExists(atPath: localUrl.path) {
-        if let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
-           let size = attr[.size] as? Int64, size > 0 {
-            return localUrl // Valid local image
-        } else {
-            // It's a corrupted 0-byte marker
-            try? FileManager.default.removeItem(at: localUrl) // Self-heal by deleting it
-            // Fall through to return the serverUrl.
+    for candidate in candidates {
+        let localUrl = portraitDir.appendingPathComponent("\(candidate).jpg")
+        if fm.fileExists(atPath: localUrl.path) {
+            if let attr = try? fm.attributesOfItem(atPath: localUrl.path),
+               let size = attr[.size] as? Int64, size > 100 {
+                return localUrl // Valid local image
+            } else {
+                try? fm.removeItem(at: localUrl)
+            }
         }
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // 3-step wizard matching the web app exactly:
 // Step 1: Server URL  →  Step 2: Username + Password  →  (Optional) Step 3: Display name
@@ -26,6 +27,8 @@ struct SettingsView: View {
     @State private var isCheckingServer: Bool = false
     @State private var serverError: String? = nil
     @State private var loginErrorMessage: String? = nil
+    @State private var auditStats: IntegrityManager.LibraryAuditStats? = nil
+    @State private var isAuditingLibrary: Bool = false
 
     @State private var statusTimer: Timer? = nil
     @State private var isRefreshingSettings = false
@@ -69,6 +72,19 @@ struct SettingsView: View {
                 Task { @MainActor in
                     self.cacheSize = size
                 }
+            }
+            refreshAudit()
+        }
+    }
+
+    private func refreshAudit() {
+        isAuditingLibrary = true
+        let total = client.songs.count
+        Task {
+            let stats = await IntegrityManager.shared.performLibraryAudit(totalTracks: total)
+            await MainActor.run {
+                self.auditStats = stats
+                self.isAuditingLibrary = false
             }
         }
     }
@@ -287,7 +303,7 @@ struct SettingsView: View {
                     }
                     
                     // 5. Save comprehensive settings to Keychain for AutoLogin
-                    var bundle = VeloraCredentialsBundle(serverUrl: self.serverAddress, onlineServerUrl: "", username: self.username, connectionMode: 0)
+                    var bundle = VeloraCredentialsBundle(serverUrl: self.serverAddress, onlineServerUrl: "", username: cleanUsername, connectionMode: 0)
                     if let existingData = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
                        let existing = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: existingData) {
                         bundle.onlineServerUrl = existing.onlineServerUrl
@@ -391,6 +407,12 @@ struct AppSettingsView: View {
     @AppStorage("velora_online_server_url") private var onlineServerUrl: String = ""
     @AppStorage("velora_username") private var username: String = ""
     @AppStorage("velora_connection_mode") private var connectionMode: Int = 0
+    @AppStorage("velora_fanart_api_key") private var customFanartApiKey: String = ""
+    @State private var backupFileUrl: URL? = nil
+    @State private var showShareSheet: Bool = false
+    @State private var showFileImporter: Bool = false
+    @State private var restoreAlertMessage: String? = nil
+    @State private var showRestoreAlert: Bool = false
     @State private var cacheCleared = false
     @State private var cacheSize: String = "Calculating..."
     @State private var showLogs: Bool = false
@@ -517,7 +539,52 @@ struct AppSettingsView: View {
                             .cornerRadius(16)
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }
-                        
+
+                        // Integrations Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Integrations")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Fanart.tv API Key")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.gray)
+                                    Spacer()
+                                    if customFanartApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text("Optional")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray.opacity(0.7))
+                                    } else {
+                                        Button(action: {
+                                            customFanartApiKey = ""
+                                        }) {
+                                            Text("Clear")
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundColor(.red)
+                                        }
+                                    }
+                                }
+
+                                TextField("Enter your personal Fanart.tv client key", text: $customFanartApiKey)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+
+                                Text("Fetches high-res artist backdrops and portraits. If empty, Fanart calls are skipped.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.gray.opacity(0.7))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                        }
                         
                         // App Data Section
                         VStack(alignment: .leading, spacing: 12) {
@@ -527,12 +594,102 @@ struct AppSettingsView: View {
                                 .textCase(.uppercase)
                                 .padding(.leading, 4)
                             
+                            // Offline Library Affirmation & Health Card
+                            if let stats = auditStats {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: stats.isOfflineReady ? "checkmark.seal.fill" : "icloud.and.arrow.down.fill")
+                                                .foregroundColor(stats.isOfflineReady ? .green : .blue)
+                                                .font(.system(size: 15))
+                                            Text(stats.isOfflineReady ? "100% Offline Ready" : "Offline Storage Status")
+                                                .font(.system(size: 13, weight: .bold))
+                                                .foregroundColor(stats.isOfflineReady ? .green : (isDark ? .white : .black))
+                                        }
+                                        Spacer()
+                                        Button(action: {
+                                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                            refreshAudit()
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "arrow.triangle.2.circlepath")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                                Text("Audit")
+                                                    .font(.system(size: 11, weight: .semibold))
+                                            }
+                                            .foregroundColor(.gray)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.06))
+                                            .cornerRadius(8)
+                                        }
+                                    }
+
+                                    Divider().background(borderCol.opacity(0.3))
+
+                                    VStack(spacing: 7) {
+                                        AuditMetricRow(
+                                            icon: "music.note",
+                                            title: "Music Tracks",
+                                            detail: "\(stats.offlineTracks) / \(stats.totalLibraryTracks) offline",
+                                            isComplete: stats.offlineTracks >= stats.totalLibraryTracks && stats.totalLibraryTracks > 0,
+                                            isDark: isDark
+                                        )
+                                        AuditMetricRow(
+                                            icon: "photo.fill",
+                                            title: "Album Artwork",
+                                            detail: "\(stats.cachedCoverArt) cached",
+                                            isComplete: stats.cachedCoverArt > 0,
+                                            isDark: isDark
+                                        )
+                                        AuditMetricRow(
+                                            icon: "person.crop.circle.fill",
+                                            title: "Artist Portraits",
+                                            detail: "\(stats.cachedPortraits) cached" + (stats.unlistedPortraits > 0 ? " • \(stats.unlistedPortraits) server unlisted" : ""),
+                                            isComplete: true,
+                                            isDark: isDark
+                                        )
+                                        AuditMetricRow(
+                                            icon: "sparkles",
+                                            title: "Backdrops & Logos",
+                                            detail: "\(stats.cachedBackdrops + stats.cachedLogos) cached" + (stats.unlistedBackdrops > 0 ? " • \(stats.unlistedBackdrops) not on Fanart" : ""),
+                                            isComplete: true,
+                                            isDark: isDark
+                                        )
+                                        AuditMetricRow(
+                                            icon: "text.quote",
+                                            title: "Synced Lyrics",
+                                            detail: "\(stats.cachedLyrics) cached" + (stats.instrumentalLyrics > 0 ? " • \(stats.instrumentalLyrics) instrumental" : ""),
+                                            isComplete: true,
+                                            isDark: isDark
+                                        )
+                                    }
+
+                                    HStack {
+                                        Text("App Storage: \(stats.totalStorageMB)")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.gray)
+                                        Spacer()
+                                        Text("Free on Device: \(stats.availableStorageGB)")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.gray)
+                                    }
+                                    .padding(.top, 2)
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.04))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke((stats.isOfflineReady ? Color.green : borderCol).opacity(0.3), lineWidth: 1))
+                            }
+                            
                             Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 if sync.isSyncingMetadata {
                                     sync.stopMetadataSync()
                                 } else {
                                     sync.startMetadataSync()
                                 }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
                             }) {
                                 HStack {
                                     Image(systemName: "info.circle.fill")
@@ -576,11 +733,13 @@ struct AppSettingsView: View {
 
                             // Lyrics Sync Button
                             Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 if sync.isSyncingLyrics {
                                     sync.stopLyricsSync()
                                 } else {
                                     sync.startLyricsSync()
                                 }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
                             }) {
                                 HStack {
                                     Image(systemName: "text.quote")
@@ -624,11 +783,13 @@ struct AppSettingsView: View {
 
                             // Media Sync Button
                             Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 if sync.isSyncingMedia {
                                     sync.stopMediaSync()
                                 } else {
                                     sync.startMediaSync()
                                 }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
                             }) {
                                 HStack {
                                     Image(systemName: "icloud.and.arrow.down.fill")
@@ -672,11 +833,13 @@ struct AppSettingsView: View {
                             
                             // Repair Sync Issues Button
                             Button(action: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 if sync.isRepairing {
                                     sync.stopRepairSync()
                                 } else {
                                     sync.startRepairSync()
                                 }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
                             }) {
                                 HStack {
                                     Image(systemName: "wrench.and.screwdriver.fill")
@@ -730,6 +893,74 @@ struct AppSettingsView: View {
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                                     cacheCleared = false
                                 }
+                            }
+                        }
+
+                        // Backup & Restore Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Backup & Restore")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+
+                            Button(action: {
+                                if let url = BackupManager.shared.createBackup() {
+                                    self.backupFileUrl = url
+                                    self.showShareSheet = true
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: "square.and.arrow.up.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.blue)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Export App Backup")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text("Save server URLs, settings, and download manifest as JSON")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
+                            }
+
+                            Button(action: {
+                                showFileImporter = true
+                            }) {
+                                HStack {
+                                    Image(systemName: "square.and.arrow.down.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.purple)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Restore from Backup")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text("Restore server, preferences, and offline download records")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                            .lineLimit(1)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right").font(.system(size: 14)).foregroundColor(.gray)
+                                }
+                                .padding()
+                                .background(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
+                                .cornerRadius(16)
+                                .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
                         }
 
@@ -797,6 +1028,35 @@ struct AppSettingsView: View {
         }
         .sheet(isPresented: $showLogs) {
             LogsView()
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = backupFileUrl {
+                ShareSheet(activityItems: [url])
+            }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                guard let fileUrl = urls.first else { return }
+                let outcome = BackupManager.shared.restoreBackup(from: fileUrl)
+                switch outcome {
+                case .success(let summary):
+                    restoreAlertMessage = summary
+                    showRestoreAlert = true
+                    reconnectWithCurrentMode()
+                case .failure(let error):
+                    restoreAlertMessage = "Restore failed: \(error.localizedDescription)"
+                    showRestoreAlert = true
+                }
+            case .failure(let error):
+                restoreAlertMessage = "Import error: \(error.localizedDescription)"
+                showRestoreAlert = true
+            }
+        }
+        .alert("Backup Restore", isPresented: $showRestoreAlert) {
+            Button("OK") {}
+        } message: {
+            Text(restoreAlertMessage ?? "")
         }
     }
     
@@ -1089,3 +1349,33 @@ struct HoldToDeleteButton: View {
         )
     }
 }
+
+struct AuditMetricRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+    let isComplete: Bool
+    let isDark: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundColor(.gray)
+                .frame(width: 16)
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundColor(isDark ? .white.opacity(0.85) : .black.opacity(0.85))
+            Spacer()
+            Text(detail)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.gray)
+            if isComplete {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.green)
+            }
+        }
+    }
+}
+

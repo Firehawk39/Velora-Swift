@@ -10,9 +10,22 @@ actor DatabaseManager {
     private let logger = OSLog(subsystem: "com.velora", category: "DatabaseManager")
 
     private init() {
+        let dbUrl = VeloraStorage.database
+
+        // Seamless fallback migration if database still resides in Documents
         let fileManager = FileManager.default
-        let documentsUrl = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let dbUrl = documentsUrl.appendingPathComponent("velora.sqlite")
+        if let docsUrl = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let oldDbUrl = docsUrl.appendingPathComponent("velora.sqlite")
+            if fileManager.fileExists(atPath: oldDbUrl.path) && !fileManager.fileExists(atPath: dbUrl.path) {
+                try? fileManager.moveItem(at: oldDbUrl, to: dbUrl)
+                let oldWal = docsUrl.appendingPathComponent("velora.sqlite-wal")
+                let newWal = VeloraStorage.root.appendingPathComponent("velora.sqlite-wal")
+                if fileManager.fileExists(atPath: oldWal.path) { try? fileManager.moveItem(at: oldWal, to: newWal) }
+                let oldShm = docsUrl.appendingPathComponent("velora.sqlite-shm")
+                let newShm = VeloraStorage.root.appendingPathComponent("velora.sqlite-shm")
+                if fileManager.fileExists(atPath: oldShm.path) { try? fileManager.moveItem(at: oldShm, to: newShm) }
+            }
+        }
 
         if sqlite3_open(dbUrl.path, &db) != SQLITE_OK {
             os_log("Error opening database", log: logger, type: .error)
@@ -121,14 +134,25 @@ actor DatabaseManager {
         return result
     }
 
-    func getTracks(albumId: String) -> [Track] {
+    func getTracks(albumId: String, albumName: String? = nil) -> [Track] {
         guard let db = self.db else { return [] }
-        let query = "SELECT * FROM Tracks WHERE albumId = ? ORDER BY discNumber ASC, track ASC;"
+        let cleanId = albumId.hasPrefix("al-") ? String(albumId.dropFirst(3)) : albumId
+        let prefixedId = "al-" + cleanId
+        let altName = albumName ?? ""
+        
+        let query = """
+        SELECT * FROM Tracks 
+        WHERE albumId = ? OR albumId = ? OR (album IS NOT NULL AND album = ? AND ? != '')
+        ORDER BY discNumber ASC, track ASC;
+        """
         var statement: OpaquePointer?
         var results: [Track] = []
 
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_text(statement, 1, (albumId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 1, (cleanId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 2, (prefixedId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 3, (altName as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 4, (altName as NSString).utf8String, -1, SQLITE_TRANSIENT)
             while sqlite3_step(statement) == SQLITE_ROW {
                 if let track = parseTrack(statement) { results.append(track) }
             }
@@ -137,16 +161,86 @@ actor DatabaseManager {
         return results
     }
 
-    func getTracks(artistId: String) -> [Track] {
+    func getTracks(artistId: String, artistName: String? = nil) -> [Track] {
         guard let db = self.db else { return [] }
-        let query = "SELECT * FROM Tracks WHERE artistId = ?;"
+        let cleanId = artistId.hasPrefix("ar-") ? String(artistId.dropFirst(3)) : artistId
+        let prefixedId = "ar-" + cleanId
+        let altName = artistName ?? ""
+
+        let query = """
+        SELECT * FROM Tracks 
+        WHERE artistId = ? OR artistId = ? OR (artist IS NOT NULL AND artist = ? AND ? != '')
+        ORDER BY discNumber ASC, track ASC;
+        """
         var statement: OpaquePointer?
         var results: [Track] = []
 
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_text(statement, 1, (artistId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 1, (cleanId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 2, (prefixedId as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 3, (altName as NSString).utf8String, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(statement, 4, (altName as NSString).utf8String, -1, SQLITE_TRANSIENT)
             while sqlite3_step(statement) == SQLITE_ROW {
                 if let track = parseTrack(statement) { results.append(track) }
+            }
+        }
+        sqlite3_finalize(statement)
+        return results
+    }
+
+    func getOfflineArtists() -> [Artist] {
+        guard let db = self.db else { return [] }
+        let query = """
+        SELECT DISTINCT artistId, artist, coverArt FROM Tracks 
+        WHERE artist IS NOT NULL AND artist != ''
+        ORDER BY artist COLLATE NOCASE ASC;
+        """
+        var statement: OpaquePointer?
+        var results: [Artist] = []
+        var seenNames = Set<String>()
+
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let idCol = sqlite3_column_type(statement, 0) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 0)) : nil
+                let name = String(cString: sqlite3_column_text(statement, 1))
+                let cover = sqlite3_column_type(statement, 2) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 2)) : nil
+                
+                if !seenNames.contains(name.lowercased()) {
+                    seenNames.insert(name.lowercased())
+                    let effectiveId = (idCol != nil && !idCol!.isEmpty) ? idCol! : "ar-\(abs(name.hashValue))"
+                    results.append(Artist(id: effectiveId, name: name, albumCount: nil, coverArt: cover, created: nil))
+                }
+            }
+        }
+        sqlite3_finalize(statement)
+        return results
+    }
+
+    func getOfflineAlbums() -> [Album] {
+        guard let db = self.db else { return [] }
+        let query = """
+        SELECT DISTINCT albumId, album, artist, artistId, coverArt FROM Tracks 
+        WHERE album IS NOT NULL AND album != ''
+        ORDER BY album COLLATE NOCASE ASC;
+        """
+        var statement: OpaquePointer?
+        var results: [Album] = []
+        var seenKeys = Set<String>()
+
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let idCol = sqlite3_column_type(statement, 0) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 0)) : nil
+                let name = String(cString: sqlite3_column_text(statement, 1))
+                let artist = sqlite3_column_type(statement, 2) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 2)) : nil
+                let artistId = sqlite3_column_type(statement, 3) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 3)) : nil
+                let cover = sqlite3_column_type(statement, 4) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 4)) : nil
+
+                let key = "\(artist ?? "")_\(name)".lowercased()
+                if !seenKeys.contains(key) {
+                    seenKeys.insert(key)
+                    let effectiveId = (idCol != nil && !idCol!.isEmpty) ? idCol! : "al-\(abs(key.hashValue))"
+                    results.append(Album(id: effectiveId, name: name, artist: artist, artistId: artistId, songCount: nil, duration: nil, coverArt: cover, created: nil))
+                }
             }
         }
         sqlite3_finalize(statement)

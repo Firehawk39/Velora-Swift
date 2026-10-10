@@ -1,6 +1,5 @@
 import Foundation
 import Security
-import Security
 
 struct VeloraCredentialsBundle: Codable {
     var serverUrl: String
@@ -19,7 +18,8 @@ final class KeychainHelper {
             kSecValueData: data,
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
-            kSecAttrAccount: account
+            kSecAttrAccount: account,
+            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ] as CFDictionary
 
         // Add data in keychain to be sure it's saved
@@ -33,7 +33,10 @@ final class KeychainHelper {
                 kSecClass: kSecClassGenericPassword
             ] as CFDictionary
 
-            let attributesToUpdate = [kSecValueData: data] as CFDictionary
+            let attributesToUpdate = [
+                kSecValueData: data,
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            ] as CFDictionary
 
             status = SecItemUpdate(query, attributesToUpdate)
         }

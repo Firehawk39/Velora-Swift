@@ -10,27 +10,51 @@ class ThrottledNetworkManager: @unchecked Sendable {
 
     private init() {}
 
+    private func isLocalOrNavidromeHost(_ host: String) -> Bool {
+        let lower = host.lowercased()
+        if lower.hasSuffix(".local") || lower.contains("192.168.") || lower.contains("10.") || lower.contains("172.") || lower == "localhost" || lower == "127.0.0.1" {
+            return true
+        }
+        if let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url"),
+           let serverHost = URL(string: savedUrl)?.host?.lowercased(),
+           lower == serverHost {
+            return true
+        }
+        return false
+    }
+
     private func getThrottler(for host: String) -> DomainThrottler {
         lock.lock()
         defer { lock.unlock() }
         
         if let existing = throttlers[host] { return existing }
         
+        let isLocal = isLocalOrNavidromeHost(host)
+        
         // Custom rate limits based on host
         let interval: TimeInterval
-        if host.contains("musicbrainz.org") {
+        let maxConcurrency: Int
+        if isLocal {
+            interval = 0.0 // Zero artificial delay for home / local Navidrome server
+            maxConcurrency = 50 // Full line-rate throughput
+        } else if host.contains("musicbrainz.org") {
             interval = 1.0 // Strict 1 request per second
+            maxConcurrency = 2
         } else if host.contains("lrclib.net") {
             interval = 1.5 // Extremely safe pacing to avoid 429s (1 request per 1.5s)
+            maxConcurrency = 2
         } else if host.contains("fanart.tv") {
             interval = 1.0 // 1 request per second to avoid tarpitting during bulk sync
+            maxConcurrency = 2
         } else if host.contains("theaudiodb.com") {
             interval = 1.0 // 1 request per second — free tier
+            maxConcurrency = 2
         } else {
             interval = 0.5 // Default 2 requests per second
+            maxConcurrency = 2
         }
         
-        let newThrottler = DomainThrottler(host: host, minInterval: interval)
+        let newThrottler = DomainThrottler(host: host, minInterval: interval, maxConcurrency: maxConcurrency, isLocal: isLocal)
         throttlers[host] = newThrottler
         return newThrottler
     }
@@ -75,6 +99,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
 private class DomainThrottler: @unchecked Sendable {
     let host: String
     let minInterval: TimeInterval
+    let isLocal: Bool
     
     private let queue = OperationQueue()
     private var lastRequestTime = Date.distantPast
@@ -84,10 +109,11 @@ private class DomainThrottler: @unchecked Sendable {
     private var circuitResumeTime = Date.distantPast
     var consecutiveFailures = 0
 
-    init(host: String, minInterval: TimeInterval) {
+    init(host: String, minInterval: TimeInterval, maxConcurrency: Int = 2, isLocal: Bool = false) {
         self.host = host
         self.minInterval = minInterval
-        self.queue.maxConcurrentOperationCount = 2 // Strict concurrency cap per domain
+        self.isLocal = isLocal
+        self.queue.maxConcurrentOperationCount = maxConcurrency
     }
 
     func addOperation(_ op: Operation) {
@@ -95,6 +121,8 @@ private class DomainThrottler: @unchecked Sendable {
     }
 
     func waitForSlot() -> Bool {
+        if isLocal { return true } // Local / home media server requests proceed at line speed
+
         lock.lock()
         defer { lock.unlock() }
 
@@ -118,6 +146,8 @@ private class DomainThrottler: @unchecked Sendable {
     }
 
     func recordFailure(isRateLimit: Bool = false, retryAfter: TimeInterval? = nil) {
+        if isLocal { return } // Never trip circuit breaker for your own local home media server
+
         lock.lock()
         defer { lock.unlock() }
         
@@ -125,9 +155,9 @@ private class DomainThrottler: @unchecked Sendable {
         
         if isRateLimit || consecutiveFailures >= 3 {
             isCircuitOpen = true
-            // Short circuit breaker for content APIs; long default for unknown hosts
+            // Short circuit breaker for content APIs; max 30s default for external services
             let isContentAPI = host.contains("lrclib.net") || host.contains("fanart.tv") || host.contains("theaudiodb.com")
-            let seconds = retryAfter ?? (isContentAPI ? 15.0 : 300.0)
+            let seconds = retryAfter ?? (isContentAPI ? 15.0 : 30.0)
             let targetResumeTime = Date().addingTimeInterval(seconds)
             if targetResumeTime > circuitResumeTime {
                 circuitResumeTime = targetResumeTime
@@ -137,6 +167,8 @@ private class DomainThrottler: @unchecked Sendable {
     }
 
     func recordSuccess() {
+        if isLocal { return }
+
         lock.lock()
         defer { lock.unlock() }
         if consecutiveFailures > 0 {

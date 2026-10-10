@@ -84,24 +84,44 @@ struct HomeView: View {
                 let (offlineArtists, offlineAlbums): ([Artist], [Album]) = {
                     if network.isConnected { return (client.artists, client.albums) }
                     let downloadedTrackIds = playback.downloadedTrackIds
+                    let downloadedTracks = LibraryDataCache.shared.allTracks.filter { downloadedTrackIds.contains($0.id) }
+                    
                     var downloadedAlbumIds = Set<String>()
                     var downloadedArtistIds = Set<String>()
-                    for track in LibraryDataCache.shared.allTracks where downloadedTrackIds.contains(track.id) {
+                    var downloadedArtistNames = Set<String>()
+                    var downloadedAlbumKeys = Set<String>()
+                    
+                    for track in downloadedTracks {
                         if let aid = track.albumId { downloadedAlbumIds.insert(aid) }
                         if let artId = track.artistId { downloadedArtistIds.insert(artId) }
+                        if let aName = track.artist { downloadedArtistNames.insert(aName.lowercased()) }
+                        let key = "\(track.artist ?? "")_\(track.album ?? "")".lowercased()
+                        downloadedAlbumKeys.insert(key)
                     }
-                    return (
-                        client.artists.filter { downloadedArtistIds.contains($0.id) },
-                        client.albums.filter { downloadedAlbumIds.contains($0.id) }
-                    )
+                    
+                    var matchedArtists = client.artists.filter { 
+                        downloadedArtistIds.contains($0.id) || downloadedArtistNames.contains($0.name.lowercased()) 
+                    }
+                    if matchedArtists.isEmpty && !downloadedTracks.isEmpty {
+                        matchedArtists = LibraryDataCache.shared.synthesizeArtists(from: downloadedTracks)
+                    }
+
+                    var matchedAlbums = client.albums.filter { album in
+                        downloadedAlbumIds.contains(album.id) || downloadedAlbumKeys.contains("\(album.artist ?? "")_\(album.name)".lowercased())
+                    }
+                    if matchedAlbums.isEmpty && !downloadedTracks.isEmpty {
+                        matchedAlbums = LibraryDataCache.shared.synthesizeAlbums(from: downloadedTracks)
+                    }
+
+                    return (matchedArtists, matchedAlbums)
                 }()
 
                 if !offlineArtists.isEmpty || network.isConnected {
                     SectionHeader(title: "Artists", isDark: isDark, hPad: hPad, onSeeAll: onSeeAll)
 
-                    if client.artists.isEmpty {
+                    if client.artists.isEmpty && network.isConnected {
                         SkeletonRow(count: 5, cardWidth: isCompact ? 75 : 90, cardHeight: isCompact ? 75 : 90, isDark: isDark, circular: true)
-                    } else {
+                    } else if !offlineArtists.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: isCompact ? 16 : 24) {
                                 ForEach(offlineArtists.prefix(isCompact ? 8 : 12)) { artist in
@@ -126,16 +146,16 @@ struct HomeView: View {
                 if !offlineAlbums.isEmpty || network.isConnected {
                     SectionHeader(title: "Recently added albums", isDark: isDark, hPad: hPad, onSeeAll: onSeeAll)
 
-                    if client.albums.isEmpty {
+                    if client.albums.isEmpty && network.isConnected {
                         SkeletonRow(count: 3, cardWidth: ScreenTier.isPhone ? 160 : 200, cardHeight: ScreenTier.isPhone ? 100 : 130, isDark: isDark, rounded: 24)
-                    } else {
+                    } else if !offlineAlbums.isEmpty {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: ScreenTier.isPhone ? 12 : 24) {
                                 ForEach(offlineAlbums.prefix(isCompact ? 6 : 8)) { album in
                                     AlbumCard(album: album, isDark: isDark, cardW: ScreenTier.isPhone ? 160 : 180, cardH: ScreenTier.isPhone ? 100 : 120)
                                         .onTapGesture {
                                             let pManager = playback
-                                            client.fetchAlbumTracks(albumId: album.id) { tracks in
+                                            client.fetchAlbumTracks(albumId: album.id, albumName: album.name) { tracks in
                                                 if let first = tracks.first {
                                                     pManager.playTrack(first, context: tracks)
                                                 }
@@ -159,6 +179,9 @@ struct HomeView: View {
             )
         }
         .ignoresSafeArea(edges: .top)
+        .onAppear {
+            LibraryDataCache.shared.refresh()
+        }
     }
 }
 

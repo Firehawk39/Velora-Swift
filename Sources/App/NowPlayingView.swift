@@ -78,19 +78,33 @@ struct NowPlayingView: View {
             ZStack {
                 // Dynamic Ambient Background
                 Group {
-                    if let backdrop = fanart.currentBackdrop {
-                        Image(uiImage: backdrop)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                            .clipped()
-                            .id(backdrop)
-                            .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                            .opacity(isIdle ? 0.45 : 0.35)
+                    if isCompact && !isLandscape {
+                        // PORTRAIT IPHONE: Use Dynamic Gradient (No Blur)
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(playback.currentPrimaryColor).opacity(0.8),
+                                Color(playback.currentPrimaryColor).opacity(0.4),
+                                .black
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     } else {
-                        // No fanart — Apple Music-style ambient gradient from album color
-                        // Black while artwork loads, transitions to real color once extracted
-                        AlbumAmbientGradientView(colors: playback.currentPalette)
+                        // LANDSCAPE OR IPAD: Use High-Fidelity Backdrop
+                        if let backdrop = fanart.currentBackdrop {
+                            Image(uiImage: backdrop)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                .clipped()
+                                .id(backdrop)
+                                .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                                .opacity(isIdle ? 0.45 : 0.35)
+                        } else {
+                            // No fanart — Apple Music-style ambient gradient from album color
+                            // Black while artwork loads, transitions to real color once extracted
+                            AlbumAmbientGradientView(colors: playback.currentPalette)
+                        }
                     }
                 }
                 .overlay(

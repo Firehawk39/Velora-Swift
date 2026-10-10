@@ -38,6 +38,9 @@ enum VeloraStorage {
     /// Artist clearlogos (transparent PNG) from Fanart.tv hdmusiclogo
     static var clearLogos: URL { root.appendingPathComponent("ClearLogos", isDirectory: true) }
 
+    /// Centralized SQLite database path
+    static var database: URL { root.appendingPathComponent("velora.sqlite") }
+
     /// Ensure all subdirectories exist. Call once at app launch.
     static func ensureDirectories() {
         let fm = FileManager.default
@@ -100,6 +103,16 @@ enum VeloraStorage {
         let newMbid = root.appendingPathComponent("name_to_mbid.json")
         if fm.fileExists(atPath: oldMbid.path) && !fm.fileExists(atPath: newMbid.path) {
             try? fm.moveItem(at: oldMbid, to: newMbid)
+        }
+
+        // Migrate SQLite database files (velora.sqlite, -wal, -shm)
+        let dbFiles = ["velora.sqlite", "velora.sqlite-wal", "velora.sqlite-shm"]
+        for dbFile in dbFiles {
+            let oldPath = docs.appendingPathComponent(dbFile)
+            let newPath = root.appendingPathComponent(dbFile)
+            if fm.fileExists(atPath: oldPath.path) && !fm.fileExists(atPath: newPath.path) {
+                try? fm.moveItem(at: oldPath, to: newPath)
+            }
         }
 
         // Mark migration complete

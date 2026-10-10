@@ -5,6 +5,10 @@ final class LibraryDataCache: ObservableObject {
     static let shared = LibraryDataCache()
     @Published var allTracks: [Track] = []
     
+    init() {
+        refresh()
+    }
+
     func refresh() {
         Task {
             let tracks = await DatabaseManager.shared.getAllTracks()
@@ -12,6 +16,35 @@ final class LibraryDataCache: ObservableObject {
                 self.allTracks = tracks
             }
         }
+    }
+
+    func synthesizeArtists(from tracks: [Track]) -> [Artist] {
+        var seen = Set<String>()
+        var artists: [Artist] = []
+        for t in tracks {
+            guard let name = t.artist, !name.isEmpty else { continue }
+            if !seen.contains(name.lowercased()) {
+                seen.insert(name.lowercased())
+                let id = t.artistId ?? "ar-\(abs(name.hashValue))"
+                artists.append(Artist(id: id, name: name, albumCount: nil, coverArt: t.coverArt, created: t.created))
+            }
+        }
+        return artists
+    }
+
+    func synthesizeAlbums(from tracks: [Track]) -> [Album] {
+        var seen = Set<String>()
+        var albums: [Album] = []
+        for t in tracks {
+            guard let name = t.album, !name.isEmpty else { continue }
+            let key = "\(t.artist ?? "")_\(name)".lowercased()
+            if !seen.contains(key) {
+                seen.insert(key)
+                let id = t.albumId ?? "al-\(abs(key.hashValue))"
+                albums.append(Album(id: id, name: name, artist: t.artist, artistId: t.artistId, songCount: nil, duration: nil, coverArt: t.coverArt, created: t.created))
+            }
+        }
+        return albums
     }
 }
 
@@ -451,14 +484,17 @@ private struct ArtistGridView: View {
     @ObservedObject var dataCache = LibraryDataCache.shared
 
     var body: some View {
-        let base = client.artists
+        let downloadedTracks = dataCache.allTracks.filter { playback.isDownloaded($0.id) }
+        let base = client.artists.isEmpty ? dataCache.synthesizeArtists(from: downloadedTracks.isEmpty ? dataCache.allTracks : downloadedTracks) : client.artists
         let filtered: [Artist] = {
             if showOfflineOnly {
                 var offlineArtistIds = Set<String>()
-                for song in dataCache.allTracks where playback.isDownloaded(song.id) {
+                var offlineArtistNames = Set<String>()
+                for song in downloadedTracks {
                     if let aid = song.artistId { offlineArtistIds.insert(aid) }
+                    if let aName = song.artist { offlineArtistNames.insert(aName.lowercased()) }
                 }
-                return base.filter { offlineArtistIds.contains($0.id) }
+                return base.filter { offlineArtistIds.contains($0.id) || offlineArtistNames.contains($0.name.lowercased()) }
             } else {
                 return base
             }
@@ -515,14 +551,20 @@ private struct AlbumGridView: View {
     @ObservedObject var dataCache = LibraryDataCache.shared
 
     var body: some View {
-        let base = client.albums
+        let downloadedTracks = dataCache.allTracks.filter { playback.isDownloaded($0.id) }
+        let base = client.albums.isEmpty ? dataCache.synthesizeAlbums(from: downloadedTracks.isEmpty ? dataCache.allTracks : downloadedTracks) : client.albums
         let filtered: [Album] = {
             if showOfflineOnly {
                 var offlineAlbumIds = Set<String>()
-                for song in dataCache.allTracks where playback.isDownloaded(song.id) {
+                var offlineAlbumKeys = Set<String>()
+                for song in downloadedTracks {
                     if let aid = song.albumId { offlineAlbumIds.insert(aid) }
+                    let key = "\(song.artist ?? "")_\(song.album ?? "")".lowercased()
+                    offlineAlbumKeys.insert(key)
                 }
-                return base.filter { offlineAlbumIds.contains($0.id) }
+                return base.filter { album in
+                    offlineAlbumIds.contains(album.id) || offlineAlbumKeys.contains("\(album.artist ?? "")_\(album.name)".lowercased())
+                }
             } else {
                 return base
             }
@@ -567,7 +609,7 @@ private struct AlbumGridView: View {
                                 .minimumScaleFactor(0.75)
                         }
                     }
-                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
+                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id, albumName: a.name) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
                     .contextMenu {
                         if playback.albumDownloadStatus(albumId: a.id).downloaded > 0 {
                             Button(role: .destructive, action: {
@@ -620,7 +662,7 @@ private struct AlbumGridView: View {
                         Image(systemName: "chevron.right").foregroundColor(.gray.opacity(0.5))
                     }
                     .padding(.vertical, 10)
-                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
+                    .onTapGesture { client.fetchAlbumTracks(albumId: a.id, albumName: a.name) { t in if !t.isEmpty { DispatchQueue.main.async { playback.playTrack(t[0], context: t) } } } }
                     .contextMenu {
                         if playback.albumDownloadStatus(albumId: a.id).downloaded > 0 {
                             Button(role: .destructive, action: {

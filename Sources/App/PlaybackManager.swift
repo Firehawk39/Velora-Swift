@@ -134,12 +134,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             // iOS 15 Background Daemon is blocked from accessing Local Network IPs.
             // Fall back to a standard foreground session to allow local downloads.
             configuration = URLSessionConfiguration.default
+            configuration.waitsForConnectivity = true
         } else {
             configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
         }
 
-        // Maximize connections to the same host for faster concurrent downloads
-        configuration.httpMaximumConnectionsPerHost = maxConcurrentDownloads
+        // Maximize connections to the host so up to 50 concurrent bulk streams flow without TCP socket queueing
+        configuration.httpMaximumConnectionsPerHost = 64
         return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
     }()
 
@@ -266,7 +267,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private func fireAITelemetry(for track: Track) {
         guard let serverStr = UserDefaults.standard.string(forKey: "velora_server_url"),
               var components = URLComponents(string: serverStr) else { return }
-        components.port = 8000
+        if components.port == nil && components.scheme == "http" {
+            components.port = 8000
+        }
         components.path = "/api/v1/telemetry/event"
         guard let url = components.url else { return }
 
@@ -310,14 +313,18 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     private func getLocalAudioUrl(for trackId: String) -> URL? {
-        guard isDownloaded(trackId) else { return nil }
-        
         let tracksDir = VeloraStorage.tracks
         let audioExtensions = ["mp3", "flac", "m4a", "ogg", "wav", "aac", "opus", "alac"]
         for ext in audioExtensions {
             let path = tracksDir.appendingPathComponent("\(trackId).\(ext)")
             if FileManager.default.fileExists(atPath: path.path) {
-                return path
+                if let attr = try? FileManager.default.attributesOfItem(atPath: path.path),
+                   let size = attr[.size] as? Int64, size > 1024 {
+                    if !self.downloadedTrackIds.contains(trackId) {
+                        self.downloadedTrackIds.insert(trackId)
+                    }
+                    return path
+                }
             }
         }
         return nil
@@ -541,17 +548,18 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         for i in start..<end {
             let track = queue[i]
-            let artist = track.artist ?? ""
+            let primaryArtist = track.primaryArtist
+            guard !primaryArtist.isEmpty else { continue }
             let delay = Double(i - start) * 1.5 // Stagger by 1.5s per track to respect MB rate limits (1 req/s)
 
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
                 // 1. Prefetch Backdrop Silently
-                await FanartManager.shared.downloadBackdropSilently(for: track.allArtists)
+                await FanartManager.shared.downloadBackdropSilently(for: track.allArtists, artistId: track.artistId)
 
                 // 2. Prefetch Metadata Silently
-                await MusicBrainzManager.shared.downloadMetadataSilently(for: artist)
+                await MusicBrainzManager.shared.downloadMetadataSilently(for: primaryArtist)
             }
         }
     }
@@ -1064,48 +1072,46 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     private func processQueue() {
         AppLogger.shared.log("processQueue() - active: \(activeDownloadCount)/\(maxConcurrentDownloads), queue: \(downloadQueue.count)", level: .debug)
-        guard activeDownloadCount < maxConcurrentDownloads, !downloadQueue.isEmpty else { return }
+        while activeDownloadCount < maxConcurrentDownloads, !downloadQueue.isEmpty {
+            let track = downloadQueue.removeFirst()
+            activeDownloadCount += 1
 
-        let track = downloadQueue.removeFirst()
-        activeDownloadCount += 1
+            let streamUrl = client.getStreamUrl(id: track.id)
 
-        let streamUrl = client.getStreamUrl(id: track.id)
-
-        guard let url = streamUrl else {
-            AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
-            Task { @MainActor in
+            guard let url = streamUrl else {
+                AppLogger.shared.log("Could not get stream URL for track \(track.id)", level: .error)
                 self.failedDownloadIds.insert(track.id)
                 self.downloadProgress.removeValue(forKey: track.id)
                 self.activeDownloadCount -= 1
-                self.processQueue()
+                continue
             }
-            return
+
+            AppLogger.shared.log("Starting download task for \(track.id) [\(track.title)]", level: .info)
+            let task = downloadSession.downloadTask(with: url)
+            task.taskDescription = "\(track.id)|\(track.suffix?.lowercased() ?? "mp3")"
+            downloadTasks[task.taskIdentifier] = track.id
+            activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
+            downloadStartTimes[track.id] = Date()
+            task.resume()
+
+            // Trigger cover art download alongside the track
+            let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+            let cleanArtId: String
+            if rawArtId.contains("getCoverArt"),
+               let url = URL(string: rawArtId),
+               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
+                cleanArtId = idParam
+            } else {
+                cleanArtId = rawArtId
+            }
+            client.downloadCoverArt(id: cleanArtId)
+
+            // Trigger lyrics fetch alongside the track for offline use (skipped during bulk music downloads to keep all bandwidth focused on Navidrome and avoid LRCLIB 429 limits)
+            if !isDownloadingAll {
+                client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { _ in }
+            }
         }
-
-        AppLogger.shared.log("Starting download task for \(track.id) from \(url.absoluteString)", level: .info)
-        let task = downloadSession.downloadTask(with: url)
-        task.taskDescription = "\(track.id)|\(track.suffix?.lowercased() ?? "mp3")"
-        downloadTasks[task.taskIdentifier] = track.id
-        activeDownloadTasksByTrackId[track.id] = task // Save reference for pause/resume
-        downloadStartTimes[track.id] = Date()
-        task.resume()
-
-        // Trigger cover art download alongside the track
-        let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-        // Extract the real ID from a server URL if needed (e.g., "https://...?id=al-123" → "al-123")
-        let cleanArtId: String
-        if rawArtId.contains("getCoverArt"),
-           let url = URL(string: rawArtId),
-           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
-            cleanArtId = idParam
-        } else {
-            cleanArtId = rawArtId
-        }
-        client.downloadCoverArt(id: cleanArtId)
-
-        // Trigger lyrics fetch alongside the track for offline use
-        client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { _ in }
     }
 
     // MARK: - URLSessionDownloadDelegate
@@ -1262,9 +1268,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     /// extra parallelism is ONLY active during the mass-download, not during
     /// normal playback or single-track downloads.
     func setBulkDownloadMode(_ enabled: Bool) {
+        self.isDownloadingAll = enabled
         if enabled {
-            // User requested maximum concurrency for Navidrome server downloads (no limits).
-            maxConcurrentDownloads = 50
+            // Adaptive bulk download: scale to 50 on standard power, or 25 if device is in Low Power Mode
+            if ProcessInfo.processInfo.isLowPowerModeEnabled {
+                maxConcurrentDownloads = 25
+            } else {
+                maxConcurrentDownloads = 50
+            }
         } else {
             // Back to the safe default that won’t compete with audio playback.
             maxConcurrentDownloads = 10
