@@ -50,7 +50,7 @@ jobs:
           fi
 
       - name: Build IPA
-        script: |
+        run: |
           # 1. Find the binary (the actual executable)
           BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
           BINARY_NAME="Velora"
