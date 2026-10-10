@@ -17,6 +17,9 @@ jobs:
       - name: Select Xcode 16
         run: sudo xcode-select -s /Applications/Xcode_16.app
 
+      - name: Install iOS Platform
+        run: xcodebuild -downloadPlatform iOS
+
       - name: Build XCArchive (Unsigned)
         env:
           XCODE_SCHEME: "Velora"
