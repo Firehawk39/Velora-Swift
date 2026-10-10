@@ -952,11 +952,9 @@ struct NowPlayingView: View {
                     self.isFetchingArtistInfo = false
 
                     // Use Navidrome's MBID for robust matching, but protect against Last.fm's "Zimmer" -> "Hans Zimmer" aliasing bug.
-                    if let mbid = info?.musicBrainzId {
-                        let safeMbid = (track.artist?.lowercased() == "zimmer") ? nil : mbid
-                        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: safeMbid, allowNetwork: true)
-                        fanart.fetchClearLogo(for: track.primaryArtist, mbid: safeMbid)
-                    }
+                    let safeMbid = (track.artist?.lowercased() == "zimmer") ? nil : info?.musicBrainzId
+                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: safeMbid, allowNetwork: true)
+                    fanart.fetchClearLogo(for: track.primaryArtist, mbid: safeMbid)
                 }
             }
         }
