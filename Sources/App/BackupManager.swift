@@ -95,7 +95,8 @@ final class BackupManager: ObservableObject {
                 serverUrl: backup.serverUrl,
                 onlineServerUrl: backup.onlineServerUrl,
                 username: backup.username,
-                connectionMode: backup.connectionMode
+                connectionMode: backup.connectionMode,
+                fanartApiKey: backup.fanartApiKey
             )
             if let bundleData = try? JSONEncoder().encode(bundle) {
                 KeychainHelper.shared.save(bundleData, service: "velora-credentials", account: "default")

@@ -299,10 +299,10 @@ struct ContentView: View {
         var connMode = UserDefaults.standard.integer(forKey: "velora_connection_mode")
 
         // Keychain Fallback for app reinstalls (UserDefaults wiped, but Keychain survives)
-        if savedUrl.isEmpty || savedUser.isEmpty {
-            if let data = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
-               let bundle = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: data) {
+        if let data = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
+           let bundle = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: data) {
 
+            if savedUrl.isEmpty || savedUser.isEmpty {
                 savedUrl = bundle.serverUrl
                 savedOnlineUrl = bundle.onlineServerUrl
                 savedUser = bundle.username
@@ -313,6 +313,13 @@ struct ContentView: View {
                 UserDefaults.standard.set(bundle.onlineServerUrl, forKey: "velora_online_server_url")
                 UserDefaults.standard.set(bundle.username, forKey: "velora_username")
                 UserDefaults.standard.set(bundle.connectionMode, forKey: "velora_connection_mode")
+            }
+
+            // Restore Fanart API key seamlessly if missing in UserDefaults
+            if let fKey = bundle.fanartApiKey?.trimmingCharacters(in: .whitespacesAndNewlines), !fKey.isEmpty {
+                if (UserDefaults.standard.string(forKey: "velora_fanart_api_key") ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    UserDefaults.standard.set(fKey, forKey: "velora_fanart_api_key")
+                }
             }
         }
 

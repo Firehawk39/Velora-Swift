@@ -6,6 +6,7 @@ struct VeloraCredentialsBundle: Codable {
     var onlineServerUrl: String
     var username: String
     var connectionMode: Int
+    var fanartApiKey: String? = nil
 }
 
 @MainActor

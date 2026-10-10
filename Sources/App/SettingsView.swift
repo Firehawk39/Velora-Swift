@@ -288,11 +288,12 @@ struct SettingsView: View {
                     }
                     
                     // 5. Save comprehensive settings to Keychain for AutoLogin
-                    var bundle = VeloraCredentialsBundle(serverUrl: self.serverAddress, onlineServerUrl: "", username: cleanUsername, connectionMode: 0)
+                    var bundle = VeloraCredentialsBundle(serverUrl: self.serverAddress, onlineServerUrl: "", username: cleanUsername, connectionMode: 0, fanartApiKey: nil)
                     if let existingData = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
                        let existing = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: existingData) {
                         bundle.onlineServerUrl = existing.onlineServerUrl
                         bundle.connectionMode = existing.connectionMode
+                        bundle.fanartApiKey = existing.fanartApiKey
                     }
                     if let bundleData = try? JSONEncoder().encode(bundle) {
                         KeychainHelper.shared.save(bundleData, service: "velora-credentials", account: "default")
@@ -434,7 +435,14 @@ struct AppSettingsView: View {
     }
 
     private func syncSettingsToKeychain() {
-        let bundle = VeloraCredentialsBundle(serverUrl: serverUrl, onlineServerUrl: onlineServerUrl, username: username, connectionMode: connectionMode)
+        let cleanKey = customFanartApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bundle = VeloraCredentialsBundle(
+            serverUrl: serverUrl,
+            onlineServerUrl: onlineServerUrl,
+            username: username,
+            connectionMode: connectionMode,
+            fanartApiKey: cleanKey.isEmpty ? nil : cleanKey
+        )
         if let data = try? JSONEncoder().encode(bundle) {
             KeychainHelper.shared.save(data, service: "velora-credentials", account: "default")
         }
@@ -564,6 +572,7 @@ struct AppSettingsView: View {
                                             UserDefaults.standard.removeObject(forKey: "velora_last_active_fanart_key")
                                             FanartManager.shared.wipeNegativeFanartCaches()
                                             AssetRegistry.shared.resetFanartUnavailableRecords()
+                                            syncSettingsToKeychain()
                                             refreshAudit()
                                         }) {
                                             Text("Clear")
@@ -588,6 +597,7 @@ struct AppSettingsView: View {
                                             FanartManager.shared.wipeNegativeFanartCaches()
                                             AssetRegistry.shared.resetFanartUnavailableRecords()
                                         }
+                                        syncSettingsToKeychain()
                                         refreshAudit()
                                     }
 
@@ -1043,6 +1053,15 @@ struct AppSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .onAppear {
+                if customFanartApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if let data = KeychainHelper.shared.read(service: "velora-credentials", account: "default"),
+                       let bundle = try? JSONDecoder().decode(VeloraCredentialsBundle.self, from: data),
+                       let key = bundle.fanartApiKey, !key.isEmpty {
+                        self.customFanartApiKey = key
+                    }
+                } else {
+                    syncSettingsToKeychain()
+                }
                 FanartManager.shared.checkAndInvalidateIfKeyChanged()
                 let clientRef = client
                 DispatchQueue.global(qos: .background).async {
