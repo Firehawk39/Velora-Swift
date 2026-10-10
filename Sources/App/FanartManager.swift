@@ -51,7 +51,7 @@ final class FanartManager: ObservableObject {
 
     // MARK: - TTL Helper
 
-    private func isNegativeCacheExpired(at url: URL, daysTTL: Int = 30) -> Bool {
+    nonisolated private func isNegativeCacheExpired(at url: URL, daysTTL: Int = 30) -> Bool {
         guard let attr = try? FileManager.default.attributesOfItem(atPath: url.path),
               let modDate = attr[.modificationDate] as? Date else {
             return false // Keep marker intact
