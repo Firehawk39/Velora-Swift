@@ -224,7 +224,8 @@ final class FanartManager: ObservableObject {
 
         activeBackdropFetches.insert(key)
 
-        let queryFanart: @MainActor @Sendable (String, Bool) -> Void = { resolvedMBID, isProvided in
+        var queryFanart: (@MainActor @Sendable (String, Bool) -> Void)!
+        queryFanart = { resolvedMBID, isProvided in
             AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url, isEmpty in
@@ -282,7 +283,7 @@ final class FanartManager: ObservableObject {
                 case .found(let resolved):
                     let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
                     try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                    queryFanart(resolved, false)
+                    Task { @MainActor in queryFanart(resolved, false) }
                 case .notFound:
                     // Genuinely not on MusicBrainz — write negative cache
                     try? Data().write(to: fileUrl)
