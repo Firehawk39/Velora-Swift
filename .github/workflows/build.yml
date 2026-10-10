@@ -39,15 +39,7 @@ jobs:
             ENTITLEMENTS_ALLOWED=NO \
             ARCHIVE=YES \
             generate_infoplist_file=YES \
-            COMPILER_INDEX_STORE_ENABLE=NO | tee build.log
-
-          if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo "========================================"
-            echo "💥 EXTRACTED SWIFT ERRORS:"
-            echo "========================================"
-            grep -C 5 "error:" build.log
-            exit 1
-          fi
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Build IPA (Jailbreak Optimized)
         run: |
