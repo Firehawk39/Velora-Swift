@@ -18,33 +18,36 @@ jobs:
         env:
           XCODE_SCHEME: "Velora"
         run: |
-          xcodebuild archive \
+          set +e
+          xcodebuild clean build \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -archivePath Velora.xcarchive \
+            -derivedDataPath "$PWD/DerivedData" \
             -sdk iphoneos \
             ARCHS=arm64 \
             TARGETED_DEVICE_FAMILY="1,2" \
-            INSTALL_PATH=/Applications \
-            PRODUCT_NAME=Velora \
-            WRAPPER_EXTENSION=app \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
             ENTITLEMENTS_ALLOWED=NO \
-            ARCHIVE=YES \
-            generate_infoplist_file=YES \
             COMPILER_INDEX_STORE_ENABLE=NO | tee build.log
 
-          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+          BUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ $BUILD_STATUS -ne 0 ]; then
             echo "========================================"
             echo "💥 EXTRACTED SWIFT ERRORS:"
             echo "========================================"
-            grep -C 5 "error:" build.log
+            grep -C 5 -i "error:" build.log || cat build.log | tail -n 50
             exit 1
           fi
+
+          # Stage products into Velora.xcarchive/Products for 1:1 Codemagic packaging
+          mkdir -p Velora.xcarchive/Products
+          cp -R DerivedData/Build/Products/Release-iphoneos/* Velora.xcarchive/Products/
 
       - name: Build IPA
         run: |
