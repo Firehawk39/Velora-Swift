@@ -19,6 +19,7 @@ jobs:
 
       - name: Build App (Unsigned)
         run: |
+          set +e
           xcodebuild clean build \
             -scheme Velora \
             -configuration Release \
@@ -32,7 +33,16 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE="" \
             ENTITLEMENTS_ALLOWED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            COMPILER_INDEX_STORE_ENABLE=NO | tee build.log
+
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "========================================"
+            echo "💥 EXTRACTED SWIFT COMPILER ERRORS:"
+            echo "========================================"
+            grep -E "error:|Error:" build.log -B 2 -A 2
+            exit 1
+          fi
+          set -e
 
       - name: Build IPA (Jailbreak Optimized)
         run: |
