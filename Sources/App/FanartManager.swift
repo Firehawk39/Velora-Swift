@@ -9,14 +9,21 @@ enum MBIDResult: Sendable {
     case networkError    // Timeout / circuit breaker / DNS — safe to retry later
 }
 
+final class SendableImageCache: @unchecked Sendable {
+    private let cache = NSCache<NSString, UIImage>()
+    func object(forKey key: NSString) -> UIImage? { cache.object(forKey: key) }
+    func setObject(_ obj: UIImage, forKey key: NSString) { cache.setObject(obj, forKey: key) }
+    func removeObject(forKey key: NSString) { cache.removeObject(forKey: key) }
+}
+
 @MainActor
 final class FanartManager: ObservableObject {
     static let shared = FanartManager()
 
     @Published var currentBackdrop: UIImage? = nil
     @Published var currentClearLogo: UIImage? = nil
-    nonisolated(unsafe) private let imageCache = NSCache<NSString, UIImage>()
-    nonisolated(unsafe) private let logoCache  = NSCache<NSString, UIImage>()
+    private let imageCache = SendableImageCache()
+    private let logoCache  = SendableImageCache()
 
     private let fileManager = FileManager.default
     private let backdropDir: URL

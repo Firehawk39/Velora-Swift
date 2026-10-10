@@ -70,7 +70,9 @@ struct ArtistDetailView: View {
                 })
             }
             .onPreferenceChange(ScrollOffsetKey.self) { value in
-                self.scrollOffset = value
+                Task { @MainActor in
+                    self.scrollOffset = value
+                }
             }
             .coordinateSpace(name: "scroll")
 
