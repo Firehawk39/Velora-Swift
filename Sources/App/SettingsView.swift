@@ -547,70 +547,6 @@ struct AppSettingsView: View {
                             .cornerRadius(16)
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }
-
-                        // Integrations Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Integrations")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(labelCol)
-                                .textCase(.uppercase)
-                                .padding(.leading, 4)
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Fanart.tv API Key")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.gray)
-                                    Spacer()
-                                    if customFanartApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                        Text("Optional")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.gray.opacity(0.7))
-                                    } else {
-                                        Button(action: {
-                                            customFanartApiKey = ""
-                                            UserDefaults.standard.removeObject(forKey: "velora_last_active_fanart_key")
-                                            FanartManager.shared.wipeNegativeFanartCaches()
-                                            AssetRegistry.shared.resetFanartUnavailableRecords()
-                                            syncSettingsToKeychain()
-                                            refreshAudit()
-                                        }) {
-                                            Text("Clear")
-                                                .font(.system(size: 12, weight: .semibold))
-                                                .foregroundColor(.red)
-                                        }
-                                    }
-                                }
-
-                                TextField("Enter your personal Fanart.tv client key", text: $customFanartApiKey)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
-                                    .autocapitalization(.none)
-                                    .disableAutocorrection(true)
-                                    .onChange(of: customFanartApiKey) { newKey in
-                                        let trimmed = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        if !trimmed.isEmpty {
-                                            UserDefaults.standard.set(trimmed, forKey: "velora_last_active_fanart_key")
-                                            FanartManager.shared.handleApiKeyUpdated()
-                                        } else {
-                                            UserDefaults.standard.removeObject(forKey: "velora_last_active_fanart_key")
-                                            FanartManager.shared.wipeNegativeFanartCaches()
-                                            AssetRegistry.shared.resetFanartUnavailableRecords()
-                                        }
-                                        syncSettingsToKeychain()
-                                        refreshAudit()
-                                    }
-
-                                Text("Fetches high-res artist backdrops and portraits. If empty, Fanart calls are skipped.")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.gray.opacity(0.7))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
-                            .cornerRadius(16)
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
-                        }
                         
                         // App Data Section
                         VStack(alignment: .leading, spacing: 12) {
@@ -932,6 +868,70 @@ struct AppSettingsView: View {
                                     cacheCleared = false
                                 }
                             }
+                        }
+
+                        // Integrations Section (Fanart.tv API Key)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Integrations")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Fanart.tv API Key")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.gray)
+                                    Spacer()
+                                    if customFanartApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        Text("Optional")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray.opacity(0.7))
+                                    } else {
+                                        Button(action: {
+                                            customFanartApiKey = ""
+                                            UserDefaults.standard.removeObject(forKey: "velora_last_active_fanart_key")
+                                            FanartManager.shared.wipeNegativeFanartCaches()
+                                            AssetRegistry.shared.resetFanartUnavailableRecords()
+                                            syncSettingsToKeychain()
+                                            refreshAudit()
+                                        }) {
+                                            Text("Clear")
+                                                .font(.system(size: 12, weight: .semibold))
+                                                .foregroundColor(.red)
+                                        }
+                                    }
+                                }
+
+                                TextField("Enter your personal Fanart.tv client key", text: $customFanartApiKey)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+                                    .onChange(of: customFanartApiKey) { newKey in
+                                        let trimmed = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        if !trimmed.isEmpty {
+                                            UserDefaults.standard.set(trimmed, forKey: "velora_last_active_fanart_key")
+                                            FanartManager.shared.handleApiKeyUpdated()
+                                        } else {
+                                            UserDefaults.standard.removeObject(forKey: "velora_last_active_fanart_key")
+                                            FanartManager.shared.wipeNegativeFanartCaches()
+                                            AssetRegistry.shared.resetFanartUnavailableRecords()
+                                        }
+                                        syncSettingsToKeychain()
+                                        refreshAudit()
+                                    }
+
+                                Text("Fetches high-res artist backdrops and portraits. If empty, Fanart calls are skipped.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.gray.opacity(0.7))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }
 
                         // Backup & Restore Section
