@@ -467,7 +467,7 @@ struct ArtistBackdropView: View {
     var body: some View {
         GeometryReader { proxy in
             let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
-            let backdropUrl = FanartManager.shared.backdropDir.appendingPathComponent(key + ".jpg")
+            let backdropUrl = VeloraStorage.backdrops.appendingPathComponent(key + ".jpg")
             
             ZStack {
                 // Plain background color fallback
@@ -517,7 +517,7 @@ struct ArtistBackdropView: View {
             fetchColors()
             // Trigger a fetch if it doesn't exist
             let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
-            let backdropUrl = FanartManager.shared.backdropDir.appendingPathComponent(key + ".jpg")
+            let backdropUrl = VeloraStorage.backdrops.appendingPathComponent(key + ".jpg")
             if !FileManager.default.fileExists(atPath: backdropUrl.path) {
                 Task {
                     await FanartManager.shared.downloadBackdropSilently(for: [artistName], artistId: artistId)
