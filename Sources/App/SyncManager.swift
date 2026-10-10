@@ -138,8 +138,9 @@ final class SyncManager: ObservableObject {
             let mb = MusicBrainzManager.shared
             let activeCores = ProcessInfo.processInfo.activeProcessorCount
             let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
-            // Scale dynamically based on RAM and CPU cores. iPhone SE (2GB) -> ~20-30, iPad M1 (8GB) -> ~150+
-            let maxConcurrent = min(200, max(25, Int(physicalMemoryGB * Double(activeCores) * 3)))
+            // Cap metadata worker batch size to 12. External endpoints (MusicBrainz, Fanart)
+            // are serialized/rate-limited through ThrottledNetworkManager.
+            let maxConcurrent = 12
             let startTime = Date()
 
             // Pre-flight check: determine what's truly missing
@@ -387,11 +388,9 @@ final class SyncManager: ObservableObject {
             }
 
             let lyricsDir = VeloraStorage.lyrics
-            // ThrottledNetworkManager handles the pacing and circuit breaking globally.
-            // We dispatch in large batches to keep the pipeline full without overloading memory.
-            let activeCores = ProcessInfo.processInfo.activeProcessorCount
-            let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
-            let maxConcurrent = min(200, max(25, Int(physicalMemoryGB * Double(activeCores) * 3)))
+            // ThrottledNetworkManager serializes LRCLIB requests sequentially (1 req per 1.8s).
+            // A polite worker pool of 4 keeps the throttler pipeline fed without holding idle tasks.
+            let maxConcurrent = 4
             let totalTasks = Double(tracks.count)
             let startTime = Date()
 

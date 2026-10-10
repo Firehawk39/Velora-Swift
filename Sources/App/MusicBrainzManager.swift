@@ -548,9 +548,8 @@ final class MusicBrainzManager: ObservableObject {
         request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await ThrottledNetworkManager.shared.enqueue(request: request)
             guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                try? Data().write(to: fileUrl)
                 return
             }
 
@@ -558,11 +557,9 @@ final class MusicBrainzManager: ObservableObject {
             json["annotation"] = annotation
             if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                 try? savedData.write(to: fileUrl)
-            } else {
-                try? Data().write(to: fileUrl)
             }
         } catch {
-            try? Data().write(to: fileUrl)
+            AppLogger.shared.log("[MusicBrainz] Download failed for artist \(finalMbid): \(error.localizedDescription)", level: .warning)
         }
     }
 
@@ -591,9 +588,8 @@ final class MusicBrainzManager: ObservableObject {
         request.setValue(self.userAgent, forHTTPHeaderField: "User-Agent")
 
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await ThrottledNetworkManager.shared.enqueue(request: request)
             guard var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                try? Data().write(to: fileUrl)
                 return
             }
 
@@ -601,11 +597,9 @@ final class MusicBrainzManager: ObservableObject {
             json["annotation"] = annotation
             if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                 try? savedData.write(to: fileUrl)
-            } else {
-                try? Data().write(to: fileUrl)
             }
         } catch {
-            try? Data().write(to: fileUrl)
+            AppLogger.shared.log("[MusicBrainz] Download failed for album \(mbid): \(error.localizedDescription)", level: .warning)
         }
     }
 
@@ -621,7 +615,7 @@ final class MusicBrainzManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await ThrottledNetworkManager.shared.enqueue(request: request)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
                 return nil
@@ -661,7 +655,7 @@ final class MusicBrainzManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await ThrottledNetworkManager.shared.enqueue(request: request)
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             let releases = json?["releases"] as? [[String: Any]]
             return releases?.first?["id"] as? String
@@ -674,7 +668,7 @@ final class MusicBrainzManager: ObservableObject {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, _) = try await ThrottledNetworkManager.shared.enqueue(request: request)
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             let annotations = json?["annotations"] as? [[String: Any]]
             return annotations?.first?["text"] as? String

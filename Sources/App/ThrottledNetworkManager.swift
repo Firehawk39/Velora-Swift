@@ -39,16 +39,16 @@ class ThrottledNetworkManager: @unchecked Sendable {
             maxConcurrency = 50 // Full line-rate throughput
         } else if host.contains("musicbrainz.org") {
             interval = 1.0 // Strict 1 request per second
-            maxConcurrency = 2
+            maxConcurrency = 1
         } else if host.contains("lrclib.net") {
-            interval = 1.5 // Extremely safe pacing to avoid 429s (1 request per 1.5s)
-            maxConcurrency = 2
+            interval = 1.8 // Strict sequential pacing to avoid 429s (1 request per 1.8s)
+            maxConcurrency = 1
         } else if host.contains("fanart.tv") {
             interval = 1.0 // 1 request per second to avoid tarpitting during bulk sync
-            maxConcurrency = 2
+            maxConcurrency = 1
         } else if host.contains("theaudiodb.com") {
             interval = 1.0 // 1 request per second — free tier
-            maxConcurrency = 2
+            maxConcurrency = 1
         } else {
             interval = 0.5 // Default 2 requests per second
             maxConcurrency = 2
@@ -129,8 +129,12 @@ private class DomainThrottler: @unchecked Sendable {
         let now = Date()
         if isCircuitOpen {
             if now < circuitResumeTime {
-                // Fail fast
-                return false
+                let wait = circuitResumeTime.timeIntervalSince(now)
+                if wait > 0 && wait <= 30.0 {
+                    Thread.sleep(forTimeInterval: wait)
+                } else if wait > 30.0 {
+                    return false
+                }
             }
             // Half-open state: allow this request through to test the waters
             isCircuitOpen = false
@@ -143,6 +147,13 @@ private class DomainThrottler: @unchecked Sendable {
         }
         lastRequestTime = Date()
         return true
+    }
+
+    func recordCompletion() {
+        if isLocal { return }
+        lock.lock()
+        defer { lock.unlock() }
+        lastRequestTime = Date()
     }
 
     func recordFailure(isRateLimit: Bool = false, retryAfter: TimeInterval? = nil) {
@@ -247,6 +258,7 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
                 self.throttler.recordSuccess()
             }
             
+            self.throttler.recordCompletion()
             self.completion(data, response, error)
             self.finish()
         }
