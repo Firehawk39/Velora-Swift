@@ -464,23 +464,29 @@ struct ArtistBackdropView: View {
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
                     
-                if FileManager.default.fileExists(atPath: backdropUrl.path),
-                   let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
-                   let size = attr[.size] as? Int64, size > 0 {
-                    AsyncImage(url: backdropUrl) { phase in
-                        if let image = phase.image {
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                        } else {
-                            fallbackGradient
-                        }
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                } else {
+                if isCompact && !isLandscape {
+                    // PORTRAIT IPHONE: Strictly no Fanart backdrop
                     fallbackGradient
+                } else {
+                    // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop
+                    if FileManager.default.fileExists(atPath: backdropUrl.path),
+                       let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
+                       let size = attr[.size] as? Int64, size > 0 {
+                        AsyncImage(url: backdropUrl) { phase in
+                            if let image = phase.image {
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                            } else {
+                                fallbackGradient
+                            }
+                        }
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                    } else {
+                        fallbackGradient
+                    }
                 }
             }
             .overlay(
