@@ -224,7 +224,7 @@ final class FanartManager: ObservableObject {
 
         activeBackdropFetches.insert(key)
 
-        let queryFanart: @MainActor @Sendable (String) -> Void = { resolvedMBID in
+        let queryFanart: @MainActor @Sendable (String, Bool) -> Void = { resolvedMBID, isProvided in
             AppLogger.shared.log("[Fanart] Querying Fanart.tv for \(artist) (MBID: \(resolvedMBID))")
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(self.fanartApiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: artist) { url, isEmpty in
@@ -235,8 +235,33 @@ final class FanartManager: ObservableObject {
                     }
                 } else {
                     if isEmpty {
-                        AppLogger.shared.log("[Fanart] No backdrop found for \(artist)")
-                        try? Data().write(to: fileUrl)
+                        if isProvided {
+                            // The provided MBID from Navidrome was likely wrong (e.g. an Album MBID).
+                            // Delete the bad sidecar and fallback to MusicBrainz.
+                            AppLogger.shared.log("[Fanart] Provided MBID \(resolvedMBID) failed for \(artist). Falling back to MusicBrainz.")
+                            let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+                            try? FileManager.default.removeItem(at: sidecarUrl)
+                            
+                            self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
+                                switch result {
+                                case .found(let newMBID):
+                                    try? newMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                                    // Call queryFanart again with the newly resolved MBID, marking it as NOT provided
+                                    Task { @MainActor in queryFanart(newMBID, false) }
+                                case .notFound:
+                                    try? Data().write(to: fileUrl)
+                                    self.activeBackdropFetches.remove(key)
+                                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                                case .networkError:
+                                    self.activeBackdropFetches.remove(key)
+                                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                                }
+                            }
+                            return
+                        } else {
+                            AppLogger.shared.log("[Fanart] No backdrop found for \(artist)")
+                            try? Data().write(to: fileUrl)
+                        }
                     } else {
                         AppLogger.shared.log("[Fanart] Fetch failed/rate-limited for \(artist)")
                     }
@@ -250,14 +275,14 @@ final class FanartManager: ObservableObject {
         if index == 0, let validMBID = providedMbid, !validMBID.isEmpty {
             let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
             try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-            queryFanart(validMBID)
+            queryFanart(validMBID, true)
         } else {
             self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
                 switch result {
                 case .found(let resolved):
                     let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
                     try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                    queryFanart(resolved)
+                    queryFanart(resolved, false)
                 case .notFound:
                     // Genuinely not on MusicBrainz — write negative cache
                     try? Data().write(to: fileUrl)
