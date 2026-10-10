@@ -117,18 +117,17 @@ struct ArtistDetailView: View {
     private var heroSection: some View {
         Group {
             if isCompact {
-                VStack(alignment: .leading, spacing: ScreenTier.isSE ? 16 : 24) {
+                VStack(spacing: ScreenTier.isSE ? 16 : 24) {
                     artistLogo(size: ScreenTier.isSE ? 120 : 140)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(spacing: 6) {
                         artistLabel
                         artistNameText(size: ScreenTier.isSE ? 24 : 28)
                     }
 
                     playAllButton
-                        .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95, anchor: .leading)
+                        .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24)
             } else {
                 VStack(alignment: .leading, spacing: 32) {
@@ -189,7 +188,7 @@ struct ArtistDetailView: View {
             .kerning(-2)
             .font(.system(size: size, weight: .black))
             .foregroundColor(isDarkMode ? .white : .black)
-            .multilineTextAlignment(.leading)
+            .multilineTextAlignment(.center)
     }
 
     private var playAllButton: some View {
