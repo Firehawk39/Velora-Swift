@@ -50,7 +50,7 @@ jobs:
           fi
 
       - name: Build IPA
-        run: |
+        script: |
           # 1. Find the binary (the actual executable)
           BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
           BINARY_NAME="Velora"
@@ -70,13 +70,16 @@ jobs:
           chmod +x "$PAYLOAD_APP/$BINARY_NAME"
           
           # 4. Collect and inject resources (Fonts, Assets, etc.)
+          # Explicitly copy the font from source as fallback to ensure it exists
           cp Sources/App/Resources/Stardom-Regular.otf "$PAYLOAD_APP/" || true
+          
+          # Copy everything from build output including resource bundles
           find Velora.xcarchive/Products -name "*.otf" -exec cp {} "$PAYLOAD_APP/" \;
           find Velora.xcarchive/Products -name "Assets.car" -exec cp {} "$PAYLOAD_APP/" \;
           find Velora.xcarchive/Products -name "*.png" -exec cp {} "$PAYLOAD_APP/" \;
           find Velora.xcarchive/Products -name "*.bundle" -exec cp -R {} "$PAYLOAD_APP/" \;
           
-          # 5. Force-write the custom Info.plist
+          # 4. Force-write the Info.plist with custom font registration and native iPad support
           cat <<EOF > "$PAYLOAD_APP/Info.plist"
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -119,6 +122,8 @@ jobs:
               </array>
               <key>UIRequiresFullScreen</key>
               <true/>
+              <key>UILaunchScreen</key>
+              <dict/>
               <key>UISupportedInterfaceOrientations</key>
               <array>
                   <string>UIInterfaceOrientationPortrait</string>
@@ -185,26 +190,39 @@ jobs:
           </plist>
           EOF
           
-          # 6. Robust Icon Mapping
+          # 5. Robust Icon Mapping (Ensures icons appear on Home Screen)
           ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
           if [ -d "$ICON_SOURCE" ]; then
               echo "Injecting icons from $ICON_SOURCE for iPhone SE, iPad Pro, and CarPlay..."
+              # iPhone SE / CarPlay / Standard iPhone
               cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
               cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
+              
+              # iPad Pro (83.5)
               cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
+              
+              # Standard iPad (76)
               cp "$ICON_SOURCE/AppIcon~ipad.png" "$PAYLOAD_APP/AppIcon76x76.png" || true
               cp "$ICON_SOURCE/AppIcon@2x~ipad.png" "$PAYLOAD_APP/AppIcon76x76@2x.png" || true
+              
+              # CarPlay Specific (if explicitly named)
               cp "$ICON_SOURCE/AppIcon-60@2x~car.png" "$PAYLOAD_APP/AppIcon60x60@2x~car.png" || true
               cp "$ICON_SOURCE/AppIcon-60@3x~car.png" "$PAYLOAD_APP/AppIcon60x60@3x~car.png" || true
+              
+              # Small Icons (Notifications, Settings)
               cp "$ICON_SOURCE/AppIcon-20@2x.png" "$PAYLOAD_APP/AppIcon20x20@2x.png" || true
               cp "$ICON_SOURCE/AppIcon-20@3x.png" "$PAYLOAD_APP/AppIcon20x20@3x.png" || true
               cp "$ICON_SOURCE/AppIcon-20~ipad.png" "$PAYLOAD_APP/AppIcon20x20~ipad.png" || true
+              
               cp "$ICON_SOURCE/AppIcon-29.png" "$PAYLOAD_APP/AppIcon29x29.png" || true
               cp "$ICON_SOURCE/AppIcon-29@2x.png" "$PAYLOAD_APP/AppIcon29x29@2x.png" || true
               cp "$ICON_SOURCE/AppIcon-29@3x.png" "$PAYLOAD_APP/AppIcon29x29@3x.png" || true
+              
               cp "$ICON_SOURCE/AppIcon-40@2x.png" "$PAYLOAD_APP/AppIcon40x40@2x.png" || true
               cp "$ICON_SOURCE/AppIcon-40@3x.png" "$PAYLOAD_APP/AppIcon40x40@3x.png" || true
               cp "$ICON_SOURCE/AppIcon-40~ipad.png" "$PAYLOAD_APP/AppIcon40x40~ipad.png" || true
+
+              # Copy all original files as fallback
               cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
           fi
           
@@ -220,3 +238,4 @@ jobs:
           name: Velora-Jailbreak
           path: artifacts/Velora-Jailbreak.ipa
           retention-days: 7
+
