@@ -1093,8 +1093,7 @@ extension UIColor {
 }
 
 // MARK: - Album Ambient Gradient (Apple Music style)
-// Dispatches to MeshGradient on iOS 18+ or animated radial blobs on iOS 15–17.
-// Both start from .black while artwork is loading and animate to real album colors.
+// Dispatches to MeshGradient on iOS 18+. Below iOS 18: ZERO GPU overload — static LinearGradient.
 struct AlbumAmbientGradientView: View {
     let colors: [UIColor]
 
@@ -1102,7 +1101,18 @@ struct AlbumAmbientGradientView: View {
         if #available(iOS 18.0, *) {
             AnimatedMeshGradientView(colors: colors)
         } else {
-            DynamicFluidGradientView(colors: colors)
+            // Below iOS 18: Zero GPU overload — static LinearGradient
+            let primary = colors.indices.contains(0) ? Color(colors[0]) : Color.black
+            let secondary = colors.indices.contains(1) ? Color(colors[1]) : Color.black
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    primary.opacity(0.8),
+                    secondary.opacity(0.4),
+                    .black
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
     }
 }
@@ -1140,56 +1150,6 @@ struct AnimatedMeshGradientView: View {
         .onAppear {
             withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                 phase = true
-            }
-        }
-    }
-}
-
-// MARK: - iOS 15-17 Animated Radial Blobs (pre-MeshGradient Apple Music equivalent)
-struct DynamicFluidGradientView: View {
-    let colors: [UIColor]
-    @State private var animate = false
-
-    var body: some View {
-        let base   = colors.indices.contains(0) ? Color(colors[0]) : Color.black
-        let colorA = colors.indices.contains(1) ? Color(colors[1]) : Color.black
-        let colorB = colors.indices.contains(2) ? Color(colors[2]) : Color.black
-        let colorC = colors.indices.contains(3) ? Color(colors[3]) : Color.black
-        let colorD = colors.indices.contains(4) ? Color(colors[4]) : Color.black
-
-        GeometryReader { geo in
-            ZStack {
-                base.opacity(0.6).ignoresSafeArea()
-
-                RadialGradient(
-                    colors: [colorA.opacity(0.85), .clear],
-                    center: animate ? UnitPoint(x: 0.1, y: 0.4) : UnitPoint(x: 0.3, y: 0.2),
-                    startRadius: 0,
-                    endRadius: geo.size.width * 0.85
-                )
-                RadialGradient(
-                    colors: [colorB.opacity(0.80), .clear],
-                    center: animate ? UnitPoint(x: 0.9, y: 0.15) : UnitPoint(x: 0.7, y: 0.35),
-                    startRadius: 0,
-                    endRadius: geo.size.width * 0.80
-                )
-                RadialGradient(
-                    colors: [colorC.opacity(0.75), .clear],
-                    center: animate ? UnitPoint(x: 0.25, y: 0.75) : UnitPoint(x: 0.15, y: 0.90),
-                    startRadius: 0,
-                    endRadius: geo.size.width * 0.75
-                )
-                RadialGradient(
-                    colors: [colorD.opacity(0.85), .clear],
-                    center: animate ? UnitPoint(x: 0.8, y: 0.85) : UnitPoint(x: 0.9, y: 0.65),
-                    startRadius: 0,
-                    endRadius: geo.size.width * 0.70
-                )
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 12).repeatForever(autoreverses: true)) {
-                    animate = true
-                }
             }
         }
     }
