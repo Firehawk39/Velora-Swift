@@ -58,53 +58,49 @@ final class MusicBrainzManager: ObservableObject {
     private func rebuildCacheFromDisk() {
         let dir = self.metadataDir
 
-        Task.detached(priority: .background) { [weak self] in
-            let fm = FileManager.default
-            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        Task {
+            let rebuilt = await Task.detached(priority: .background) { () -> [String: String] in
+                let fm = FileManager.default
+                guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return [:] }
 
-            var rebuilt: [String: String] = [:]
+                var dict: [String: String] = [:]
+                for file in files {
+                    let name = file.lastPathComponent
+                    guard name.hasSuffix(".json") else { continue }
 
-            for file in files {
-                let name = file.lastPathComponent
-                guard name.hasSuffix(".json") else { continue }
+                    guard let data = try? Data(contentsOf: file),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    else { continue }
 
-                guard let data = try? Data(contentsOf: file),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                else { continue }
+                    let mbid = (json["id"] as? String) ?? ""
+                    guard !mbid.isEmpty else { continue }
 
-                let mbid = (json["id"] as? String) ?? ""
-                guard !mbid.isEmpty else { continue }
-
-                if name.hasPrefix("artist_") {
-                    // MusicBrainz returns artist name under "name"
-                    if let artistName = json["name"] as? String {
-                        rebuilt[artistName] = mbid
-                    }
-                } else if name.hasPrefix("album_") {
-                    // Albums: MusicBrainz returns title under "title", artist under credit
-                    if let title = json["title"] as? String,
-                       let credits = json["artist-credit"] as? [[String: Any]],
-                       let firstCredit = credits.first,
-                       let artist = firstCredit["artist"] as? [String: Any],
-                       let artistName = artist["name"] as? String {
-                        rebuilt["\(artistName)_\(title)"] = mbid
+                    if name.hasPrefix("artist_") {
+                        if let artistName = json["name"] as? String {
+                            dict[artistName] = mbid
+                        }
+                    } else if name.hasPrefix("album_") {
+                        if let title = json["title"] as? String,
+                           let credits = json["artist-credit"] as? [[String: Any]],
+                           let firstCredit = credits.first,
+                           let artist = firstCredit["artist"] as? [String: Any],
+                           let artistName = artist["name"] as? String {
+                            dict["\(artistName)_\(title)"] = mbid
+                        }
                     }
                 }
-            }
+                return dict
+            }.value
 
             guard !rebuilt.isEmpty else { return }
-
-            await MainActor.run {
-                guard let self = self else { return }
-                var didChange = false
-                for (key, mbid) in rebuilt {
-                    if self.nameToMBIDCache[key] == nil {
-                        self.nameToMBIDCache[key] = mbid
-                        didChange = true
-                    }
+            var didChange = false
+            for (key, mbid) in rebuilt {
+                if self.nameToMBIDCache[key] == nil {
+                    self.nameToMBIDCache[key] = mbid
+                    didChange = true
                 }
-                if didChange { self.saveCache() }
             }
+            if didChange { self.saveCache() }
         }
     }
 
