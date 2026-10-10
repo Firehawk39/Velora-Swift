@@ -160,6 +160,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         // Listen for app termination to clear now playing info
         NotificationCenter.default.addObserver(self, selector: #selector(handleTerminate), name: UIApplication.willTerminateNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handlePowerStateChanged), name: .devicePowerStateDidChange, object: nil)
+    }
+
+    @objc private func handlePowerStateChanged() {
+        setBulkDownloadMode(self.isDownloadingAll)
     }
 
     @objc private func handleTerminate() {
@@ -550,10 +555,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             let track = queue[i]
             let primaryArtist = track.primaryArtist
             guard !primaryArtist.isEmpty else { continue }
-            let delay = Double(i - start) * 1.5 // Stagger by 1.5s per track to respect MB rate limits (1 req/s)
+            let isCharging = DevicePowerMonitor.isPluggedInOrCharging
+            let delay = isCharging ? 0.0 : (Double(i - start) * 1.5)
 
             Task {
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
 
                 // 1. Prefetch Backdrop Silently
                 await FanartManager.shared.downloadBackdropSilently(for: track.allArtists, artistId: track.artistId)
@@ -1178,9 +1186,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                      let retries = self.downloadRetryCount[trackId, default: 0]
                      if retries < self.maxRetries {
                          self.downloadRetryCount[trackId] = retries + 1
-                         let delay = pow(2.0, Double(retries))
+                         let delay = DevicePowerMonitor.isPluggedInOrCharging ? 0.0 : pow(2.0, Double(retries))
                          Task {
-                             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                             if delay > 0 {
+                                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                             }
                              if let track = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
                                  self.downloadProgress[trackId] = nil
                                  self.downloadTrack(track)
@@ -1226,9 +1236,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     let retries = self.downloadRetryCount[trackId, default: 0]
                     if retries < self.maxRetries {
                         self.downloadRetryCount[trackId] = retries + 1
-                        let delay = pow(2.0, Double(retries))
+                        let delay = DevicePowerMonitor.isPluggedInOrCharging ? 0.0 : pow(2.0, Double(retries))
                         Task {
-                            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                            if delay > 0 {
+                                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                            }
                             if let track = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
                                 self.downloadProgress[trackId] = nil
                                 self.downloadTrack(track)
@@ -1269,23 +1281,25 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     /// normal playback or single-track downloads.
     func setBulkDownloadMode(_ enabled: Bool) {
         self.isDownloadingAll = enabled
+        let isCharging = DevicePowerMonitor.isPluggedInOrCharging
         if enabled {
-            // Adaptive bulk download: scale to 50 on standard power, or 25 if device is in Low Power Mode
-            if ProcessInfo.processInfo.isLowPowerModeEnabled {
+            // Adaptive bulk download: scale to 64 when charging, 50 on standard power, or 25 if device is in Low Power Mode
+            if isCharging {
+                maxConcurrentDownloads = 64
+            } else if ProcessInfo.processInfo.isLowPowerModeEnabled {
                 maxConcurrentDownloads = 25
             } else {
                 maxConcurrentDownloads = 50
             }
         } else {
-            // Back to the safe default that won’t compete with audio playback.
-            maxConcurrentDownloads = 10
+            // Unthrottled 32 slots when charging, safe default of 10 on battery
+            maxConcurrentDownloads = isCharging ? 32 : 10
         }
         AppLogger.shared.log(
-            "[Download] Bulk mode \(enabled ? "ON" : "OFF") — maxConcurrent=\(maxConcurrentDownloads)",
+            "[Download] Mode \(enabled ? "BULK" : "NORMAL") (isCharging=\(isCharging)) — maxConcurrent=\(maxConcurrentDownloads)",
             level: .info
         )
-        // Kick the queue in case slots just opened up
-        if enabled { processQueue() }
+        processQueue()
     }
 
     func resetDownloadState() {

@@ -16,6 +16,9 @@ struct VeloraApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
+        // Initialize device power monitor to track charging state immediately
+        _ = DevicePowerMonitor.shared
+
         // Migrate data from Documents/ to Application Support/VeloraData/ (one-time)
         VeloraStorage.migrateFromDocumentsIfNeeded()
         VeloraStorage.ensureDirectories()

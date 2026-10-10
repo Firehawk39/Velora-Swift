@@ -20,6 +20,11 @@ class ThrottledNetworkManager: @unchecked Sendable {
            lower == serverHost {
             return true
         }
+        if let onlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url"),
+           let onlineHost = URL(string: onlineUrl)?.host?.lowercased(),
+           lower == onlineHost {
+            return true
+        }
         return false
     }
 
@@ -100,6 +105,7 @@ private class DomainThrottler: @unchecked Sendable {
     let host: String
     let minInterval: TimeInterval
     let isLocal: Bool
+    private let defaultMaxConcurrency: Int
     
     private let queue = OperationQueue()
     private var lastRequestTime = Date.distantPast
@@ -113,7 +119,21 @@ private class DomainThrottler: @unchecked Sendable {
         self.host = host
         self.minInterval = minInterval
         self.isLocal = isLocal
-        self.queue.maxConcurrentOperationCount = maxConcurrency
+        self.defaultMaxConcurrency = maxConcurrency
+        let isCharging = DevicePowerMonitor.isPluggedInOrCharging
+        self.queue.maxConcurrentOperationCount = isCharging ? (isLocal ? 64 : 16) : maxConcurrency
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(powerStateChanged),
+            name: .devicePowerStateDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func powerStateChanged(_ notification: Notification) {
+        let isCharging = (notification.userInfo?["isCharging"] as? Bool) ?? DevicePowerMonitor.isPluggedInOrCharging
+        queue.maxConcurrentOperationCount = isCharging ? (isLocal ? 64 : 16) : defaultMaxConcurrency
     }
 
     func addOperation(_ op: Operation) {
@@ -121,7 +141,20 @@ private class DomainThrottler: @unchecked Sendable {
     }
 
     func waitForSlot() -> Bool {
-        if isLocal { return true } // Local / home media server requests proceed at line speed
+        if isLocal || DevicePowerMonitor.isPluggedInOrCharging {
+            // Charging or Local: ZERO THROTTLING!
+            // Requests proceed at maximum line speed without artificial delay.
+            if isCircuitOpen {
+                lock.lock()
+                defer { lock.unlock() }
+                let now = Date()
+                if now < circuitResumeTime {
+                    return false
+                }
+                isCircuitOpen = false
+            }
+            return true
+        }
 
         lock.lock()
         defer { lock.unlock() }

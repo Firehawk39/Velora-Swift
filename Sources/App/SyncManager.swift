@@ -138,9 +138,9 @@ final class SyncManager: ObservableObject {
             let mb = MusicBrainzManager.shared
             let activeCores = ProcessInfo.processInfo.activeProcessorCount
             let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
-            // Cap metadata worker batch size to 12. External endpoints (MusicBrainz, Fanart)
-            // are serialized/rate-limited through ThrottledNetworkManager.
-            let maxConcurrent = 12
+            // Cap metadata worker batch size to 12 on battery, or 48 when plugged in / charging.
+            let isCharging = DevicePowerMonitor.isPluggedInOrCharging
+            let maxConcurrent = isCharging ? 48 : 12
             let startTime = Date()
 
             // Pre-flight check: determine what's truly missing
@@ -321,8 +321,10 @@ final class SyncManager: ObservableObject {
                     metadataProgress = min(tasksCompleted / totalAll, 0.99)
                 }
 
-                // Brief pause before re-scanning to allow disk writes to flush
-                if isSyncingMetadata { try? await Task.sleep(nanoseconds: 2_000_000_000) }
+                // Brief pause before re-scanning on battery to allow disk writes to flush (skipped when charging)
+                if isSyncingMetadata && !DevicePowerMonitor.isPluggedInOrCharging {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
 
             } while isSyncingMetadata && passCount < 5
             // Cap at 5 passes — if something still fails after that, it's a permanent API gap.
@@ -391,9 +393,8 @@ final class SyncManager: ObservableObject {
             }
 
             let lyricsDir = VeloraStorage.lyrics
-            // ThrottledNetworkManager serializes LRCLIB requests sequentially (1 req per 1.8s).
-            // A polite worker pool of 4 keeps the throttler pipeline fed without holding idle tasks.
-            let maxConcurrent = 4
+            let isCharging = DevicePowerMonitor.isPluggedInOrCharging
+            let maxConcurrent = isCharging ? 24 : 4
             let totalTasks = Double(tracks.count)
             let startTime = Date()
 
@@ -427,8 +428,8 @@ final class SyncManager: ObservableObject {
                     ? "Syncing Lyrics: \(attemptedSoFar)/\(missingSongs.count) songs"
                     : "Retrying \(missingSongs.count) songs (pass \(passCount))"
 
-                // Exponential back-off between passes: 0, 5s, 10s, 20s, 40s
-                if passCount > 1 {
+                // Exponential back-off between passes: 0, 5s, 10s, 20s, 40s (skipped when charging)
+                if passCount > 1 && !DevicePowerMonitor.isPluggedInOrCharging {
                     let backoffSeconds = UInt64(5 * (1 << (passCount - 2)))
                     lyricsStatus = "Rate limited — waiting \(backoffSeconds)s before retry..."
                     try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
@@ -806,7 +807,7 @@ final class SyncManager: ObservableObject {
 
             repairStatus = "Found \(totalTasks) missing items. Repairing..."
 
-            let repairBatchSize = 15
+            let repairBatchSize = DevicePowerMonitor.isPluggedInOrCharging ? 50 : 15
 
             // Repair Cover Arts
             if !missingCoverArtIds.isEmpty && isRepairing {
@@ -818,7 +819,9 @@ final class SyncManager: ObservableObject {
                     await withTaskGroup(of: Void.self) { group in
                         for (index, id) in batch.enumerated() {
                             group.addTask {
-                                try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
+                                if !DevicePowerMonitor.isPluggedInOrCharging {
+                                    try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
+                                }
                                 await withCheckedContinuation { cont in
                                     Task { @MainActor in
                                         client.fetchCoverArt(id: id, size: 500) { _ in cont.resume() }
@@ -844,7 +847,9 @@ final class SyncManager: ObservableObject {
                     await withTaskGroup(of: Void.self) { group in
                         for (index, id) in batch.enumerated() {
                             group.addTask {
-                                try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
+                                if !DevicePowerMonitor.isPluggedInOrCharging {
+                                    try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
+                                }
                                 await withCheckedContinuation { cont in
                                     Task { @MainActor in
                                         client.fetchArtist(id: id) { _ in cont.resume() }
@@ -909,15 +914,16 @@ final class SyncManager: ObservableObject {
                 var lyricsFixed = 0
                 lyricsFailed = 0
 
-                // Safer concurrency: 5 at a time with 300ms stagger prevents 429 rate limits
-                let lyricsBatchSize = 5
-                let lyricsStaggerNs: UInt64 = 300_000_000
+                // Concurrency: 25 with 0ms stagger when charging; 5 with 300ms stagger on battery
+                let isCharging = DevicePowerMonitor.isPluggedInOrCharging
+                let lyricsBatchSize = isCharging ? 25 : 5
+                let lyricsStaggerNs: UInt64 = isCharging ? 0 : 300_000_000
 
                 while !pendingLyrics.isEmpty && isRepairing && lyricPassCount < 5 {
                     lyricPassCount += 1
                     var stillFailing: [(id: String, artist: String, title: String, duration: Double)] = []
 
-                    if lyricPassCount > 1 {
+                    if lyricPassCount > 1 && !DevicePowerMonitor.isPluggedInOrCharging {
                         let backoffSeconds = UInt64(5 * (1 << (lyricPassCount - 2)))
                         repairStatus = "Rate limited — waiting \(backoffSeconds)s before retry (pass \(lyricPassCount))..."
                         AppLogger.shared.log("[RepairSync] Lyrics rate limited. Waiting \(backoffSeconds)s before pass \(lyricPassCount).", level: .warning)
@@ -933,7 +939,9 @@ final class SyncManager: ObservableObject {
                         let results = await withTaskGroup(of: (String, Bool).self) { group -> [(String, Bool)] in
                             for (index, req) in batch.enumerated() {
                                 group.addTask {
-                                    try? await Task.sleep(nanoseconds: UInt64(index) * lyricsStaggerNs)
+                                    if lyricsStaggerNs > 0 {
+                                        try? await Task.sleep(nanoseconds: UInt64(index) * lyricsStaggerNs)
+                                    }
                                     let succeeded = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
                                         Task { @MainActor in
                                             client.fetchLyrics(trackId: req.id, artist: req.artist, title: req.title, duration: req.duration, priority: URLSessionTask.lowPriority) { result in
