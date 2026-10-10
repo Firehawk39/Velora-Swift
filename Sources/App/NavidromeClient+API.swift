@@ -387,7 +387,7 @@ extension NavidromeClient {
     func fetchPlaylists() {
         guard NetworkMonitor.shared.isConnected else { return }
         guard let url = buildUrl(method: "getPlaylists.view") else { return }
-        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, error in
             guard error == nil, let data = data else { return }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
@@ -407,7 +407,7 @@ extension NavidromeClient {
     func fetchPlaylistTracks(playlistId: String, completion: @escaping @MainActor @Sendable ([Track]) -> Void) {
         guard NetworkMonitor.shared.isConnected else { completion([]); return }
         guard let url = buildUrl(method: "getPlaylist.view", params: ["id": playlistId]) else { completion([]); return }
-        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in completion([]) }
                 return
@@ -445,7 +445,7 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "createPlaylist.view", params: ["name": name], extraItems: extra) else {
             completion(false); return
         }
-        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, error in
             let success = error == nil
             Task { @MainActor [weak self] in
                 guard let self = self else { completion(success); return }
@@ -460,7 +460,7 @@ extension NavidromeClient {
         guard let url = buildUrl(method: "deletePlaylist.view", params: ["id": id]) else {
             completion(false); return
         }
-        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, error in
             let success = error == nil
             Task { @MainActor [weak self] in
                 guard let self = self else { completion(success); return }
@@ -531,7 +531,7 @@ extension NavidromeClient {
             return
         }
 
-        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in completion(false) }
                 return

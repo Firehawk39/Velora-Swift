@@ -27,8 +27,6 @@ struct SettingsView: View {
     @State private var isCheckingServer: Bool = false
     @State private var serverError: String? = nil
     @State private var loginErrorMessage: String? = nil
-    @State private var auditStats: IntegrityManager.LibraryAuditStats? = nil
-    @State private var isAuditingLibrary: Bool = false
 
     @State private var statusTimer: Timer? = nil
     @State private var isRefreshingSettings = false
@@ -72,19 +70,6 @@ struct SettingsView: View {
                 Task { @MainActor in
                     self.cacheSize = size
                 }
-            }
-            refreshAudit()
-        }
-    }
-
-    private func refreshAudit() {
-        isAuditingLibrary = true
-        let total = client.songs.count
-        Task {
-            let stats = await IntegrityManager.shared.performLibraryAudit(totalTracks: total)
-            await MainActor.run {
-                self.auditStats = stats
-                self.isAuditingLibrary = false
             }
         }
     }
@@ -433,6 +418,21 @@ struct AppSettingsView: View {
 
     var isDark: Bool { colorScheme == .dark }
     
+    @State private var auditStats: IntegrityManager.LibraryAuditStats? = nil
+    @State private var isAuditingLibrary: Bool = false
+
+    private func refreshAudit() {
+        isAuditingLibrary = true
+        let total = DatabaseManager.shared.getTrackCount()
+        Task {
+            let stats = await IntegrityManager.shared.performLibraryAudit(totalTracks: total)
+            await MainActor.run {
+                self.auditStats = stats
+                self.isAuditingLibrary = false
+            }
+        }
+    }
+
     private func syncSettingsToKeychain() {
         let bundle = VeloraCredentialsBundle(serverUrl: serverUrl, onlineServerUrl: onlineServerUrl, username: username, connectionMode: connectionMode)
         if let data = try? JSONEncoder().encode(bundle) {
@@ -689,7 +689,10 @@ struct AppSettingsView: View {
                                 } else {
                                     sync.startMetadataSync()
                                 }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                                    refreshAudit()
+                                }
                             }) {
                                 HStack {
                                     Image(systemName: "info.circle.fill")
@@ -739,7 +742,10 @@ struct AppSettingsView: View {
                                 } else {
                                     sync.startLyricsSync()
                                 }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                                    refreshAudit()
+                                }
                             }) {
                                 HStack {
                                     Image(systemName: "text.quote")
@@ -789,7 +795,10 @@ struct AppSettingsView: View {
                                 } else {
                                     sync.startMediaSync()
                                 }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                                    refreshAudit()
+                                }
                             }) {
                                 HStack {
                                     Image(systemName: "icloud.and.arrow.down.fill")
@@ -839,7 +848,10 @@ struct AppSettingsView: View {
                                 } else {
                                     sync.startRepairSync()
                                 }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { refreshAudit() }
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                                    refreshAudit()
+                                }
                             }) {
                                 HStack {
                                     Image(systemName: "wrench.and.screwdriver.fill")
@@ -1022,6 +1034,7 @@ struct AppSettingsView: View {
                         self.cacheSize = size
                     }
                 }
+                refreshAudit()
             }
             .onDisappear {
             }

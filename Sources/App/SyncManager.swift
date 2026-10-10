@@ -782,6 +782,7 @@ final class SyncManager: ObservableObject {
 
             var tasksCompleted = 0.0
             var repairedCount = 0
+            var lyricsFailed = 0
 
             repairStatus = "Found \(totalTasks) missing items. Repairing..."
 
@@ -844,7 +845,7 @@ final class SyncManager: ObservableObject {
                 var pendingLyrics = missingLyricsIds
                 var lyricPassCount = 0
                 var lyricsFixed = 0
-                var lyricsFailed = 0
+                lyricsFailed = 0
 
                 // Safer concurrency: 5 at a time with 300ms stagger prevents 429 rate limits
                 let lyricsBatchSize = 5
@@ -977,13 +978,14 @@ final class SyncManager: ObservableObject {
         UserDefaults.standard.set(status, forKey: "velora_last_media_status")
         if !isSyncing && !isRepairing { endBackgroundExecution() }
     }
-
-    /// Returns true only if a file exists AND is large enough to be a real image.
-    /// A minimum of 100 bytes filters out the old "NA" poison markers (2 bytes)
-    /// that previous versions wrote on download failure.
-    private func isValidImageFile(at url: URL) -> Bool {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attrs[.size] as? Int64 else { return false }
-        return size > 100
-    }
 }
+
+/// Returns true only if a file exists AND is large enough to be a real image.
+/// A minimum of 100 bytes filters out the old "NA" poison markers (2 bytes)
+/// that previous versions wrote on download failure.
+fileprivate func isValidImageFile(at url: URL) -> Bool {
+    guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+          let size = attrs[.size] as? Int64 else { return false }
+    return size > 100
+}
+
