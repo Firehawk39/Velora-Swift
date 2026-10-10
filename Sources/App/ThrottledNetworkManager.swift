@@ -10,18 +10,22 @@ class ThrottledNetworkManager: @unchecked Sendable {
 
     private init() {}
 
+    private func extractHost(from urlString: String?) -> String? {
+        guard var str = urlString?.trimmingCharacters(in: .whitespacesAndNewlines), !str.isEmpty else { return nil }
+        if !str.contains("://") { str = "http://" + str }
+        return URL(string: str)?.host?.lowercased()
+    }
+
     private func isLocalOrNavidromeHost(_ host: String) -> Bool {
         let lower = host.lowercased()
         if lower.hasSuffix(".local") || lower.contains("192.168.") || lower.contains("10.") || lower.contains("172.") || lower == "localhost" || lower == "127.0.0.1" {
             return true
         }
-        if let savedUrl = UserDefaults.standard.string(forKey: "velora_server_url"),
-           let serverHost = URL(string: savedUrl)?.host?.lowercased(),
+        if let serverHost = extractHost(from: UserDefaults.standard.string(forKey: "velora_server_url")),
            lower == serverHost {
             return true
         }
-        if let onlineUrl = UserDefaults.standard.string(forKey: "velora_online_server_url"),
-           let onlineHost = URL(string: onlineUrl)?.host?.lowercased(),
+        if let onlineHost = extractHost(from: UserDefaults.standard.string(forKey: "velora_online_server_url")),
            lower == onlineHost {
             return true
         }
@@ -40,8 +44,8 @@ class ThrottledNetworkManager: @unchecked Sendable {
         let interval: TimeInterval
         let maxConcurrency: Int
         if isLocal {
-            interval = 0.0 // Zero artificial delay for home / local Navidrome server
-            maxConcurrency = 50 // Full line-rate throughput
+            interval = 0.0 // Zero artificial delay for Navidrome server — raw unthrottled power
+            maxConcurrency = 64 // Full unbothered line-rate throughput
         } else if host.contains("musicbrainz.org") {
             interval = 1.0 // Strict 1 request per second
             maxConcurrency = 1
@@ -119,9 +123,9 @@ private class DomainThrottler: @unchecked Sendable {
         self.host = host
         self.minInterval = minInterval
         self.isLocal = isLocal
-        self.defaultMaxConcurrency = maxConcurrency
+        self.defaultMaxConcurrency = isLocal ? 64 : maxConcurrency
         let isCharging = DevicePowerMonitor.isPluggedInOrCharging
-        self.queue.maxConcurrentOperationCount = isCharging ? (isLocal ? 64 : 16) : maxConcurrency
+        self.queue.maxConcurrentOperationCount = isLocal ? 64 : (isCharging ? 16 : maxConcurrency)
 
         NotificationCenter.default.addObserver(
             self,
@@ -133,7 +137,7 @@ private class DomainThrottler: @unchecked Sendable {
 
     @objc private func powerStateChanged(_ notification: Notification) {
         let isCharging = (notification.userInfo?["isCharging"] as? Bool) ?? DevicePowerMonitor.isPluggedInOrCharging
-        queue.maxConcurrentOperationCount = isCharging ? (isLocal ? 64 : 16) : defaultMaxConcurrency
+        queue.maxConcurrentOperationCount = isLocal ? 64 : (isCharging ? 16 : defaultMaxConcurrency)
     }
 
     func addOperation(_ op: Operation) {

@@ -807,9 +807,9 @@ final class SyncManager: ObservableObject {
 
             repairStatus = "Found \(totalTasks) missing items. Repairing..."
 
-            let repairBatchSize = DevicePowerMonitor.isPluggedInOrCharging ? 50 : 15
+            let repairBatchSize = 50
 
-            // Repair Cover Arts
+            // Repair Cover Arts (from Navidrome — raw unthrottled line speed)
             if !missingCoverArtIds.isEmpty && isRepairing {
                 let items = Array(missingCoverArtIds)
                 var startIndex = 0
@@ -817,11 +817,8 @@ final class SyncManager: ObservableObject {
                     let endIndex = min(startIndex + repairBatchSize, items.count)
                     let batch = Array(items[startIndex..<endIndex])
                     await withTaskGroup(of: Void.self) { group in
-                        for (index, id) in batch.enumerated() {
+                        for id in batch {
                             group.addTask {
-                                if !DevicePowerMonitor.isPluggedInOrCharging {
-                                    try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
-                                }
                                 await withCheckedContinuation { cont in
                                     Task { @MainActor in
                                         client.fetchCoverArt(id: id, size: 500) { _ in cont.resume() }
@@ -837,7 +834,7 @@ final class SyncManager: ObservableObject {
                 }
             }
 
-            // Repair Artist Portraits
+            // Repair Artist Portraits (from Navidrome — raw unthrottled line speed)
             if !missingArtistPortraitIds.isEmpty && isRepairing {
                 let items = Array(missingArtistPortraitIds)
                 var startIndex = 0
@@ -845,11 +842,8 @@ final class SyncManager: ObservableObject {
                     let endIndex = min(startIndex + repairBatchSize, items.count)
                     let batch = Array(items[startIndex..<endIndex])
                     await withTaskGroup(of: Void.self) { group in
-                        for (index, id) in batch.enumerated() {
+                        for id in batch {
                             group.addTask {
-                                if !DevicePowerMonitor.isPluggedInOrCharging {
-                                    try? await Task.sleep(nanoseconds: UInt64(index) * 100_000_000)
-                                }
                                 await withCheckedContinuation { cont in
                                     Task { @MainActor in
                                         client.fetchArtist(id: id) { _ in cont.resume() }

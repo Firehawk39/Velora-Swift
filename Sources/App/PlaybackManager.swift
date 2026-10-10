@@ -103,10 +103,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadQueue: [Track] = []
     private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
-    /// Concurrent download slots.
-    /// Normal/playback: 10 (conservative — doesn’t compete with audio streaming).
-    /// Bulk “Download All Music”: bumped via setBulkDownloadMode(true) to 50.
-    private var maxConcurrentDownloads: Int = 10
+    /// Concurrent download slots for Navidrome tracks.
+    /// Unthrottled line-rate full power downloading (64 concurrent streams) regardless of device state.
+    private var maxConcurrentDownloads: Int = 64
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
@@ -137,10 +136,17 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             configuration.waitsForConnectivity = true
         } else {
             configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
+            configuration.isDiscretionary = false
+            configuration.sessionSendsLaunchEvents = true
         }
 
-        // Maximize connections to the host so up to 50 concurrent bulk streams flow without TCP socket queueing
+        // Maximize connections to the host so up to 64 concurrent streams flow with raw power
         configuration.httpMaximumConnectionsPerHost = 64
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 3600
+        configuration.allowsCellularAccess = true
+        configuration.allowsConstrainedNetworkAccess = true
+        configuration.allowsExpensiveNetworkAccess = true
         return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
     }()
 
@@ -164,7 +170,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     @objc private func handlePowerStateChanged() {
-        setBulkDownloadMode(self.isDownloadingAll)
+        maxConcurrentDownloads = 64
+        processQueue()
     }
 
     @objc private func handleTerminate() {
@@ -1186,15 +1193,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                      let retries = self.downloadRetryCount[trackId, default: 0]
                      if retries < self.maxRetries {
                          self.downloadRetryCount[trackId] = retries + 1
-                         let delay = DevicePowerMonitor.isPluggedInOrCharging ? 0.0 : pow(2.0, Double(retries))
-                         Task {
-                             if delay > 0 {
-                                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                             }
-                             if let track = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
-                                 self.downloadProgress[trackId] = nil
-                                 self.downloadTrack(track)
-                             }
+                         if let track = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
+                             self.downloadProgress[trackId] = nil
+                             self.downloadTrack(track)
                          }
                      } else {
                          self.failedDownloadIds.insert(trackId)
@@ -1236,15 +1237,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     let retries = self.downloadRetryCount[trackId, default: 0]
                     if retries < self.maxRetries {
                         self.downloadRetryCount[trackId] = retries + 1
-                        let delay = DevicePowerMonitor.isPluggedInOrCharging ? 0.0 : pow(2.0, Double(retries))
-                        Task {
-                            if delay > 0 {
-                                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                            }
-                            if let track = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
-                                self.downloadProgress[trackId] = nil
-                                self.downloadTrack(track)
-                            }
+                        // Immediate raw retry without throttling delay
+                        if let track = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId }) ?? self.queue.first(where: { $0.id == trackId }) {
+                            self.downloadProgress[trackId] = nil
+                            self.downloadTrack(track)
                         }
                     } else {
                         self.failedDownloadIds.insert(trackId)
@@ -1275,28 +1271,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
-    /// Call with `true` when starting a bulk "Download All Music" operation and
-    /// `false` when it finishes. Raises/lowers the concurrency slot count so the
-    /// extra parallelism is ONLY active during the mass-download, not during
-    /// normal playback or single-track downloads.
+    /// Sets download mode. Downloads from Navidrome operate at raw full power (64 slots)
+    /// regardless of device or battery state.
     func setBulkDownloadMode(_ enabled: Bool) {
         self.isDownloadingAll = enabled
-        let isCharging = DevicePowerMonitor.isPluggedInOrCharging
-        if enabled {
-            // Adaptive bulk download: scale to 64 when charging, 50 on standard power, or 25 if device is in Low Power Mode
-            if isCharging {
-                maxConcurrentDownloads = 64
-            } else if ProcessInfo.processInfo.isLowPowerModeEnabled {
-                maxConcurrentDownloads = 25
-            } else {
-                maxConcurrentDownloads = 50
-            }
-        } else {
-            // Unthrottled 32 slots when charging, safe default of 10 on battery
-            maxConcurrentDownloads = isCharging ? 32 : 10
-        }
+        maxConcurrentDownloads = 64
         AppLogger.shared.log(
-            "[Download] Mode \(enabled ? "BULK" : "NORMAL") (isCharging=\(isCharging)) — maxConcurrent=\(maxConcurrentDownloads)",
+            "[Download] Mode \(enabled ? "BULK" : "NORMAL") — raw unthrottled maxConcurrent=\(maxConcurrentDownloads)",
             level: .info
         )
         processQueue()
