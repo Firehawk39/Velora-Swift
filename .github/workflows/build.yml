@@ -17,10 +17,12 @@ jobs:
       - name: Select Xcode 16
         run: sudo xcode-select -s /Applications/Xcode_16.app
 
-      - name: Build App (Unsigned)
+      - name: Build XCArchive (Unsigned)
+        env:
+          XCODE_SCHEME: "Velora"
         run: |
           xcodebuild archive \
-            -scheme Velora \
+            -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath Velora.xcarchive \
@@ -47,7 +49,7 @@ jobs:
             exit 1
           fi
 
-      - name: Build IPA (Jailbreak Optimized)
+      - name: Build IPA
         run: |
           # 1. Find the binary (the actual executable)
           BINARY_PATH=$(find Velora.xcarchive/Products -type f -perm +111 -not -name "*.plist" -not -name "*.otf" | head -n 1)
@@ -186,6 +188,7 @@ jobs:
           # 6. Robust Icon Mapping
           ICON_SOURCE="Sources/App/Resources/Assets.xcassets/AppIcon.appiconset"
           if [ -d "$ICON_SOURCE" ]; then
+              echo "Injecting icons from $ICON_SOURCE for iPhone SE, iPad Pro, and CarPlay..."
               cp "$ICON_SOURCE/AppIcon@2x.png" "$PAYLOAD_APP/AppIcon60x60@2x.png" || true
               cp "$ICON_SOURCE/AppIcon@3x.png" "$PAYLOAD_APP/AppIcon60x60@3x.png" || true
               cp "$ICON_SOURCE/AppIcon-83.5@2x~ipad.png" "$PAYLOAD_APP/AppIcon83.5x83.5@2x.png" || true
@@ -205,12 +208,15 @@ jobs:
               cp "$ICON_SOURCE"/*.png "$PAYLOAD_APP/"
           fi
           
-          # 7. Zip into IPA
-          zip -r9 Velora-Jailbreak.ipa Payload
+          # 6. Final Permissions and Package
+          chmod +x "$PAYLOAD_APP/$BINARY_NAME"
+          zip -r Velora-Jailbreak.ipa Payload
+          mkdir -p artifacts
+          mv Velora-Jailbreak.ipa artifacts/
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Velora-Jailbreak
-          path: Velora-Jailbreak.ipa
+          path: artifacts/Velora-Jailbreak.ipa
           retention-days: 7
