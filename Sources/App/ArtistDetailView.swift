@@ -464,37 +464,23 @@ struct ArtistBackdropView: View {
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
                     
-                if isCompact && !isLandscape {
-                    // PORTRAIT IPHONE: Use Dynamic Gradient (No Fanart Backdrop)
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
-                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
-                            isDarkMode ? .black : .white
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                } else {
-                    // LANDSCAPE OR IPAD: Use High-Fidelity Backdrop
-                    if FileManager.default.fileExists(atPath: backdropUrl.path),
-                       let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
-                       let size = attr[.size] as? Int64, size > 0 {
-                        AsyncImage(url: backdropUrl) { phase in
-                            if let image = phase.image {
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                            } else {
-                                fallbackGradient
-                            }
+                if FileManager.default.fileExists(atPath: backdropUrl.path),
+                   let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
+                   let size = attr[.size] as? Int64, size > 0 {
+                    AsyncImage(url: backdropUrl) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                        } else {
+                            fallbackGradient
                         }
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
-                    } else {
-                        fallbackGradient
                     }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                } else {
+                    fallbackGradient
                 }
             }
             .overlay(
