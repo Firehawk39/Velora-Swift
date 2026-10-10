@@ -117,17 +117,18 @@ struct ArtistDetailView: View {
     private var heroSection: some View {
         Group {
             if isCompact {
-                VStack(spacing: ScreenTier.isSE ? 16 : 24) {
+                VStack(alignment: .leading, spacing: ScreenTier.isSE ? 16 : 24) {
                     artistLogo(size: ScreenTier.isSE ? 120 : 140)
 
-                    VStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 6) {
                         artistLabel
                         artistNameText(size: ScreenTier.isSE ? 24 : 28)
                     }
 
                     playAllButton
-                        .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95)
+                        .scaleEffect(ScreenTier.isPhone ? 0.85 : 0.95, anchor: .leading)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 24)
             } else {
                 VStack(alignment: .leading, spacing: 32) {
@@ -466,22 +467,30 @@ struct ArtistBackdropView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
+            let backdropUrl = FanartManager.shared.backdropDir.appendingPathComponent(key + ".jpg")
+            
             ZStack {
                 // Plain background color fallback
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
-                if ScreenTier.isSE {
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
-                            Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
-                            isDarkMode ? .black : .white
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
+                    
+                if FileManager.default.fileExists(atPath: backdropUrl.path),
+                   let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
+                   let size = attr[.size] as? Int64, size > 0 {
+                    AsyncImage(url: backdropUrl) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            fallbackGradient
+                        }
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
                 } else {
-                    AlbumAmbientGradientView(colors: artistPalette)
+                    fallbackGradient
                 }
             }
             .overlay(
@@ -507,6 +516,31 @@ struct ArtistBackdropView: View {
         }
         .onAppear {
             fetchColors()
+            // Trigger a fetch if it doesn't exist
+            let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
+            let backdropUrl = FanartManager.shared.backdropDir.appendingPathComponent(key + ".jpg")
+            if !FileManager.default.fileExists(atPath: backdropUrl.path) {
+                Task {
+                    await FanartManager.shared.downloadBackdropSilently(for: [artistName], artistId: artistId)
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var fallbackGradient: some View {
+        if ScreenTier.isSE {
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
+                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
+                    isDarkMode ? .black : .white
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            AlbumAmbientGradientView(colors: artistPalette)
         }
     }
     
