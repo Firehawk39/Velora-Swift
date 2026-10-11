@@ -7,8 +7,11 @@ DerivedData/
 *.swp
 *.lock
 
-# Secrets and local scripts
+# Secrets, MCP, and local configurations
 .env
+*.env.local
 run_mcp.ps1
 mcp_test.js
 scratch/
+.agents/
+*mcp_config*.json
