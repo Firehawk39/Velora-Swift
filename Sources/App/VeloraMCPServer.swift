@@ -452,15 +452,15 @@ final class VeloraMCPServer: ObservableObject {
 
         case "velora_get_playback_state":
             let pm = PlaybackManager.shared
-            let track = pm.currentTrack
+            let track = pm?.currentTrack
             let state: [String: Any] = [
-                "isPlaying": pm.isPlaying,
+                "isPlaying": pm?.isPlaying ?? false,
                 "trackTitle": track?.title ?? "None",
                 "artist": track?.artist ?? "None",
                 "primaryArtist": track?.primaryArtist ?? "None",
                 "album": track?.album ?? "None",
                 "duration": track?.durationFormatted ?? "0:00",
-                "queueCount": pm.queue.count,
+                "queueCount": pm?.queue.count ?? 0,
                 "hasBackdrop": FanartManager.shared.currentBackdrop != nil,
                 "hasClearLogo": FanartManager.shared.currentClearLogo != nil
             ]
@@ -471,19 +471,19 @@ final class VeloraMCPServer: ObservableObject {
             let pm = PlaybackManager.shared
             switch action {
             case "play":
-                if !pm.isPlaying { pm.togglePlayPause() }
+                if pm?.isPlaying == false { pm?.togglePlayPause() }
                 return "Playback started"
             case "pause":
-                if pm.isPlaying { pm.togglePlayPause() }
+                if pm?.isPlaying == true { pm?.togglePlayPause() }
                 return "Playback paused"
             case "toggle":
-                pm.togglePlayPause()
-                return "Playback toggled. isPlaying: \(pm.isPlaying)"
+                pm?.togglePlayPause()
+                return "Playback toggled. isPlaying: \(pm?.isPlaying ?? false)"
             case "next":
-                pm.nextTrack()
+                pm?.nextTrack()
                 return "Skipped to next track"
             case "previous":
-                pm.previousTrack()
+                pm?.previousTrack()
                 return "Returned to previous track"
             default:
                 return "Unknown playback action: \(action)"
@@ -493,9 +493,9 @@ final class VeloraMCPServer: ObservableObject {
             guard let query = arguments["query"] as? String, !query.isEmpty else {
                 return "Missing query"
             }
-            let tracks = DatabaseManager.shared.searchTracks(query: query)
+            let tracks = await DatabaseManager.shared.searchTracks(query: query)
             if let first = tracks.first {
-                PlaybackManager.shared.playTrack(first, context: tracks)
+                PlaybackManager.shared?.playTrack(first, context: tracks)
                 return "Playing '\(first.title)' by \(first.artist ?? "Unknown") (matched \(tracks.count) tracks)"
             } else {
                 return "No matching tracks found in library for '\(query)'"
@@ -525,7 +525,7 @@ final class VeloraMCPServer: ObservableObject {
             let portraits = countFiles(VeloraStorage.artistPortraits)
             let covers = countFiles(VeloraStorage.coverArt)
             let logos = countFiles(VeloraStorage.clearLogos)
-            let trackCount = DatabaseManager.shared.getTrackCount()
+            let trackCount = await DatabaseManager.shared.getTrackCount()
 
             let audit: [String: Any] = [
                 "totalTracksInDB": trackCount,
@@ -579,26 +579,26 @@ final class VeloraMCPServer: ObservableObject {
                 .replacingOccurrences(of: "song", with: "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if query.isEmpty {
-                PlaybackManager.shared.togglePlayPause()
+                PlaybackManager.shared?.togglePlayPause()
                 return "Toggled playback."
             }
-            let tracks = DatabaseManager.shared.searchTracks(query: query)
+            let tracks = await DatabaseManager.shared.searchTracks(query: query)
             if let first = tracks.first {
-                PlaybackManager.shared.playTrack(first, context: tracks)
+                PlaybackManager.shared?.playTrack(first, context: tracks)
                 return "Playing '\(first.title)' by \(first.artist ?? "Unknown Artist")."
             } else {
                 return "Could not find any songs matching '\(query)' in local library."
             }
         } else if p.contains("pause") || p.contains("stop") {
-            if PlaybackManager.shared.isPlaying {
-                PlaybackManager.shared.togglePlayPause()
+            if PlaybackManager.shared?.isPlaying == true {
+                PlaybackManager.shared?.togglePlayPause()
             }
             return "Playback paused."
         } else if p.contains("next") || p.contains("skip") {
-            PlaybackManager.shared.nextTrack()
+            PlaybackManager.shared?.nextTrack()
             return "Skipped to next track."
         } else if p.contains("previous") || p.contains("back") {
-            PlaybackManager.shared.previousTrack()
+            PlaybackManager.shared?.previousTrack()
             return "Returned to previous track."
         } else if p.contains("heal") || p.contains("fix") || p.contains("repair") || p.contains("cache") {
             FanartManager.shared.wipeNegativeFanartCaches()
@@ -606,7 +606,7 @@ final class VeloraMCPServer: ObservableObject {
             SyncManager.shared.startRepairSync()
             return "Purged corrupt asset locks and started library repair sync."
         } else if p.contains("status") || p.contains("what is playing") {
-            let t = PlaybackManager.shared.currentTrack
+            let t = PlaybackManager.shared?.currentTrack
             return "Currently playing: \(t?.title ?? "None") by \(t?.artist ?? "None"). Duration: \(t?.durationFormatted ?? "0:00")"
         }
 
@@ -640,16 +640,16 @@ final class VeloraMCPServer: ObservableObject {
         case "velora://playback/current":
             let pm = PlaybackManager.shared
             let dict: [String: Any] = [
-                "title": pm.currentTrack?.title ?? "None",
-                "artist": pm.currentTrack?.artist ?? "None",
-                "album": pm.currentTrack?.album ?? "None",
-                "isPlaying": pm.isPlaying
+                "title": pm?.currentTrack?.title ?? "None",
+                "artist": pm?.currentTrack?.artist ?? "None",
+                "album": pm?.currentTrack?.album ?? "None",
+                "isPlaying": pm?.isPlaying ?? false
             ]
             return toJSONString(dict)
         case "velora://logs/live":
             return AppLogger.shared.logs.suffix(100).map { "\($0.timestamp.ISO8601Format()) [\($0.level)] \($0.message)" }.joined(separator: "\n")
         case "velora://library/overview":
-            let count = DatabaseManager.shared.getTrackCount()
+            let count = await DatabaseManager.shared.getTrackCount()
             return toJSONString(["trackCount": count])
         case "velora://storage/audit":
             return await executeTool(name: "velora_audit_storage", arguments: [:])
@@ -676,7 +676,9 @@ final class VeloraMCPServer: ObservableObject {
                     getnameinfo(addr, socklen_t(addr.pointee.sa_len),
                                 &hostname, socklen_t(hostname.count),
                                 nil, socklen_t(0), NI_NUMERICHOST)
-                    address = String(cString: hostname)
+                    address = hostname.withUnsafeBufferPointer { p in
+                        p.baseAddress.map { String(cString: $0) }
+                    }
                     if name == "en0" { break } // Prefer Wi-Fi
                 }
             }
@@ -693,8 +695,8 @@ final class VeloraMCPServer: ObservableObject {
             "serverPort": serverPort,
             "ipAddress": ip,
             "mcpEndpoint": "http://\(ip):\(serverPort)/mcp",
-            "isPlaying": PlaybackManager.shared.isPlaying,
-            "currentTrack": PlaybackManager.shared.currentTrack?.title ?? "None",
+            "isPlaying": PlaybackManager.shared?.isPlaying ?? false,
+            "currentTrack": PlaybackManager.shared?.currentTrack?.title ?? "None",
             "isCharging": DevicePowerMonitor.isPluggedInOrCharging,
             "isNetworkConnected": NetworkMonitor.shared.isConnected
         ]
