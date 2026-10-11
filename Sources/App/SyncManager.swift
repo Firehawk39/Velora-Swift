@@ -310,12 +310,12 @@ final class SyncManager: ObservableObject {
                                 let cleanArtId = extractArtId(from: rawArtId)
                                 let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
                                 if !isValidImageFile(at: localArtUrl) && !AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId) {
-                                    _ = await client.downloadCoverArtAsync(id: cleanArtId)
+                                    await client.downloadCoverArt(id: cleanArtId)
                                     let cleanAlbumId = extractArtId(from: album.id)
                                     if cleanAlbumId != cleanArtId {
                                         let albumArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanAlbumId).jpg")
                                         if !isValidImageFile(at: albumArtUrl) {
-                                            _ = await client.downloadCoverArtAsync(id: cleanAlbumId)
+                                            await client.downloadCoverArt(id: cleanAlbumId)
                                         }
                                     }
                                     // Fallback: extract embedded artwork directly from any downloaded track of this album

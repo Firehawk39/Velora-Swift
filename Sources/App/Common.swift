@@ -66,23 +66,9 @@ func extractEmbeddedArtwork(for trackId: String, albumId: String? = nil, artId: 
     guard let audioUrl = audioUrl else { return nil }
     
     let asset = AVAsset(url: audioUrl)
-    let metadataItems = asset.commonMetadata + asset.metadata
-    for item in metadataItems {
-        let isArtwork: Bool
-        if item.commonKey == .commonKeyArtwork {
-            isArtwork = true
-        } else if let id = item.identifier, id == .commonIdentifierArtwork {
-            isArtwork = true
-        } else if let key = item.key as? String, ["APIC", "PIC", "covr"].contains(key) {
-            isArtwork = true
-        } else {
-            isArtwork = false
-        }
-        
-        if isArtwork,
-           let data = item.dataValue ?? (item.value as? Data),
-           !data.isEmpty,
-           UIImage(data: data) != nil {
+    let artworkItems = AVMetadataItem.metadataItems(from: asset.commonMetadata, withKey: AVMetadataKey.commonKeyArtwork, keySpace: .common)
+    for item in artworkItems {
+        if let data = item.dataValue, !data.isEmpty, UIImage(data: data) != nil {
             try? data.write(to: localArtUrl)
             
             // Mirror to albumId and artId so all lookups succeed instantly
@@ -150,17 +136,6 @@ func resolveCoverArtUrl(id: String, serverUrl: String?, albumId: String? = nil, 
         return embeddedUrl
     }
 
-    // 1. If serverUrl is already a valid absolute HTTP(S) URL, return it
-    if let sUrl = serverUrl, let url = URL(string: sUrl), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-        return url
-    }
-
-    // 2. Fallback: dynamically generate the active Navidrome streaming cover art URL
-    let liveUrlStr = NavidromeClient.buildCoverArtUrl(id: resolvedId)
-    if let liveUrl = URL(string: liveUrlStr), let scheme = liveUrl.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-        return liveUrl
-    }
-
     return serverUrl.flatMap { URL(string: $0) }
 }
 
@@ -183,26 +158,17 @@ func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
     }
 
     for candidate in candidates {
-        let localUrl = portraitDir.appendingPathComponent("\(candidate).jpg")
-        if fm.fileExists(atPath: localUrl.path) {
-            if let attr = try? fm.attributesOfItem(atPath: localUrl.path),
-               let size = attr[.size] as? Int64, size > 100 {
-                return localUrl // Valid local image
-            } else {
-                try? fm.removeItem(at: localUrl)
+        for ext in ["jpg", "jpeg", "png"] {
+            let localUrl = portraitDir.appendingPathComponent("\(candidate).\(ext)")
+            if fm.fileExists(atPath: localUrl.path) {
+                if let attr = try? fm.attributesOfItem(atPath: localUrl.path),
+                   let size = attr[.size] as? Int64, size > 100 {
+                    return localUrl // Valid local image
+                } else {
+                    try? fm.removeItem(at: localUrl)
+                }
             }
         }
-    }
-
-    // 1. If serverUrl is already a valid absolute HTTP(S) URL, return it
-    if let sUrl = serverUrl, let url = URL(string: sUrl), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-        return url
-    }
-
-    // 2. Fallback: dynamically generate the active Navidrome portrait URL
-    let liveUrlStr = NavidromeClient.buildCoverArtUrl(id: resolvedId)
-    if let liveUrl = URL(string: liveUrlStr), let scheme = liveUrl.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-        return liveUrl
     }
 
     return serverUrl.flatMap { URL(string: $0) }

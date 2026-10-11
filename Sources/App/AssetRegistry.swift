@@ -2,10 +2,11 @@ import Foundation
 
 /// Persistent registry tracking verified offline assets and confirmed unavailable external items.
 /// Prevents redundant network queries for items known not to exist on Fanart.tv, LRCLIB, or MusicBrainz.
-@MainActor
-final class AssetRegistry {
+/// Thread-safe via internal NSLock to allow synchronous access from background tasks and MainActor alike.
+final class AssetRegistry: @unchecked Sendable {
     static let shared = AssetRegistry()
 
+    private let lock = NSLock()
     private let registryFileName = "asset_registry.json"
     private var registryUrl: URL {
         VeloraStorage.root.appendingPathComponent(registryFileName)
@@ -37,6 +38,8 @@ final class AssetRegistry {
     }
 
     func load() {
+        lock.lock()
+        defer { lock.unlock() }
         if let fileData = try? Data(contentsOf: registryUrl),
            let decoded = try? JSONDecoder().decode(RegistryData.self, from: fileData) {
             self.data = decoded
@@ -45,7 +48,7 @@ final class AssetRegistry {
         }
     }
 
-    func save() {
+    private func saveLocked() {
         guard isDirty else { return }
         isDirty = false
         if let encoded = try? JSONEncoder().encode(data) {
@@ -53,92 +56,148 @@ final class AssetRegistry {
         }
     }
 
+    func save() {
+        lock.lock()
+        defer { lock.unlock() }
+        saveLocked()
+    }
+
     // MARK: - Backdrop
     func isBackdropUnavailable(key: String) -> Bool {
-        data.unavailableBackdrops.contains(key)
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableBackdrops.contains(key)
     }
 
     func markBackdropUnavailable(key: String) {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableBackdrops.insert(key)
         isDirty = true
-        save()
+        saveLocked()
     }
 
     // MARK: - Logo
     func isLogoUnavailable(key: String) -> Bool {
-        data.unavailableLogos.contains(key)
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableLogos.contains(key)
     }
 
     func markLogoUnavailable(key: String) {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableLogos.insert(key)
         isDirty = true
-        save()
+        saveLocked()
     }
 
     // MARK: - Lyrics
     func isLyricsUnavailable(trackId: String) -> Bool {
-        data.unavailableLyrics.contains(trackId)
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableLyrics.contains(trackId)
     }
 
     func markLyricsUnavailable(trackId: String) {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableLyrics.insert(trackId)
         isDirty = true
-        save()
+        saveLocked()
     }
 
     // MARK: - Portrait
     func isPortraitUnavailable(artistId: String) -> Bool {
-        data.unavailablePortraits.contains(artistId)
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailablePortraits.contains(artistId)
     }
 
     func markPortraitUnavailable(artistId: String) {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailablePortraits.insert(artistId)
         isDirty = true
-        save()
+        saveLocked()
     }
 
     // MARK: - MusicBrainz Artist & Album
     func isArtistUnavailable(artistName: String) -> Bool {
-        data.unavailableArtists.contains(artistName)
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableArtists.contains(artistName)
     }
 
     func markArtistUnavailable(artistName: String) {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableArtists.insert(artistName)
         isDirty = true
-        save()
+        saveLocked()
     }
 
     func isAlbumUnavailable(albumKey: String) -> Bool {
-        data.unavailableAlbums.contains(albumKey)
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableAlbums.contains(albumKey)
     }
 
     func markAlbumUnavailable(albumKey: String) {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableAlbums.insert(albumKey)
         isDirty = true
-        save()
+        saveLocked()
     }
 
     // MARK: - Cover Art
     func isCoverArtUnavailable(id: String) -> Bool {
-        data.unavailableCoverArts.contains(id)
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableCoverArts.contains(id)
     }
 
     func markCoverArtUnavailable(id: String) {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableCoverArts.insert(id)
         isDirty = true
-        save()
+        saveLocked()
     }
 
     // MARK: - Counts
-    var unavailableBackdropsCount: Int { data.unavailableBackdrops.count }
-    var unavailableLogosCount: Int { data.unavailableLogos.count }
-    var unavailableLyricsCount: Int { data.unavailableLyrics.count }
-    var unavailablePortraitsCount: Int { data.unavailablePortraits.count }
-    var unavailableCoverArtCount: Int { data.unavailableCoverArts.count }
+    var unavailableBackdropsCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableBackdrops.count
+    }
+    var unavailableLogosCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableLogos.count
+    }
+    var unavailableLyricsCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableLyrics.count
+    }
+    var unavailablePortraitsCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailablePortraits.count
+    }
+    var unavailableCoverArtCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return data.unavailableCoverArts.count
+    }
 
     // MARK: - Deep Reset
     /// Wipes all negative caches so the user can force a 100% deep re-scan if desired
     func resetUnavailableRecords() {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableBackdrops.removeAll()
         data.unavailableLogos.removeAll()
         data.unavailableLyrics.removeAll()
@@ -147,16 +206,18 @@ final class AssetRegistry {
         data.unavailableAlbums.removeAll()
         data.unavailableCoverArts.removeAll()
         isDirty = true
-        save()
+        saveLocked()
     }
 
     // MARK: - Fanart Reset
     /// Wipes unavailable backdrop and logo records so that entering or updating a Fanart API key
     /// allows all artists to be queried again without false "not available" blocks.
     func resetFanartUnavailableRecords() {
+        lock.lock()
+        defer { lock.unlock() }
         data.unavailableBackdrops.removeAll()
         data.unavailableLogos.removeAll()
         isDirty = true
-        save()
+        saveLocked()
     }
 }

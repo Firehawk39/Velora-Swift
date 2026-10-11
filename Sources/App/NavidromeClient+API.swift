@@ -620,13 +620,6 @@ extension NavidromeClient {
         }
     }
 
-    func downloadCoverArtAsync(id: String) async -> Bool {
-        await withCheckedContinuation { continuation in
-            downloadCoverArt(id: id) { success in
-                continuation.resume(returning: success)
-            }
-        }
-    }
     // MARK: - Lyrics
     
     func downloadArtistPortrait(id: String) {
