@@ -28,6 +28,9 @@ struct VeloraApp: App {
 
         registerCustomFonts()
         setupURLCache()
+
+        // Start the native AI Powerhouse MCP Server
+        VeloraMCPServer.shared.start()
     }
 
     /// Purge corrupt "NA" poison image files written by previous app versions on download failure.

@@ -331,16 +331,6 @@ final class SyncManager: ObservableObject {
 
             // Register permanently unavailable items so subsequent sync taps complete in milliseconds
             for artist in missingArtists {
-                if fa.isFanartConfigured {
-                    let backdropKey = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
-                    if !fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) {
-                        AssetRegistry.shared.markBackdropUnavailable(key: backdropKey)
-                    }
-                    if !fa.hasCheckedClearLogo(for: artist.primaryName) {
-                        let logoKey = "logo_" + fa.sanitizeFileName(artist.primaryName)
-                        AssetRegistry.shared.markLogoUnavailable(key: logoKey)
-                    }
-                }
                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                 if !isValidImageFile(at: localPortraitUrl) {
                     AssetRegistry.shared.markPortraitUnavailable(artistId: artist.id)
@@ -735,11 +725,16 @@ final class SyncManager: ObservableObject {
             var missingCoverArtIds: Set<String> = []
             var missingArtistPortraitIds: Set<String> = []
             var missingLyricsIds: [(id: String, artist: String, title: String, duration: Double)] = []
-            var missingBackdropArtists: Set<String> = []
+            struct BackdropRepairItem: Hashable {
+                let artists: [String]
+                let artistId: String?
+            }
+            var missingBackdrops: Set<BackdropRepairItem> = []
             var missingLogoArtists: Set<String> = []
             let fa = FanartManager.shared
             if fa.isFanartConfigured {
                 fa.checkAndInvalidateIfKeyChanged()
+                fa.wipeNegativeFanartCaches()
             }
 
             repairStatus = "Auditing library integrity..."
@@ -783,10 +778,10 @@ final class SyncManager: ObservableObject {
                 if fa.isFanartConfigured {
                     let artistName = track.primaryArtist
                     let artId = track.artistId ?? track.primaryArtist
-                    if !fa.hasBackdrop(for: artistName, artistId: artId) && !AssetRegistry.shared.isBackdropUnavailable(key: fa.getCacheKey(artistName: artistName, artistId: artId)) {
-                        missingBackdropArtists.insert(artistName)
+                    if !fa.hasBackdrop(for: artistName, artistId: artId) {
+                        missingBackdrops.insert(BackdropRepairItem(artists: track.allArtists, artistId: track.artistId))
                     }
-                    if !fa.hasClearLogo(for: artistName) && !AssetRegistry.shared.isLogoUnavailable(key: "logo_" + fa.sanitizeFileName(artistName)) {
+                    if !fa.hasClearLogo(for: artistName) {
                         missingLogoArtists.insert(artistName)
                     }
                 }
@@ -794,7 +789,7 @@ final class SyncManager: ObservableObject {
                 if index % 50 == 0 { await Task.yield() }
             }
 
-            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count + missingBackdropArtists.count + missingLogoArtists.count
+            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count + missingBackdrops.count + missingLogoArtists.count
             if totalTasks == 0 {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 finalizeRepairSync("Library is 100% healthy. All \(localTracks.count) offline tracks verified.")
@@ -860,16 +855,16 @@ final class SyncManager: ObservableObject {
             }
 
             // Repair Fanart Backdrops
-            if !missingBackdropArtists.isEmpty && isRepairing {
-                let items = Array(missingBackdropArtists)
+            if !missingBackdrops.isEmpty && isRepairing {
+                let items = Array(missingBackdrops)
                 var startIndex = 0
                 while startIndex < items.count && isRepairing {
                     let endIndex = min(startIndex + repairBatchSize, items.count)
                     let batch = Array(items[startIndex..<endIndex])
                     await withTaskGroup(of: Void.self) { group in
-                        for name in batch {
+                        for item in batch {
                             group.addTask {
-                                await fa.downloadBackdropSilently(for: [name])
+                                await fa.downloadBackdropSilently(for: item.artists, artistId: item.artistId)
                             }
                         }
                     }

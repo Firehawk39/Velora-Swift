@@ -41,11 +41,15 @@ final class MusicBrainzManager: ObservableObject {
         self.metadataDir = VeloraStorage.metadata
         self.cacheFile = VeloraStorage.root.appendingPathComponent("name_to_mbid.json")
 
-        // Load persisted cache
+        // Load persisted cache and purge any poisoned "NOT_FOUND" markers
         if let data = try? Data(contentsOf: self.cacheFile),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-            self.nameToMBIDCache = json
+            self.nameToMBIDCache = json.filter { $0.value != "NOT_FOUND" }
         }
+
+        // Clean up any poisoned artist_NOT_FOUND.json file
+        let poisonedFile = self.metadataDir.appendingPathComponent("artist_NOT_FOUND.json")
+        try? FileManager.default.removeItem(at: poisonedFile)
 
         // Self-heal: reconstruct any entries missing from the cache by scanning disk.
         // This makes the cache resilient to deletion/corruption of name_to_mbid.json.
@@ -118,7 +122,7 @@ final class MusicBrainzManager: ObservableObject {
     func hasArtistMetadata(for artistName: String) -> Bool {
         // Fast path: MBID is in the in-memory cache
         if let mbid = nameToMBIDCache[artistName] {
-            if mbid == "NOT_FOUND" { return true }
+            if mbid == "NOT_FOUND" { return false }
             return FileManager.default.fileExists(
                 atPath: metadataDir.appendingPathComponent("artist_\(mbid).json").path
             )
@@ -424,47 +428,68 @@ final class MusicBrainzManager: ObservableObject {
 
         ThrottledNetworkManager.shared.enqueue(request: request) { data, _, _ in
             guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            if let errorMsg = json["error"] as? String, errorMsg.lowercased().contains("busy") {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            guard let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
                 DispatchQueue.main.async { completion(nil) }
                 return
             }
 
             let lowerPrimary = primary.lowercased()
 
-            // 1. Prefer an artist whose name is an exact case-insensitive match.
-            //    This prevents e.g. "Zimmer" resolving to "Hans Zimmer" which has
-            //    "Zimmer" as a search-hint alias and ranks first in MusicBrainz results.
+            let parseScore: ([String: Any]) -> Int = { dict in
+                if let intVal = dict["score"] as? Int { return intVal }
+                if let strVal = dict["score"] as? String, let intVal = Int(strVal) { return intVal }
+                return 0
+            }
+
+            // 1. Prefer an artist whose name or sort-name is an exact match
             if let exactMatch = artists.first(where: {
-                ($0["name"] as? String)?.lowercased() == lowerPrimary
+                let name = ($0["name"] as? String)?.lowercased()
+                let sortName = ($0["sort-name"] as? String)?.lowercased()
+                return name == lowerPrimary || sortName == lowerPrimary
             }), let id = exactMatch["id"] as? String {
                 DispatchQueue.main.async { completion(id) }
                 return
             }
 
-            // 2. Fallback: only accept the top result when score is 100 and unambiguous.
-            let topScore = artists.first.flatMap { $0["score"] as? Int } ?? 0
-            let topScoreCandidates = artists.filter { ($0["score"] as? Int) == topScore }
-            if topScore == 100, topScoreCandidates.count == 1,
-               let id = topScoreCandidates.first?["id"] as? String {
-                DispatchQueue.main.async { completion(id) }
-                return
+            // 2. High score fallback (>= 90)
+            let topScore = artists.first.map { parseScore($0) } ?? 0
+            let topScoreCandidates = artists.filter { parseScore($0) == topScore }
+            if topScore >= 90 {
+                let candidate = topScoreCandidates.first(where: { ($0["name"] as? String)?.lowercased() == lowerPrimary }) ?? (topScoreCandidates.count == 1 ? topScoreCandidates.first : nil)
+                if let id = candidate?["id"] as? String {
+                    DispatchQueue.main.async { completion(id) }
+                    return
+                }
             }
 
-            // 3. No reliable match — return nil to avoid showing wrong artist art.
+            // 3. No reliable match
             DispatchQueue.main.async { completion(nil) }
         }
     }
 
     private func extractPrimaryArtist(_ name: String) -> String {
-        let delimiters = ["feat.", "ft.", " x ", " vs.", " featuring "]
-        var primary = name
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if knownBandNamesWithDelimiters.contains(trimmed.lowercased()) {
+            return trimmed
+        }
+        let delimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
+        var primary = trimmed
         for delimiter in delimiters {
             if let range = primary.range(of: delimiter, options: .caseInsensitive) {
-                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
-        return primary.isEmpty ? name : primary
+        return primary.isEmpty ? trimmed : primary
     }
 
     private func resolveAlbumMBID(album: String, artist: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
@@ -519,14 +544,12 @@ final class MusicBrainzManager: ObservableObject {
 
     func downloadMetadataSilently(for artistName: String, mbid: String? = nil) async {
         let finalMbid: String
-        if let providedMbid = mbid, !providedMbid.isEmpty {
+        if let providedMbid = mbid, !providedMbid.isEmpty, providedMbid != "NOT_FOUND" {
             finalMbid = providedMbid
-        } else if let resolved = await resolveMBIDAsync(for: artistName) {
+        } else if let resolved = await resolveMBIDAsync(for: artistName), resolved != "NOT_FOUND" {
             finalMbid = resolved
         } else {
             AppLogger.shared.log("[Metadata] Silent prefetch: Failed to resolve MBID for \(artistName)")
-            self.nameToMBIDCache[artistName] = "NOT_FOUND"
-            self.saveCache()
             return
         }
 
@@ -604,8 +627,9 @@ final class MusicBrainzManager: ObservableObject {
     }
 
     private func resolveMBIDAsync(for artist: String) async -> String? {
-        let cached = nameToMBIDCache[artist]
-        if let cached = cached { return cached }
+        if let cached = nameToMBIDCache[artist], cached != "NOT_FOUND" {
+            return cached
+        }
 
         let primary = extractPrimaryArtist(artist)
         let queryTerm = "artist:\"\(primary)\""
@@ -616,26 +640,43 @@ final class MusicBrainzManager: ObservableObject {
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         do {
             let (data, _) = try await ThrottledNetworkManager.shared.enqueue(request: request)
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+
+            if let errorMsg = json["error"] as? String, errorMsg.lowercased().contains("busy") {
+                return nil
+            }
+
+            guard let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
                 return nil
             }
 
             let lowerPrimary = primary.lowercased()
 
-            // 1. Exact name match — prevents "Zimmer" → "Hans Zimmer"
+            let parseScore: ([String: Any]) -> Int = { dict in
+                if let intVal = dict["score"] as? Int { return intVal }
+                if let strVal = dict["score"] as? String, let intVal = Int(strVal) { return intVal }
+                return 0
+            }
+
+            // 1. Exact name or sort-name match
             if let exactMatch = artists.first(where: {
-                ($0["name"] as? String)?.lowercased() == lowerPrimary
+                let name = ($0["name"] as? String)?.lowercased()
+                let sortName = ($0["sort-name"] as? String)?.lowercased()
+                return name == lowerPrimary || sortName == lowerPrimary
             }), let id = exactMatch["id"] as? String {
                 return id
             }
 
-            // 2. Unambiguous top score (100, single candidate)
-            let topScore = artists.first.flatMap { $0["score"] as? Int } ?? 0
-            let topScoreCandidates = artists.filter { ($0["score"] as? Int) == topScore }
-            if topScore == 100, topScoreCandidates.count == 1,
-               let id = topScoreCandidates.first?["id"] as? String {
-                return id
+            // 2. High score fallback (>= 90)
+            let topScore = artists.first.map { parseScore($0) } ?? 0
+            let topScoreCandidates = artists.filter { parseScore($0) == topScore }
+            if topScore >= 90 {
+                let candidate = topScoreCandidates.first(where: { ($0["name"] as? String)?.lowercased() == lowerPrimary }) ?? (topScoreCandidates.count == 1 ? topScoreCandidates.first : nil)
+                if let id = candidate?["id"] as? String {
+                    return id
+                }
             }
 
             // 3. Ambiguous — refuse to guess

@@ -23,5 +23,7 @@
     <array>
         <string>audio</string>
     </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Velora uses the local network to power the AI Engine and allow remote diagnostics.</string>
 </dict>
 </plist>

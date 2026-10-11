@@ -87,6 +87,40 @@ func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
 
 // MARK: - Models
 
+let knownBandNamesWithDelimiters: Set<String> = [
+    "chase & status",
+    "above & beyond",
+    "simon & garfunkel",
+    "earth, wind & fire",
+    "earth wind & fire",
+    "brooks & dunn",
+    "hall & oates",
+    "daryl hall & john oates",
+    "mumford & sons",
+    "crosby, stills, nash & young",
+    "crosby stills nash & young",
+    "tom petty and the heartbreakers",
+    "florence + the machine",
+    "kc & the sunshine band",
+    "kool & the gang",
+    "angus & julia stone",
+    "bob marley & the wailers",
+    "captain & tennille",
+    "huey lewis & the news",
+    "joan jett & the blackhearts",
+    "sly & the family stone",
+    "toots & the maytals",
+    "katrina and the waves",
+    "me first and the gimme gimmes",
+    "echo & the bunnymen",
+    "siouxsie and the banshees",
+    "gladys knight & the pips",
+    "ziggy marley & the melody makers",
+    "frankie lymon & the teenagers",
+    "junior walker & the all stars",
+    "king gizzard & the lizard wizard"
+]
+
 struct Artist: Identifiable, Codable, Sendable {
     let id: String
     let name: String
@@ -98,13 +132,29 @@ struct Artist: Identifiable, Codable, Sendable {
     var coverArtUrl: URL? { resolveArtistPortraitUrl(id: id, serverUrl: coverArt) }
 
     var allNames: [String] {
-        var temp = name
-        let textDelimiters = [" feat.", " ft.", " featuring "]
-        for delim in textDelimiters {
-            temp = temp.replacingOccurrences(of: delim, with: " & ", options: .caseInsensitive)
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        if knownBandNamesWithDelimiters.contains(lower) {
+            return [trimmed]
         }
-        let list = temp.components(separatedBy: CharacterSet(charactersIn: "&,")).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        return list.isEmpty ? [name] : list
+        var list: [String] = []
+        var temp = trimmed
+        let textDelimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
+        for delim in textDelimiters {
+            temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
+        }
+        let parts = temp.components(separatedBy: "|||")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        for part in parts {
+            if !list.contains(part) {
+                list.append(part)
+            }
+        }
+        if !list.contains(trimmed) {
+            list.append(trimmed)
+        }
+        return list.isEmpty ? [trimmed] : list
     }
 
     var primaryName: String {
@@ -154,14 +204,30 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
     }
 
     var allArtists: [String] {
-        guard let artist = artist else { return ["Unknown Artist"] }
-        var temp = artist
-        let textDelimiters = [" feat.", " ft.", " featuring ", " x ", " vs."]
+        guard let artist = artist, !artist.isEmpty else { return ["Unknown Artist"] }
+        let trimmed = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+        if knownBandNamesWithDelimiters.contains(lower) {
+            return [trimmed]
+        }
+        var list: [String] = []
+        var temp = trimmed
+        let textDelimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
         for delim in textDelimiters {
             temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
         }
-        let list = temp.components(separatedBy: "|||").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        return list.isEmpty ? [artist] : list
+        let parts = temp.components(separatedBy: "|||")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        for part in parts {
+            if !list.contains(part) {
+                list.append(part)
+            }
+        }
+        if !list.contains(trimmed) {
+            list.append(trimmed)
+        }
+        return list.isEmpty ? [trimmed] : list
     }
 
     var primaryArtist: String {

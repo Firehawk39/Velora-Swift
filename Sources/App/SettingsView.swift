@@ -394,6 +394,7 @@ struct AppSettingsView: View {
     @AppStorage("velora_username") private var username: String = ""
     @AppStorage("velora_connection_mode") private var connectionMode: Int = 0
     @AppStorage("velora_fanart_api_key") private var customFanartApiKey: String = ""
+    @ObservedObject private var mcpServer = VeloraMCPServer.shared
     @State private var backupFileUrl: URL? = nil
     @State private var showShareSheet: Bool = false
     @State private var showFileImporter: Bool = false
@@ -1000,6 +1001,69 @@ struct AppSettingsView: View {
                                 .cornerRadius(16)
                                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                             }
+                        }
+
+                        // AI Engine & MCP Powerhouse Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("AI Engine & MCP Powerhouse")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(labelCol)
+                                .textCase(.uppercase)
+                                .padding(.leading, 4)
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Image(systemName: "cpu.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.purple)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Local MCP Server")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(isDark ? .white : .black)
+                                        Text("Model Context Protocol for Antigravity & AI Engine")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    Circle()
+                                        .fill(mcpServer.isRunning ? Color.green : Color.red)
+                                        .frame(width: 10, height: 10)
+                                    Text(mcpServer.isRunning ? "Active" : "Stopped")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(mcpServer.isRunning ? .green : .red)
+                                }
+
+                                if let ip = mcpServer.getLocalIPAddress() {
+                                    HStack {
+                                        Text("Endpoint:")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.gray)
+                                        Text("http://\(ip):\(mcpServer.serverPort)/mcp")
+                                            .font(.system(size: 12, design: .monospaced))
+                                            .foregroundColor(isDark ? .white : .black)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Button(action: {
+                                            UIPasteboard.general.string = "http://\(ip):\(mcpServer.serverPort)/mcp"
+                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        }) {
+                                            Image(systemName: "doc.on.doc")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(.purple)
+                                        }
+                                    }
+                                    .padding(.top, 4)
+                                }
+
+                                Text(mcpServer.lastActionSummary)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.gray.opacity(0.8))
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(borderCol.opacity(0.3), lineWidth: 1))
                         }
 
                         // Danger Zone

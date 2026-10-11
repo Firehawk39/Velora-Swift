@@ -52,13 +52,16 @@ final class FanartManager: ObservableObject {
 
     // MARK: - API Key Lifecycle & Cache Invalidation
 
-    /// Wipes 0-byte negative cache markers from disk.
+    /// Wipes 0-byte negative cache markers from disk. Preserves valid 36-byte .mbid sidecars.
     func wipeNegativeFanartCaches() {
         let fm = FileManager.default
         if let files = try? fm.contentsOfDirectory(at: backdropDir, includingPropertiesForKeys: [.fileSizeKey]) {
             for file in files {
                 let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
-                if size <= 100 {
+                let ext = file.pathExtension.lowercased()
+                if (ext == "jpg" || ext == "jpeg" || ext == "png") && size <= 100 {
+                    try? fm.removeItem(at: file)
+                } else if ext == "mbid" && size == 0 {
                     try? fm.removeItem(at: file)
                 }
             }
@@ -66,7 +69,10 @@ final class FanartManager: ObservableObject {
         if let files = try? fm.contentsOfDirectory(at: clearLogoDir, includingPropertiesForKeys: [.fileSizeKey]) {
             for file in files {
                 let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
-                if size <= 100 {
+                let ext = file.pathExtension.lowercased()
+                if (ext == "png" || ext == "jpg") && size <= 100 {
+                    try? fm.removeItem(at: file)
+                } else if ext == "mbid" && size == 0 {
                     try? fm.removeItem(at: file)
                 }
             }
@@ -120,41 +126,54 @@ final class FanartManager: ObservableObject {
 
     /// Synchronously checks if a backdrop exists in cache and returns it
     nonisolated func getCachedBackdrop(for artist: String, artistId: String? = nil) -> UIImage? {
-        let key = getCacheKey(artistName: artist, artistId: artistId)
-        if let memoryCached = imageCache.object(forKey: key as NSString) {
-            return memoryCached
-        }
+        let keys = [artistId, sanitizeFileName(artist)].compactMap { $0 }.filter { !$0.isEmpty }
+        for key in keys {
+            if let memoryCached = imageCache.object(forKey: key as NSString) {
+                return memoryCached
+            }
 
-        let fileName = key + ".jpg"
-        let fileUrl = self.backdropDir.appendingPathComponent(fileName)
+            let fileName = key + ".jpg"
+            let fileUrl = self.backdropDir.appendingPathComponent(fileName)
 
-        if FileManager.default.fileExists(atPath: fileUrl.path),
-           let data = try? Data(contentsOf: fileUrl),
-           let image = UIImage(data: data) {
-            self.imageCache.setObject(image, forKey: key as NSString)
-            return image
+            if FileManager.default.fileExists(atPath: fileUrl.path),
+               let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
+               let size = attr[.size] as? Int64, size > 100,
+               let data = try? Data(contentsOf: fileUrl),
+               let image = UIImage(data: data) {
+                self.imageCache.setObject(image, forKey: key as NSString)
+                return image
+            }
         }
         return nil
     }
 
     func hasBackdrop(for artist: String, artistId: String? = nil) -> Bool {
-        let key = getCacheKey(artistName: artist, artistId: artistId)
-        let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
-        guard FileManager.default.fileExists(atPath: fileUrl.path) else { return false }
-        let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
-        return size > 100
+        let keys = [artistId, sanitizeFileName(artist)].compactMap { $0 }.filter { !$0.isEmpty }
+        for key in keys {
+            let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
+            if FileManager.default.fileExists(atPath: fileUrl.path) {
+                let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+                if size > 100 { return true }
+            }
+        }
+        return false
     }
 
     /// Returns true if a valid backdrop exists OR it was verified unavailable on Fanart.tv (only if Fanart is configured)
     func hasCheckedBackdrop(for artist: String, artistId: String? = nil) -> Bool {
-        let key = getCacheKey(artistName: artist, artistId: artistId)
-        let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
-        if FileManager.default.fileExists(atPath: fileUrl.path) {
-            let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
-            if size > 100 { return true }
-            return isFanartConfigured
+        guard isFanartConfigured else { return false }
+        let keys = [artistId, sanitizeFileName(artist)].compactMap { $0 }.filter { !$0.isEmpty }
+        for key in keys {
+            let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
+            if FileManager.default.fileExists(atPath: fileUrl.path) {
+                let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+                if size > 100 { return true }
+                // Self-heal corrupted or 0-byte markers to allow fresh download
+                try? FileManager.default.removeItem(at: fileUrl)
+                return false
+            }
         }
-        return isFanartConfigured && AssetRegistry.shared.isBackdropUnavailable(key: key)
+        return false
     }
 
     func hasPortrait(for artist: String) -> Bool {
@@ -175,14 +194,16 @@ final class FanartManager: ObservableObject {
 
     /// Returns true if a valid clear logo exists OR it was verified unavailable on Fanart.tv (only if Fanart is configured)
     func hasCheckedClearLogo(for artist: String) -> Bool {
+        guard isFanartConfigured else { return false }
         let key = "logo_" + sanitizeFileName(artist)
         let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
         if fileManager.fileExists(atPath: fileUrl.path) {
             let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
             if size > 100 { return true }
-            return isFanartConfigured
+            try? fileManager.removeItem(at: fileUrl)
+            return false
         }
-        return isFanartConfigured && AssetRegistry.shared.isLogoUnavailable(key: key)
+        return false
     }
 
     func fetchBackdrop(for artists: [String], artistId: String? = nil, mbid: String? = nil, allowNetwork: Bool = true) {
@@ -207,12 +228,12 @@ final class FanartManager: ObservableObject {
                     break
                 }
 
-                // Check for negative cache marker (0 byte file)
+                // Check for negative cache marker (<= 100 byte file)
                 let key = self.getCacheKey(artistName: artist, artistId: currentArtistId)
                 let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
                 if FileManager.default.fileExists(atPath: fileUrl.path),
                    let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
-                   let size = attr[.size] as? Int64, size == 0 {
+                   let size = attr[.size] as? Int64, size <= 100 {
                     if self.isNegativeCacheExpired(at: fileUrl) {
                         try? FileManager.default.removeItem(at: fileUrl)
                     } else {
@@ -1143,14 +1164,18 @@ final class FanartManager: ObservableObject {
     }
 
     nonisolated private func extractPrimaryArtist(_ name: String) -> String {
-        let delimiters = ["feat.", "ft.", " x ", " vs.", " featuring "]
-        var primary = name
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if knownBandNamesWithDelimiters.contains(trimmed.lowercased()) {
+            return trimmed
+        }
+        let delimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
+        var primary = trimmed
         for delimiter in delimiters {
             if let range = primary.range(of: delimiter, options: .caseInsensitive) {
-                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
-        return primary.isEmpty ? name : primary
+        return primary.isEmpty ? trimmed : primary
     }
 
     /// Legacy convenience wrapper — used by fetchClearLogo/fetchArtistPortrait UI paths
@@ -1220,8 +1245,18 @@ final class FanartManager: ObservableObject {
             }
 
             guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .networkError) }
+                return
+            }
+
+            // Check if MusicBrainz returned a busy error payload
+            if let errorMsg = json["error"] as? String, errorMsg.lowercased().contains("busy") {
+                Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .networkError) }
+                return
+            }
+
+            guard let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
                 // Valid response but no results — artist genuinely not on MusicBrainz
                 Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound) }
                 return
@@ -1229,11 +1264,17 @@ final class FanartManager: ObservableObject {
 
             let lowerPrimary = primary.lowercased()
 
-            // 1. Prefer an artist whose name is an exact case-insensitive match.
-            //    This prevents "Zimmer" from resolving to "Hans Zimmer" which has
-            //    "Zimmer" as a search-hint alias and ranks first in MusicBrainz results.
+            let parseScore: ([String: Any]) -> Int = { dict in
+                if let intVal = dict["score"] as? Int { return intVal }
+                if let strVal = dict["score"] as? String, let intVal = Int(strVal) { return intVal }
+                return 0
+            }
+
+            // 1. Prefer an artist whose name or sort-name is an exact match
             if let exactMatch = artists.first(where: {
-                ($0["name"] as? String)?.lowercased() == lowerPrimary
+                let name = ($0["name"] as? String)?.lowercased()
+                let sortName = ($0["sort-name"] as? String)?.lowercased()
+                return name == lowerPrimary || sortName == lowerPrimary
             }), let id = exactMatch["id"] as? String {
                 Task { @MainActor in
                     FanartManager.shared.mbidCache[primary] = id
@@ -1242,21 +1283,21 @@ final class FanartManager: ObservableObject {
                 return
             }
 
-            // 2. Fallback: only accept the top result if it has the maximum possible
-            //    score (100) AND the top-score group contains exactly one artist,
-            //    meaning MusicBrainz itself is unambiguous about the match.
-            let topScore = artists.first.flatMap { $0["score"] as? Int } ?? 0
-            let topScoreCandidates = artists.filter { ($0["score"] as? Int) == topScore }
-            if topScore == 100, topScoreCandidates.count == 1,
-               let id = topScoreCandidates.first?["id"] as? String {
-                Task { @MainActor in
-                    FanartManager.shared.mbidCache[primary] = id
-                    FanartManager.shared.resolveMbidFetches(for: primary, with: .found(id))
+            // 2. Fallback: accept highest score candidate if >= 90
+            let topScore = artists.first.map { parseScore($0) } ?? 0
+            let topScoreCandidates = artists.filter { parseScore($0) == topScore }
+            if topScore >= 90 {
+                let candidate = topScoreCandidates.first(where: { ($0["name"] as? String)?.lowercased() == lowerPrimary }) ?? (topScoreCandidates.count == 1 ? topScoreCandidates.first : nil)
+                if let id = candidate?["id"] as? String {
+                    Task { @MainActor in
+                        FanartManager.shared.mbidCache[primary] = id
+                        FanartManager.shared.resolveMbidFetches(for: primary, with: .found(id))
+                    }
+                    return
                 }
-                return
             }
 
-            // 3. No reliable match found — this is a genuine "not found", not a network error.
+            // 3. No reliable match found
             Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound) }
         }
         }
