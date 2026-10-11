@@ -637,6 +637,9 @@ extension NavidromeClient {
 
     // MARK: - Cover Art Caching
 
+    private static let coverArtLock = NSLock()
+    private static var inFlightCoverCompletions: [String: [@Sendable (Bool) -> Void]] = [:]
+
     func downloadCoverArt(id: String, completion: (@Sendable (Bool) -> Void)? = nil) {
         let coverArtDir = VeloraStorage.coverArt
         let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
@@ -656,33 +659,58 @@ extension NavidromeClient {
             completion?(false)
             return
         }
+
+        Self.coverArtLock.lock()
+        if Self.inFlightCoverCompletions[id] != nil {
+            if let completion = completion {
+                Self.inFlightCoverCompletions[id]?.append(completion)
+            }
+            Self.coverArtLock.unlock()
+            return
+        }
+        Self.inFlightCoverCompletions[id] = completion != nil ? [completion!] : []
+        Self.coverArtLock.unlock()
+
         guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else {
-            completion?(false)
+            Self.finishCoverArtCallbacks(id: id, success: false)
             return
         }
 
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
+            let notifyAndFinish: @Sendable (Bool) -> Void = { success in
+                Self.finishCoverArtCallbacks(id: id, success: success)
+            }
+
             guard let data = data, error == nil else {
                 AppLogger.shared.log("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
-                completion?(false)
+                notifyAndFinish(false)
                 return
             }
             do {
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
-                    completion?(false)
+                    notifyAndFinish(false)
                     return
                 }
                 if UIImage(data: data) != nil {
                     try data.write(to: destinationUrl)
-                    completion?(true)
+                    notifyAndFinish(true)
                 } else {
                     AppLogger.shared.log("Failed to save cover art for \(id): Not a valid image.")
-                    completion?(false)
+                    notifyAndFinish(false)
                 }
             } catch {
                 AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
-                completion?(false)
+                notifyAndFinish(false)
             }
+        }
+    }
+
+    private static func finishCoverArtCallbacks(id: String, success: Bool) {
+        Self.coverArtLock.lock()
+        let callbacks = Self.inFlightCoverCompletions.removeValue(forKey: id) ?? []
+        Self.coverArtLock.unlock()
+        for cb in callbacks {
+            cb(success)
         }
     }
 

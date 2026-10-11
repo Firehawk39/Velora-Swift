@@ -143,16 +143,14 @@ final class SyncManager: ObservableObject {
             let metadataWorkerPoolSize = 16
             let startTime = Date()
 
-            // Pre-flight check: determine what's truly missing
+            // Pre-flight check: determine what cloud metadata is truly missing
             fa.checkAndInvalidateIfKeyChanged()
             var initialMissingArtists = [Artist]()
             for (index, artist) in artists.enumerated() {
-                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
                 let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
                 let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
                 let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
-                if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
+                if !(hasBackdrop && hasLogo && hasArtist) {
                     initialMissingArtists.append(artist)
                 }
                 if index % 100 == 0 { await Task.yield() }
@@ -162,12 +160,8 @@ final class SyncManager: ObservableObject {
             for (index, album) in albums.enumerated() {
                 let artistName = album.artist ?? "Unknown Artist"
                 let albumKey = "\(artistName)_\(album.name)"
-                let rawArtId = album.coverArt ?? album.id
-                let cleanArtId = extractArtId(from: rawArtId)
-                let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                let hasCover = isValidImageFile(at: localArtUrl) || AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId)
                 let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
-                if !(hasCover && hasMeta) {
+                if !hasMeta {
                     initialMissingAlbums.append(album)
                 }
                 if index % 100 == 0 { await Task.yield() }
@@ -175,7 +169,7 @@ final class SyncManager: ObservableObject {
 
             if initialMissingArtists.isEmpty && initialMissingAlbums.isEmpty {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                finalizeMetadataSync("All metadata cached • Up to date")
+                finalizeMetadataSync("Cloud metadata & fanart cached • Up to date")
                 return
             }
 
@@ -186,7 +180,7 @@ final class SyncManager: ObservableObject {
             var passCount = 0
             repeat {
                 passCount += 1
-                metadataStatus = passCount == 1 ? "Analyzing library..." : "Retrying incomplete items (pass \(passCount))..."
+                metadataStatus = passCount == 1 ? "Enriching cloud fanart & web metadata..." : "Retrying cloud items (pass \(passCount))..."
                 await Task.yield()
 
                 // Reset dedup guards so artists that failed due to stuck keys can be retried
@@ -195,12 +189,10 @@ final class SyncManager: ObservableObject {
                 // Re-scan on every pass so we only work on what's still missing
                 var missingArtistsThisPass = [Artist]()
                 for (index, artist) in missingArtists.enumerated() {
-                    let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                    let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
                     let hasBackdrop = (passCount > 1) || fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
                     let hasLogo = (passCount > 1) || fa.hasCheckedClearLogo(for: artist.primaryName)
                     let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
-                    if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
+                    if !(hasBackdrop && hasLogo && hasArtist) {
                         missingArtistsThisPass.append(artist)
                     }
                     if index % 100 == 0 { await Task.yield() }
@@ -210,12 +202,8 @@ final class SyncManager: ObservableObject {
                 for (index, album) in missingAlbums.enumerated() {
                     let artistName = album.artist ?? "Unknown Artist"
                     let albumKey = "\(artistName)_\(album.name)"
-                    let rawArtId = album.coverArt ?? album.id
-                    let cleanArtId = extractArtId(from: rawArtId)
-                    let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                    let hasCover = isValidImageFile(at: localArtUrl) || AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId)
                     let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
-                    if !(hasCover && hasMeta) {
+                    if !hasMeta {
                         missingAlbumsThisPass.append(album)
                     }
                     if index % 100 == 0 { await Task.yield() }
@@ -253,7 +241,7 @@ final class SyncManager: ObservableObject {
                         artistsProcessedThisPass += 1
                         tasksCompleted += 1.0
                         metadataProgress = min(tasksCompleted / totalAll, 0.99)
-                        metadataStatus = "Syncing Artists: \(artistsProcessedThisPass)/\(missingArtists.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
+                        metadataStatus = "Enriching Cloud Fanart: \(artistsProcessedThisPass)/\(missingArtists.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
 
                         let elapsed = Date().timeIntervalSince(passStartTime)
                         let doneThisPass = tasksCompleted - alreadyDone
@@ -295,7 +283,7 @@ final class SyncManager: ObservableObject {
                         albumsProcessedThisPass += 1
                         tasksCompleted += 1.0
                         metadataProgress = min(tasksCompleted / totalAll, 0.99)
-                        metadataStatus = "Syncing Albums: \(albumsProcessedThisPass)/\(missingAlbums.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
+                        metadataStatus = "Enriching Cloud Albums: \(albumsProcessedThisPass)/\(missingAlbums.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
 
                         let elapsed = Date().timeIntervalSince(passStartTime)
                         let doneThisPass = tasksCompleted - alreadyDone
@@ -323,10 +311,6 @@ final class SyncManager: ObservableObject {
 
             // Register permanently unavailable items so subsequent sync taps complete in milliseconds
             for artist in missingArtists {
-                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                if !isValidImageFile(at: localPortraitUrl) {
-                    AssetRegistry.shared.markPortraitUnavailable(artistId: artist.id)
-                }
                 if !mb.hasArtistMetadata(for: artist.primaryName) {
                     AssetRegistry.shared.markArtistUnavailable(artistName: artist.primaryName)
                 }
@@ -345,19 +329,12 @@ final class SyncManager: ObservableObject {
                 if !mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId) {
                     AssetRegistry.shared.markAlbumUnavailable(albumKey: albumKey)
                 }
-                let rawArtId = album.coverArt ?? album.id
-                let cleanArtId = extractArtId(from: rawArtId)
-                let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                if !isValidImageFile(at: localArtUrl) {
-                    AssetRegistry.shared.markCoverArtUnavailable(id: cleanArtId)
-                }
             }
 
             client.saveOfflineMetadata()
             LibraryDataCache.shared.refresh()
 
-            let skippedCount = (artists.count + albums.count)
-            finalizeMetadataSync("Metadata Sync Complete — \(skippedCount) items confirmed")
+            finalizeMetadataSync("Cloud Fanart & Web Metadata Complete")
         }
     }
 
@@ -573,12 +550,47 @@ final class SyncManager: ObservableObject {
             let alreadyDownloadedCount = Int(totalTracks) - totalToDownload
 
             if totalToDownload == 0 {
-                finalizeMediaSync("All \(Int(totalTracks)) tracks already offline.")
+                // Ensure portraits and covers are also up to date from Navidrome even if all audio tracks are offline
+                let allAlbums = await DatabaseManager.shared.getAllAlbums()
+                for album in allAlbums {
+                    let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
+                    let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+                    if !isValidImageFile(at: localCoverUrl) {
+                        client.downloadCoverArt(id: cleanArtId)
+                    }
+                }
+                let allArtists = await DatabaseManager.shared.getAllArtists()
+                for artist in allArtists {
+                    let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
+                    if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id) {
+                        client.downloadArtistPortrait(id: artist.id)
+                    }
+                }
+                finalizeMediaSync("All \(Int(totalTracks)) tracks, covers & portraits offline.")
                 return
             }
 
-            mediaStatus = "Queueing \(totalToDownload) tracks..."
-            AppLogger.shared.log("Queueing \(totalToDownload) tracks.", level: .info)
+            mediaStatus = "Queueing \(totalToDownload) tracks & local media..."
+            AppLogger.shared.log("Queueing \(totalToDownload) tracks, covers, and portraits.", level: .info)
+
+            // Concurrently download all missing album covers and artist portraits directly from Navidrome LAN
+            let allAlbums = await DatabaseManager.shared.getAllAlbums()
+            for album in allAlbums {
+                let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
+                let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+                if !isValidImageFile(at: localCoverUrl) {
+                    client.downloadCoverArt(id: cleanArtId)
+                }
+            }
+
+            let allArtists = await DatabaseManager.shared.getAllArtists()
+            for artist in allArtists {
+                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
+                if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id) {
+                    client.downloadArtistPortrait(id: artist.id)
+                }
+            }
+
             for track in tracksToDownload {
                 if !isSyncingMedia { break }
                 playback?.downloadTrack(track)
@@ -1035,17 +1047,15 @@ final class SyncManager: ObservableObject {
     nonisolated private func processArtistItem(artist: Artist, client: NavidromeClient) async {
         let mb = await MusicBrainzManager.shared
         let fa = await FanartManager.shared
-        let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-        let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
         let hasArtist = await (mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
         let hasBackdrop = await fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
         let hasClearLogo = await fa.hasCheckedClearLogo(for: artist.primaryName)
 
-        if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
+        if !(hasArtist && hasBackdrop && hasClearLogo) {
             var safeMbid: String? = nil
             var info: SubsonicArtistInfo? = nil
 
-            if !hasBackdrop || !hasClearLogo || !hasLocalPortrait || !hasArtist {
+            if !hasBackdrop || !hasClearLogo || !hasArtist {
                 info = await withCheckedContinuation { continuation in
                     Task { @MainActor in
                         client.fetchArtistInfo(artistId: artist.id) { fetchedInfo in
@@ -1069,10 +1079,6 @@ final class SyncManager: ObservableObject {
                 await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
             }
 
-            if !hasLocalPortrait {
-                await client.downloadArtistPortrait(id: artist.id)
-            }
-
             // 2. Only download from public MusicBrainz over internet if still missing!
             let stillNeedsArtist = await !(mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
             if stillNeedsArtist {
@@ -1089,28 +1095,6 @@ final class SyncManager: ObservableObject {
                 await mb.saveAlbumMetadata(albumName: album.name, artistName: artistName, mbid: validMbid, year: album.year, genre: album.genre)
             } else {
                 await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId)
-            }
-        }
-        let rawArtId = album.coverArt ?? album.id
-        let cleanArtId = extractArtId(from: rawArtId)
-        let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-        if !isValidImageFile(at: localArtUrl) && !AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId) {
-            await client.downloadCoverArt(id: cleanArtId)
-            let cleanAlbumId = extractArtId(from: album.id)
-            if cleanAlbumId != cleanArtId {
-                let albumArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanAlbumId).jpg")
-                if !isValidImageFile(at: albumArtUrl) {
-                    await client.downloadCoverArt(id: cleanAlbumId)
-                }
-            }
-            // Fallback: extract embedded artwork directly from any downloaded track of this album
-            if !isValidImageFile(at: localArtUrl) {
-                let albumTracks = await DatabaseManager.shared.getAllTracks().filter { $0.albumId == album.id || $0.album == album.name }
-                for t in albumTracks {
-                    if extractEmbeddedArtwork(for: t.id, albumId: album.id, artId: cleanArtId) != nil {
-                        break
-                    }
-                }
             }
         }
     }

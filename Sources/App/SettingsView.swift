@@ -663,10 +663,10 @@ struct AppSettingsView: View {
                                         .foregroundColor(sync.isSyncingMetadata ? .blue : labelCol)
                                     
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(sync.isSyncingMetadata ? "Syncing Info..." : "Download Library Metadata")
+                                        Text(sync.isSyncingMetadata ? "Enriching Metadata..." : "Download All Metadata")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text((sync.isSyncingMetadata || sync.metadataStatus.lowercased().contains("complete") || sync.metadataStatus.lowercased().contains("already") || sync.metadataStatus.lowercased().contains("all")) ? sync.metadataStatus : "Artist bios, portraits, and album details")
+                                        Text((sync.isSyncingMetadata || sync.metadataStatus.lowercased().contains("complete") || sync.metadataStatus.lowercased().contains("already") || sync.metadataStatus.lowercased().contains("all")) ? sync.metadataStatus : "Cloud backdrops, clear logos, and web bios")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)
@@ -772,7 +772,7 @@ struct AppSettingsView: View {
                                         Text(sync.isSyncingMedia ? "Downloading..." : "Download All Music")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text((sync.isSyncingMedia || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("already") || sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("all")) ? sync.mediaStatus : "Save all tracks for offline listening")
+                                        Text((sync.isSyncingMedia || sync.mediaStatus.lowercased().contains("complete") || sync.mediaStatus.lowercased().contains("already") || sync.mediaStatus.lowercased().contains("offline") || sync.mediaStatus.lowercased().contains("all")) ? sync.mediaStatus : "Save all tracks, covers, and portraits offline (Navidrome)")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                             .lineLimit(1)

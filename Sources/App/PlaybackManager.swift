@@ -111,6 +111,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
     private let maxRetries = 3
 
+    private static let progressThrottleLock = NSLock()
+    private static var lastProgressDispatch: [String: Date] = [:]
+
     private var player: AVQueuePlayer?
     private var artworkRetryCount = 0
     private var nextArtworkRetryTime: Date? = nil
@@ -1152,6 +1155,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
 
         let now = Date()
+        Self.progressThrottleLock.lock()
+        if let last = Self.lastProgressDispatch[trackId], now.timeIntervalSince(last) < 0.10, progress < 1.0 {
+            Self.progressThrottleLock.unlock()
+            return
+        }
+        Self.lastProgressDispatch[trackId] = now
+        Self.progressThrottleLock.unlock()
 
         Task { @MainActor in
             self.downloadProgress[trackId] = progress
@@ -1221,14 +1231,26 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                      IntegrityManager.shared.registerDownload(trackId: trackId, fileName: destinationUrl.lastPathComponent, size: fileSize)
                      self.downloadedTrackIds.insert(trackId)
                      let matchedTrack = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId })
-                     extractEmbeddedArtwork(for: trackId, albumId: matchedTrack?.albumId, artId: matchedTrack?.coverArt)
-                     if self.currentTrack?.id == trackId {
+                     let isCurrentPlaying = (self.currentTrack?.id == trackId)
+
+                     Task.detached(priority: isCurrentPlaying ? .userInitiated : .utility) {
+                         extractEmbeddedArtwork(for: trackId, albumId: matchedTrack?.albumId, artId: matchedTrack?.coverArt)
+                         if isCurrentPlaying {
+                             await MainActor.run {
+                                 PlaybackManager.shared?.updateNowPlayingInfo()
+                             }
+                         }
+                     }
+                     if isCurrentPlaying {
                          self.updateNowPlayingInfo()
                      }
                      self.downloadProgress.removeValue(forKey: trackId)
                      self.downloadETAs.removeValue(forKey: trackId)
                      self.downloadStartTimes.removeValue(forKey: trackId)
                      self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
+                     Self.progressThrottleLock.lock()
+                     Self.lastProgressDispatch.removeValue(forKey: trackId)
+                     Self.progressThrottleLock.unlock()
                      self.objectWillChange.send()
                 }
             }
@@ -1247,6 +1269,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let desc = task.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
+
+        Self.progressThrottleLock.lock()
+        Self.lastProgressDispatch.removeValue(forKey: trackId)
+        Self.progressThrottleLock.unlock()
 
         Task { @MainActor in
             self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
