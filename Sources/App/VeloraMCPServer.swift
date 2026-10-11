@@ -355,6 +355,14 @@ final class VeloraMCPServer: ObservableObject {
                 ]
             ],
             [
+                "name": "velora_get_sync_status",
+                "description": "Get real-time library sync progress, ETA, and status for metadata, lyrics, media, and repair passes.",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [:]
+                ]
+            ],
+            [
                 "name": "velora_control_playback",
                 "description": "Control playback on the device.",
                 "inputSchema": [
@@ -465,6 +473,35 @@ final class VeloraMCPServer: ObservableObject {
                 "hasClearLogo": FanartManager.shared.currentClearLogo != nil
             ]
             return toJSONString(state)
+
+        case "velora_get_sync_status":
+            let sm = SyncManager.shared
+            let syncState: [String: Any] = [
+                "metadata": [
+                    "isSyncing": sm.isSyncingMetadata,
+                    "progress": sm.metadataProgress,
+                    "status": sm.metadataStatus,
+                    "eta": sm.metadataEta
+                ],
+                "lyrics": [
+                    "isSyncing": sm.isSyncingLyrics,
+                    "progress": sm.lyricsProgress,
+                    "status": sm.lyricsStatus,
+                    "eta": sm.lyricsEta
+                ],
+                "media": [
+                    "isSyncing": sm.isSyncingMedia,
+                    "progress": sm.mediaProgress,
+                    "status": sm.mediaStatus,
+                    "eta": sm.mediaEta
+                ],
+                "repair": [
+                    "isRepairing": sm.isRepairing,
+                    "progress": sm.repairProgress,
+                    "status": sm.repairStatus
+                ]
+            ]
+            return toJSONString(syncState)
 
         case "velora_control_playback":
             let action = arguments["action"] as? String ?? ""
