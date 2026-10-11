@@ -38,27 +38,16 @@ func extractEmbeddedArtwork(for trackId: String, albumId: String? = nil, artId: 
     let trackDir = VeloraStorage.tracks
     var audioUrl: URL? = nil
     
-    // 1. Check IntegrityManager index for registered exact filename
-    if let fileName = IntegrityManager.shared.getFileName(for: trackId) {
-        let candidate = trackDir.appendingPathComponent(fileName)
+    let audioExtensions = ["flac", "mp3", "m4a", "alac", "wav", "aac", "ogg", "opus"]
+    for ext in audioExtensions {
+        let candidate = trackDir.appendingPathComponent("\(trackId).\(ext)")
         if fm.fileExists(atPath: candidate.path) {
             audioUrl = candidate
+            break
         }
     }
     
-    // 2. Fallback: check audio extensions
-    if audioUrl == nil {
-        let audioExtensions = ["flac", "mp3", "m4a", "alac", "wav", "aac", "ogg", "opus"]
-        for ext in audioExtensions {
-            let candidate = trackDir.appendingPathComponent("\(trackId).\(ext)")
-            if fm.fileExists(atPath: candidate.path) {
-                audioUrl = candidate
-                break
-            }
-        }
-    }
-    
-    // 3. Fallback: check raw trackId directly
+    // Fallback: check raw trackId directly
     if audioUrl == nil && fm.fileExists(atPath: trackDir.appendingPathComponent(trackId).path) {
         audioUrl = trackDir.appendingPathComponent(trackId)
     }
