@@ -138,8 +138,9 @@ final class SyncManager: ObservableObject {
             let mb = MusicBrainzManager.shared
             let activeCores = ProcessInfo.processInfo.activeProcessorCount
             let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
-            // Full unthrottled metadata worker batch size (64). External rate limits are governed by CircuitBreaker.
-            let maxConcurrent = 64
+            // Optimal bounded continuous worker pool (16 parallel workers).
+            // Maximizes throughput on external APIs (MusicBrainz/Fanart) without triggering rate limits or circuit breaker stalls.
+            let metadataWorkerPoolSize = 16
             let startTime = Date()
 
             // Pre-flight check: determine what's truly missing
@@ -232,130 +233,87 @@ final class SyncManager: ObservableObject {
                 let passStartTime = Date()
                 var tasksCompleted = alreadyDone
 
-                // Phase A: Artist Metadata & Images
-                var artistStartIndex = 0
-                while artistStartIndex < missingArtists.count && isSyncingMetadata {
-                    let endIndex = min(artistStartIndex + maxConcurrent, missingArtists.count)
-                    let batch = Array(missingArtists[artistStartIndex..<endIndex])
-                    metadataStatus = "Syncing Artists: \(artistStartIndex + 1)/\(missingArtists.count) (pass \(passCount))"
+                // Phase A: Artist Metadata & Images (Continuous Worker Pool Pattern)
+                var artistsProcessedThisPass = 0
+                await withTaskGroup(of: Void.self) { group in
+                    var enqueueIndex = 0
+                    let totalToQueue = missingArtists.count
 
-                    await withTaskGroup(of: Void.self) { group in
-                        for artist in batch {
-                            group.addTask {
-                                let mb = await MusicBrainzManager.shared
-                                let fa = await FanartManager.shared
-                                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                                let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
-                                let hasArtist = await (mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
-                                let hasBackdrop = await (fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true)
-                                let hasClearLogo = await (fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true)
-                                
-                                if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
-                                    var safeMbid: String? = nil
-                                    var info: SubsonicArtistInfo? = nil
-
-                                    if !hasBackdrop || !hasClearLogo || !hasLocalPortrait || !hasArtist {
-                                        info = await withCheckedContinuation { continuation in
-                                            Task { @MainActor in
-                                                client.fetchArtistInfo(artistId: artist.id) { fetchedInfo in
-                                                    continuation.resume(returning: fetchedInfo)
-                                                }
-                                            }
-                                        }
-                                        safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : info?.musicBrainzId
-                                    }
-
-                                    if !hasBackdrop {
-                                        await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
-                                    }
-
-                                    if !hasClearLogo {
-                                        await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
-                                    }
-
-                                    if !hasLocalPortrait {
-                                        let hasImage = (info?.mediumImageUrl != nil && info?.mediumImageUrl?.isEmpty == false) || (info?.largeImageUrl != nil && info?.largeImageUrl?.isEmpty == false)
-                                        if !hasImage {
-                                            await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
-                                        } else {
-                                            await client.downloadArtistPortrait(id: artist.id)
-                                        }
-                                    }
-
-                                    if !hasArtist {
-                                        await mb.downloadMetadataSilently(for: artist.primaryName, mbid: safeMbid)
-                                    }
-                                }
-                            }
+                    // 1. Fill initial pipeline with up to `metadataWorkerPoolSize` tasks
+                    while enqueueIndex < min(metadataWorkerPoolSize, totalToQueue) && isSyncingMetadata {
+                        let artist = missingArtists[enqueueIndex]
+                        group.addTask {
+                            await self.processArtistItem(artist: artist, client: client)
                         }
+                        enqueueIndex += 1
                     }
 
-                    tasksCompleted += Double(batch.count)
-                    artistStartIndex += maxConcurrent
-                    metadataProgress = min(tasksCompleted / totalAll, 0.99)
-                    let elapsed = Date().timeIntervalSince(passStartTime)
-                    let doneThisPass = tasksCompleted - alreadyDone
-                    if elapsed >= 2.0 && doneThisPass > 0 {
-                        let remainingTasks = max(totalMissing - doneThisPass, 0)
-                        let rate = doneThisPass / elapsed
-                        let maxSensibleRem = Int(remainingTasks * 5.0)
-                        let rem = min(Int(remainingTasks / max(rate, 0.01)), maxSensibleRem)
-                        metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
+                    // 2. Streamed real-time progress update as every single item completes
+                    for await _ in group {
+                        artistsProcessedThisPass += 1
+                        tasksCompleted += 1.0
+                        metadataProgress = min(tasksCompleted / totalAll, 0.99)
+                        metadataStatus = "Syncing Artists: \(artistsProcessedThisPass)/\(missingArtists.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
+
+                        let elapsed = Date().timeIntervalSince(passStartTime)
+                        let doneThisPass = tasksCompleted - alreadyDone
+                        if elapsed >= 2.0 && doneThisPass > 0 {
+                            let remainingTasks = max(totalMissing - doneThisPass, 0)
+                            let rate = doneThisPass / elapsed
+                            let maxSensibleRem = Int(remainingTasks * 5.0)
+                            let rem = min(Int(remainingTasks / max(rate, 0.01)), maxSensibleRem)
+                            metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
+                        }
+
+                        if enqueueIndex < totalToQueue && isSyncingMetadata {
+                            let nextArtist = missingArtists[enqueueIndex]
+                            group.addTask {
+                                await self.processArtistItem(artist: nextArtist, client: client)
+                            }
+                            enqueueIndex += 1
+                        }
                     }
                 }
 
-                // Phase B: Album Metadata & Cover Art
-                var albumStartIndex = 0
-                while albumStartIndex < missingAlbums.count && isSyncingMetadata {
-                    let endIndex = min(albumStartIndex + maxConcurrent, missingAlbums.count)
-                    let batch = Array(missingAlbums[albumStartIndex..<endIndex])
-                    metadataStatus = "Syncing Albums: \(albumStartIndex + 1)/\(missingAlbums.count) (pass \(passCount))"
+                // Phase B: Album Metadata & Cover Art (Continuous Worker Pool Pattern)
+                var albumsProcessedThisPass = 0
+                await withTaskGroup(of: Void.self) { group in
+                    var enqueueIndex = 0
+                    let totalToQueue = missingAlbums.count
 
-                    await withTaskGroup(of: Void.self) { group in
-                        for album in batch {
-                            group.addTask {
-                                let artistName = album.artist ?? "Unknown Artist"
-                                let mb = await MusicBrainzManager.shared
-                                if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)) {
-                                    await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
-                                }
-                                let rawArtId = album.coverArt ?? album.id
-                                let cleanArtId = extractArtId(from: rawArtId)
-                                let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                                if !isValidImageFile(at: localArtUrl) && !AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId) {
-                                    await client.downloadCoverArt(id: cleanArtId)
-                                    let cleanAlbumId = extractArtId(from: album.id)
-                                    if cleanAlbumId != cleanArtId {
-                                        let albumArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanAlbumId).jpg")
-                                        if !isValidImageFile(at: albumArtUrl) {
-                                            await client.downloadCoverArt(id: cleanAlbumId)
-                                        }
-                                    }
-                                    // Fallback: extract embedded artwork directly from any downloaded track of this album
-                                    if !isValidImageFile(at: localArtUrl) {
-                                        let albumTracks = await DatabaseManager.shared.getAllTracks().filter { $0.albumId == album.id || $0.album == album.name }
-                                        for t in albumTracks {
-                                            if extractEmbeddedArtwork(for: t.id, albumId: album.id, artId: cleanArtId) != nil {
-                                                break
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    // 1. Fill initial pipeline with up to `metadataWorkerPoolSize` tasks
+                    while enqueueIndex < min(metadataWorkerPoolSize, totalToQueue) && isSyncingMetadata {
+                        let album = missingAlbums[enqueueIndex]
+                        group.addTask {
+                            await self.processAlbumItem(album: album, client: client)
                         }
+                        enqueueIndex += 1
                     }
 
-                    tasksCompleted += Double(batch.count)
-                    albumStartIndex += maxConcurrent
-                    metadataProgress = min(tasksCompleted / totalAll, 0.99)
-                    let elapsed = Date().timeIntervalSince(passStartTime)
-                    let doneThisPass = tasksCompleted - alreadyDone
-                    if elapsed >= 2.0 && doneThisPass > 0 {
-                        let remainingTasks = max(totalMissing - doneThisPass, 0)
-                        let rate = doneThisPass / elapsed
-                        let maxSensibleRem = Int(remainingTasks * 5.0)
-                        let rem = min(Int(remainingTasks / max(rate, 0.01)), maxSensibleRem)
-                        metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
+                    // 2. Streamed real-time progress update as every single item completes
+                    for await _ in group {
+                        albumsProcessedThisPass += 1
+                        tasksCompleted += 1.0
+                        metadataProgress = min(tasksCompleted / totalAll, 0.99)
+                        metadataStatus = "Syncing Albums: \(albumsProcessedThisPass)/\(missingAlbums.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
+
+                        let elapsed = Date().timeIntervalSince(passStartTime)
+                        let doneThisPass = tasksCompleted - alreadyDone
+                        if elapsed >= 2.0 && doneThisPass > 0 {
+                            let remainingTasks = max(totalMissing - doneThisPass, 0)
+                            let rate = doneThisPass / elapsed
+                            let maxSensibleRem = Int(remainingTasks * 5.0)
+                            let rem = min(Int(remainingTasks / max(rate, 0.01)), maxSensibleRem)
+                            metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
+                        }
+
+                        if enqueueIndex < totalToQueue && isSyncingMetadata {
+                            let nextAlbum = missingAlbums[enqueueIndex]
+                            group.addTask {
+                                await self.processAlbumItem(album: nextAlbum, client: client)
+                            }
+                            enqueueIndex += 1
+                        }
                     }
                 }
 
@@ -1070,6 +1028,85 @@ final class SyncManager: ObservableObject {
         LibraryDataCache.shared.refresh()
         UserDefaults.standard.set(status, forKey: "velora_last_media_status")
         if !isSyncing && !isRepairing { endBackgroundExecution() }
+    }
+
+    // MARK: - Individual Worker Item Processors
+
+    nonisolated private func processArtistItem(artist: Artist, client: NavidromeClient) async {
+        let mb = await MusicBrainzManager.shared
+        let fa = await FanartManager.shared
+        let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
+        let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
+        let hasArtist = await (mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
+        let hasBackdrop = await (fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true)
+        let hasClearLogo = await (fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true)
+
+        if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
+            var safeMbid: String? = nil
+            var info: SubsonicArtistInfo? = nil
+
+            if !hasBackdrop || !hasClearLogo || !hasLocalPortrait || !hasArtist {
+                info = await withCheckedContinuation { continuation in
+                    Task { @MainActor in
+                        client.fetchArtistInfo(artistId: artist.id) { fetchedInfo in
+                            continuation.resume(returning: fetchedInfo)
+                        }
+                    }
+                }
+                safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : info?.musicBrainzId
+            }
+
+            if !hasBackdrop {
+                await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
+            }
+
+            if !hasClearLogo {
+                await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
+            }
+
+            if !hasLocalPortrait {
+                let hasImage = (info?.mediumImageUrl != nil && info?.mediumImageUrl?.isEmpty == false) || (info?.largeImageUrl != nil && info?.largeImageUrl?.isEmpty == false)
+                if !hasImage {
+                    await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
+                } else {
+                    await client.downloadArtistPortrait(id: artist.id)
+                }
+            }
+
+            if !hasArtist {
+                await mb.downloadMetadataSilently(for: artist.primaryName, mbid: safeMbid)
+            }
+        }
+    }
+
+    nonisolated private func processAlbumItem(album: Album, client: NavidromeClient) async {
+        let artistName = album.artist ?? "Unknown Artist"
+        let mb = await MusicBrainzManager.shared
+        if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)) {
+            await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
+        }
+        let rawArtId = album.coverArt ?? album.id
+        let cleanArtId = extractArtId(from: rawArtId)
+        let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+        if !isValidImageFile(at: localArtUrl) && !AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId) {
+            await client.downloadCoverArt(id: cleanArtId)
+            let cleanAlbumId = extractArtId(from: album.id)
+            if cleanAlbumId != cleanArtId {
+                let albumArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanAlbumId).jpg")
+                if !isValidImageFile(at: albumArtUrl) {
+                    await client.downloadCoverArt(id: cleanAlbumId)
+                }
+            }
+            // Fallback: extract embedded artwork directly from any downloaded track of this album
+            if !isValidImageFile(at: localArtUrl) {
+                let albumTracks = await DatabaseManager.shared.getAllTracks().filter { $0.albumId == album.id || $0.album == album.name }
+                for t in albumTracks {
+                    if extractEmbeddedArtwork(for: t.id, albumId: album.id, artId: cleanArtId) != nil {
+                        break
+                    }
+                }
+            }
+        }
     }
 }
 

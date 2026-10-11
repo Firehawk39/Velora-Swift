@@ -18,7 +18,7 @@
         "velora_mcp_bridge.js"
       ],
       "env": {
-        "VELORA_URL": "http://192.168.1.6:8765/mcp"
+        "VELORA_URL": "http://192.168.1.7:8765/mcp"
       }
     }
   }

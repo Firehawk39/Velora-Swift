@@ -7,7 +7,7 @@
 const http = require('http');
 const readline = require('readline');
 
-const DEFAULT_URL = process.env.VELORA_URL || 'http://192.168.1.6:8765/mcp';
+const DEFAULT_URL = process.env.VELORA_URL || 'http://192.168.1.7:8765/mcp';
 
 function sendToVelora(payload, serverUrl) {
     return new Promise((resolve) => {
