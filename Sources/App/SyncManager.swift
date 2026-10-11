@@ -149,8 +149,8 @@ final class SyncManager: ObservableObject {
             for (index, artist) in artists.enumerated() {
                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                 let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
-                let hasBackdrop = fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true
-                let hasLogo = fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true
+                let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+                let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
                 let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
                 if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
                     initialMissingArtists.append(artist)
@@ -197,8 +197,8 @@ final class SyncManager: ObservableObject {
                 for (index, artist) in missingArtists.enumerated() {
                     let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                     let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
-                    let hasBackdrop = fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true
-                    let hasLogo = fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true
+                    let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+                    let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
                     let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
                     if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
                         missingArtistsThisPass.append(artist)
@@ -1038,8 +1038,8 @@ final class SyncManager: ObservableObject {
         let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
         let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
         let hasArtist = await (mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
-        let hasBackdrop = await (fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true)
-        let hasClearLogo = await (fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true)
+        let hasBackdrop = await fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+        let hasClearLogo = await fa.hasCheckedClearLogo(for: artist.primaryName)
 
         if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
             var safeMbid: String? = nil
@@ -1053,7 +1053,7 @@ final class SyncManager: ObservableObject {
                         }
                     }
                 }
-                safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : info?.musicBrainzId
+                safeMbid = info?.musicBrainzId
             }
 
             if !hasBackdrop {
@@ -1065,12 +1065,7 @@ final class SyncManager: ObservableObject {
             }
 
             if !hasLocalPortrait {
-                let hasImage = (info?.mediumImageUrl != nil && info?.mediumImageUrl?.isEmpty == false) || (info?.largeImageUrl != nil && info?.largeImageUrl?.isEmpty == false)
-                if !hasImage {
-                    await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
-                } else {
-                    await client.downloadArtistPortrait(id: artist.id)
-                }
+                await client.downloadArtistPortrait(id: artist.id)
             }
 
             if !hasArtist {

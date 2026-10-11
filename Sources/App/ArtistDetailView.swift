@@ -16,6 +16,7 @@ struct ArtistDetailView: View {
     @State private var favoriteSongs: [Track] = []
     @State private var albums: [Album] = []
     @State private var biography: String? = nil
+    @State private var mbid: String? = nil
     @State private var relatedArtists: [Artist] = []
     @State private var isLoading: Bool = true
     @State private var scrollOffset: CGFloat = 0
@@ -33,7 +34,7 @@ struct ArtistDetailView: View {
                     heroSection
                         .frame(maxWidth: .infinity)
                         .background(
-                            ArtistBackdropView(artistId: artistId, artistName: artistName, isDarkMode: isDarkMode, client: client)
+                            ArtistBackdropView(artistId: artistId, artistName: artistName, mbid: mbid, isDarkMode: isDarkMode, client: client)
                                 .ignoresSafeArea(edges: .top)
                         )
 
@@ -362,6 +363,7 @@ struct ArtistDetailView: View {
                 self.topSongs = tracks.sorted(by: { ($0.playCount ?? 0) > ($1.playCount ?? 0) })
                 self.favoriteSongs = tracks.filter { $0.isStarred }
                 self.albums = albums
+                self.mbid = mbid
 
                 // Check network bio first, fallback to MusicBrainz offline cache
                 self.biography = bio ?? MusicBrainzManager.shared.getArtistBiography(for: self.artistName)
@@ -440,6 +442,7 @@ struct SongArtworkView: View {
 struct ArtistBackdropView: View {
     let artistId: String
     let artistName: String
+    let mbid: String?
     let isDarkMode: Bool
     let client: NavidromeClient
     
@@ -448,16 +451,34 @@ struct ArtistBackdropView: View {
     
     @State private var artistPalette: [UIColor] = [.black, .black, .black, .black, .black]
     @State private var artistPrimaryColor: UIColor = .black
+    @State private var backdropUrl: URL? = nil
     
     var isCompact: Bool { hSizeClass == .compact }
     var isLandscape: Bool {
         UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
 
+    private func resolveBackdropUrl() -> URL? {
+        let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
+        let mbidFile = mbid.map { VeloraStorage.backdrops.appendingPathComponent("\($0).jpg") }
+        let keyFile = VeloraStorage.backdrops.appendingPathComponent(key + ".jpg")
+        
+        if let mf = mbidFile, FileManager.default.fileExists(atPath: mf.path),
+           let attr = try? FileManager.default.attributesOfItem(atPath: mf.path),
+           (attr[.size] as? Int64 ?? 0) > 100 {
+            return mf
+        }
+        if FileManager.default.fileExists(atPath: keyFile.path),
+           let attr = try? FileManager.default.attributesOfItem(atPath: keyFile.path),
+           (attr[.size] as? Int64 ?? 0) > 100 {
+            return keyFile
+        }
+        return nil
+    }
+
     var body: some View {
         GeometryReader { proxy in
-            let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
-            let backdropUrl = VeloraStorage.backdrops.appendingPathComponent(key + ".jpg")
+            let activeUrl = backdropUrl ?? resolveBackdropUrl()
             
             ZStack {
                 // Plain background color fallback
@@ -469,9 +490,7 @@ struct ArtistBackdropView: View {
                     fallbackGradient
                 } else {
                     // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop
-                    if FileManager.default.fileExists(atPath: backdropUrl.path),
-                       let attr = try? FileManager.default.attributesOfItem(atPath: backdropUrl.path),
-                       let size = attr[.size] as? Int64, size > 0 {
+                    if let backdropUrl = activeUrl {
                         AsyncImage(url: backdropUrl) { phase in
                             if let image = phase.image {
                                 image
@@ -511,13 +530,28 @@ struct ArtistBackdropView: View {
             )
         }
         .onAppear {
+            self.backdropUrl = resolveBackdropUrl()
             fetchColors()
-            // Trigger a fetch if it doesn't exist
-            let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
-            let backdropUrl = VeloraStorage.backdrops.appendingPathComponent(key + ".jpg")
-            if !FileManager.default.fileExists(atPath: backdropUrl.path) {
-                Task {
-                    await FanartManager.shared.downloadBackdropSilently(for: [artistName], artistId: artistId)
+            triggerBackdropFetch()
+        }
+        .onChange(of: mbid) { _ in
+            self.backdropUrl = resolveBackdropUrl()
+            triggerBackdropFetch()
+        }
+    }
+    
+    private func triggerBackdropFetch() {
+        if let current = resolveBackdropUrl() {
+            self.backdropUrl = current
+            return
+        }
+        Task {
+            await FanartManager.shared.downloadBackdropSilently(for: [artistName], artistId: artistId, mbid: mbid)
+            await MainActor.run {
+                if let resolved = resolveBackdropUrl() {
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        self.backdropUrl = resolved
+                    }
                 }
             }
         }
