@@ -36,6 +36,16 @@ struct RecentlyPlayedWrapper: Codable {
 struct SubsonicAlbumDetail: Codable {
     let id: String
     let name: String?
+    let artist: String?
+    let artistId: String?
+    let coverArt: String?
+    let songCount: Int?
+    let duration: Int?
+    let created: String?
+    let year: Int?
+    let genre: String?
+    let musicBrainzId: String?
+    let releaseTypes: [String]?
     let song: [SubsonicSong]?
 }
 
@@ -54,6 +64,9 @@ struct SubsonicSong: Codable {
     let track: Int?
     let discNumber: Int?
     let created: String?
+    let year: Int?
+    let genre: String?
+    let musicBrainzId: String?
 }
 
 struct SubsonicError: Codable {
@@ -75,6 +88,10 @@ struct SubsonicAlbum: Codable {
     let duration: Int?
     let coverArt: String?
     let created: String?
+    let year: Int?
+    let genre: String?
+    let musicBrainzId: String?
+    let releaseTypes: [String]?
 }
 
 struct ArtistsIndex: Codable {

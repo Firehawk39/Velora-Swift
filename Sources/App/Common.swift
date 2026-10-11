@@ -249,6 +249,42 @@ struct Album: Identifiable, Codable, Sendable {
     let duration: Int?
     var coverArt: String?
     var created: String?
+    var year: Int?
+    var genre: String?
+    var musicBrainzId: String?
+    var releaseTypes: [String]?
+
+    init(
+        id: String,
+        name: String,
+        artist: String? = nil,
+        artistId: String? = nil,
+        songCount: Int? = nil,
+        duration: Int? = nil,
+        coverArt: String? = nil,
+        created: String? = nil,
+        year: Int? = nil,
+        genre: String? = nil,
+        musicBrainzId: String? = nil,
+        releaseTypes: [String]? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.artist = artist
+        self.artistId = artistId
+        self.songCount = songCount
+        self.duration = duration
+        self.coverArt = coverArt
+        self.created = created
+        self.year = year
+        self.genre = genre
+        self.musicBrainzId = musicBrainzId
+        self.releaseTypes = releaseTypes
+    }
+
+    var primaryReleaseType: String {
+        return releaseTypes?.first?.lowercased() ?? "album"
+    }
 
     var coverArtUrl: URL? { resolveCoverArtUrl(id: coverArt ?? id, serverUrl: coverArt, albumId: id) }
 }
@@ -268,6 +304,47 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
     let suffix: String?
     let track: Int?
     let discNumber: Int?
+    var year: Int?
+    var genre: String?
+    var musicBrainzId: String?
+
+    init(
+        id: String,
+        title: String,
+        album: String? = nil,
+        artist: String? = nil,
+        duration: Int? = nil,
+        coverArt: String? = nil,
+        artistId: String? = nil,
+        albumId: String? = nil,
+        created: String? = nil,
+        isStarred: Bool = false,
+        playCount: Int? = 0,
+        suffix: String? = nil,
+        track: Int? = nil,
+        discNumber: Int? = nil,
+        year: Int? = nil,
+        genre: String? = nil,
+        musicBrainzId: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.album = album
+        self.artist = artist
+        self.duration = duration
+        self.coverArt = coverArt
+        self.artistId = artistId
+        self.albumId = albumId
+        self.created = created
+        self.isStarred = isStarred
+        self.playCount = playCount
+        self.suffix = suffix
+        self.track = track
+        self.discNumber = discNumber
+        self.year = year
+        self.genre = genre
+        self.musicBrainzId = musicBrainzId
+    }
 
     var coverArtUrl: URL? {
         let artId = coverArt ?? albumId ?? id.components(separatedBy: ".").first ?? id

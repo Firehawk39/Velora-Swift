@@ -484,10 +484,20 @@ struct AlbumCard: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(isDark ? .white : .black)
                     .lineLimit(1)
-                Text(album.artist ?? "Unknown")
-                    .font(.system(size: 13))
-                    .foregroundColor(.gray)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if let year = album.year, year > 0 {
+                        Text("\(year)")
+                            .font(.system(size: 13))
+                            .foregroundColor(.gray)
+                        Text("•")
+                            .font(.system(size: 10))
+                            .foregroundColor(.gray.opacity(0.6))
+                    }
+                    Text(album.artist ?? "Unknown")
+                        .font(.system(size: 13))
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                }
             }
             .frame(width: cardW ?? 160, alignment: .leading)
         }

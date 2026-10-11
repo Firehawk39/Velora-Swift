@@ -151,11 +151,15 @@ final class MusicBrainzManager: ObservableObject {
         return false
     }
 
-    func hasAlbumMetadata(albumName: String, artistName: String) -> Bool {
+    func hasAlbumMetadata(albumName: String, artistName: String, mbid: String? = nil) -> Bool {
+        if let validMbid = mbid, !validMbid.isEmpty {
+            let fileUrl = metadataDir.appendingPathComponent("album_\(validMbid).json")
+            if FileManager.default.fileExists(atPath: fileUrl.path) { return true }
+        }
         let cacheKey = "\(artistName)_\(albumName)"
-        if let mbid = nameToMBIDCache[cacheKey] {
-            if mbid == "NOT_FOUND" { return true }
-            let fileUrl = metadataDir.appendingPathComponent("album_\(mbid).json")
+        if let cachedMbid = nameToMBIDCache[cacheKey] {
+            if cachedMbid == "NOT_FOUND" { return true }
+            let fileUrl = metadataDir.appendingPathComponent("album_\(cachedMbid).json")
             return FileManager.default.fileExists(atPath: fileUrl.path)
         }
         // Cache miss — scan disk directly
@@ -587,24 +591,29 @@ final class MusicBrainzManager: ObservableObject {
         }
     }
 
-    func downloadAlbumMetadataSilently(albumName: String, artistName: String) async {
-        let resolved = await resolveAlbumMBIDAsync(album: albumName, artist: artistName)
-        guard let mbid = resolved else {
+    func downloadAlbumMetadataSilently(albumName: String, artistName: String, mbid: String? = nil) async {
+        let resolved: String?
+        if let validMbid = mbid, !validMbid.isEmpty {
+            resolved = validMbid
+        } else {
+            resolved = await resolveAlbumMBIDAsync(album: albumName, artist: artistName)
+        }
+        guard let finalMbid = resolved else {
             self.nameToMBIDCache["\(artistName)_\(albumName)"] = "NOT_FOUND"
             self.saveCache()
             AssetRegistry.shared.markAlbumUnavailable(albumKey: "\(artistName)_\(albumName)")
             return
         }
 
-        self.nameToMBIDCache["\(artistName)_\(albumName)"] = mbid
+        self.nameToMBIDCache["\(artistName)_\(albumName)"] = finalMbid
         self.saveCache()
 
-        let fileName = "album_" + (mbid) + ".json"
+        let fileName = "album_" + (finalMbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
 
         if self.fileManager.fileExists(atPath: fileUrl.path) { return }
 
-        let urlString = "https://musicbrainz.org/ws/2/release/\(mbid)?fmt=json&inc=labels+recordings"
+        let urlString = "https://musicbrainz.org/ws/2/release/\(finalMbid)?fmt=json&inc=labels+recordings"
         guard let url = URL(string: urlString) else { return }
 
         guard NetworkMonitor.shared.isConnected else { return }

@@ -965,7 +965,8 @@ struct NowPlayingView: View {
         }
 
         // 3. Album info
-        mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: nil)
+        let albumMbid = playback.client.albums.first(where: { $0.id == track.albumId })?.musicBrainzId
+        mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: albumMbid)
     }
     /// Loads the artist portrait with the exact same ID-validation strategy as backdrops
     /// to prevent mixing up images when skipping fast, and avoids AsyncImage placeholder flickering.

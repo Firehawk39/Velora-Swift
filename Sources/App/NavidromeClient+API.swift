@@ -68,11 +68,20 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.albums = items.map { sub in
-                        var a = Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
-                              artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
-                              songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
-                        a.created = sub.created
+                        var a = Album(
+                            id: sub.id,
+                            name: sub.name ?? sub.title ?? "Unknown",
+                            artist: sub.artist ?? "Unknown Artist",
+                            artistId: sub.artistId ?? "",
+                            songCount: sub.songCount ?? 0,
+                            duration: sub.duration ?? 0,
+                            coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id),
+                            created: sub.created,
+                            year: sub.year,
+                            genre: sub.genre,
+                            musicBrainzId: sub.musicBrainzId,
+                            releaseTypes: sub.releaseTypes
+                        )
                         return a
                     }
                     self.fetchError = nil
@@ -172,14 +181,25 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawSongs.map { s in
-                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                              artist: s.artist ?? "", duration: s.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix,
-                              track: s.track, discNumber: s.discNumber)
-                        t.isStarred = s.starred != nil
-                        t.playCount = s.playCount
-                        t.created = s.created
+                        var t = Track(
+                            id: s.id,
+                            title: s.title ?? "Unknown",
+                            album: s.album ?? "",
+                            artist: s.artist ?? "",
+                            duration: s.duration ?? 0,
+                            coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                            artistId: s.artistId,
+                            albumId: s.albumId,
+                            created: s.created,
+                            isStarred: s.starred != nil,
+                            playCount: s.playCount,
+                            suffix: s.suffix,
+                            track: s.track,
+                            discNumber: s.discNumber,
+                            year: s.year,
+                            genre: s.genre,
+                            musicBrainzId: s.musicBrainzId
+                        )
                         return t
                     }
                     completion(tracks)
@@ -239,9 +259,13 @@ extension NavidromeClient {
                             artistId: a.artistId,
                             songCount: a.songCount,
                             duration: a.duration,
-                            coverArt: a.coverArt != nil ? self.getCoverArtUrl(id: a.coverArt!) : nil
+                            coverArt: a.coverArt != nil ? self.getCoverArtUrl(id: a.coverArt!) : nil,
+                            created: a.created,
+                            year: a.year,
+                            genre: a.genre,
+                            musicBrainzId: a.musicBrainzId,
+                            releaseTypes: a.releaseTypes
                         )
-                        albumModel.created = a.created
                         return albumModel
                     }
 
@@ -352,22 +376,42 @@ extension NavidromeClient {
                     guard let self = self else { completion([], [], []); return }
 
                     let tracks = rawSongs.map { s in
-                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                              artist: s.artist ?? "", duration: s.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix,
-                              track: s.track, discNumber: s.discNumber)
-                        t.isStarred = s.starred != nil
-                        t.playCount = s.playCount
-                        t.created = s.created
+                        var t = Track(
+                            id: s.id,
+                            title: s.title ?? "Unknown",
+                            album: s.album ?? "",
+                            artist: s.artist ?? "",
+                            duration: s.duration ?? 0,
+                            coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                            artistId: s.artistId,
+                            albumId: s.albumId,
+                            created: s.created,
+                            isStarred: s.starred != nil,
+                            playCount: s.playCount,
+                            suffix: s.suffix,
+                            track: s.track,
+                            discNumber: s.discNumber,
+                            year: s.year,
+                            genre: s.genre,
+                            musicBrainzId: s.musicBrainzId
+                        )
                         return t
                     }
                     let albums = rawAlbums.map { sub in
-                        var a = Album(id: sub.id, name: sub.name ?? sub.title ?? "Unknown",
-                              artist: sub.artist ?? "Unknown Artist", artistId: sub.artistId ?? "",
-                              songCount: sub.songCount ?? 0, duration: sub.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id))
-                        a.created = sub.created
+                        var a = Album(
+                            id: sub.id,
+                            name: sub.name ?? sub.title ?? "Unknown",
+                            artist: sub.artist ?? "Unknown Artist",
+                            artistId: sub.artistId ?? "",
+                            songCount: sub.songCount ?? 0,
+                            duration: sub.duration ?? 0,
+                            coverArt: self.getCoverArtUrl(id: sub.coverArt ?? sub.id),
+                            created: sub.created,
+                            year: sub.year,
+                            genre: sub.genre,
+                            musicBrainzId: sub.musicBrainzId,
+                            releaseTypes: sub.releaseTypes
+                        )
                         return a
                     }
                     let artists = rawArtists.map { sub in
@@ -419,14 +463,25 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawTracks.map { s in
-                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                              artist: s.artist ?? "", duration: s.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix,
-                              track: s.track, discNumber: s.discNumber)
-                        t.isStarred = s.starred != nil
-                        t.playCount = s.playCount
-                        t.created = s.created
+                        var t = Track(
+                            id: s.id,
+                            title: s.title ?? "Unknown",
+                            album: s.album ?? "",
+                            artist: s.artist ?? "",
+                            duration: s.duration ?? 0,
+                            coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                            artistId: s.artistId,
+                            albumId: s.albumId,
+                            created: s.created,
+                            isStarred: s.starred != nil,
+                            playCount: s.playCount,
+                            suffix: s.suffix,
+                            track: s.track,
+                            discNumber: s.discNumber,
+                            year: s.year,
+                            genre: s.genre,
+                            musicBrainzId: s.musicBrainzId
+                        )
                         return t
                     }
                     completion(tracks)
@@ -544,14 +599,25 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { completion(false); return }
                     let songs = rawSongs.map { s in
-                        var t = Track(id: s.id, title: s.title ?? "Unknown", album: s.album ?? "",
-                              artist: s.artist ?? "", duration: s.duration ?? 0,
-                              coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
-                              artistId: s.artistId, albumId: s.albumId, suffix: s.suffix,
-                              track: s.track, discNumber: s.discNumber)
-                        t.isStarred = s.starred != nil
-                        t.playCount = s.playCount
-                        t.created = s.created
+                        var t = Track(
+                            id: s.id,
+                            title: s.title ?? "Unknown",
+                            album: s.album ?? "",
+                            artist: s.artist ?? "",
+                            duration: s.duration ?? 0,
+                            coverArt: self.getCoverArtUrl(id: s.coverArt ?? s.id),
+                            artistId: s.artistId,
+                            albumId: s.albumId,
+                            created: s.created,
+                            isStarred: s.starred != nil,
+                            playCount: s.playCount,
+                            suffix: s.suffix,
+                            track: s.track,
+                            discNumber: s.discNumber,
+                            year: s.year,
+                            genre: s.genre,
+                            musicBrainzId: s.musicBrainzId
+                        )
                         return t
                     }
 

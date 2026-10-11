@@ -166,7 +166,7 @@ final class SyncManager: ObservableObject {
                 let cleanArtId = extractArtId(from: rawArtId)
                 let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
                 let hasCover = isValidImageFile(at: localArtUrl) || AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId)
-                let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
+                let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
                 if !(hasCover && hasMeta) {
                     initialMissingAlbums.append(album)
                 }
@@ -214,7 +214,7 @@ final class SyncManager: ObservableObject {
                     let cleanArtId = extractArtId(from: rawArtId)
                     let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
                     let hasCover = isValidImageFile(at: localArtUrl) || AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId)
-                    let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
+                    let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
                     if !(hasCover && hasMeta) {
                         missingAlbumsThisPass.append(album)
                     }
@@ -342,7 +342,7 @@ final class SyncManager: ObservableObject {
             for album in missingAlbums {
                 let artistName = album.artist ?? "Unknown Artist"
                 let albumKey = "\(artistName)_\(album.name)"
-                if !mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
+                if !mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId) {
                     AssetRegistry.shared.markAlbumUnavailable(albumKey: albumKey)
                 }
                 let rawArtId = album.coverArt ?? album.id
@@ -1077,8 +1077,8 @@ final class SyncManager: ObservableObject {
     nonisolated private func processAlbumItem(album: Album, client: NavidromeClient) async {
         let artistName = album.artist ?? "Unknown Artist"
         let mb = await MusicBrainzManager.shared
-        if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName)) {
-            await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName)
+        if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId)) {
+            await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId)
         }
         let rawArtId = album.coverArt ?? album.id
         let cleanArtId = extractArtId(from: rawArtId)

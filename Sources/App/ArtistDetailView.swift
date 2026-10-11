@@ -286,16 +286,58 @@ struct ArtistDetailView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
+    private var studioAlbums: [Album] {
+        albums.filter { album in
+            let types = album.releaseTypes?.map { $0.lowercased() } ?? []
+            if types.isEmpty { return true }
+            return types.contains("album") && !types.contains("compilation") && !types.contains("soundtrack") && !types.contains("remix")
+        }
+    }
+
+    private var singlesAndEPs: [Album] {
+        albums.filter { album in
+            let types = album.releaseTypes?.map { $0.lowercased() } ?? []
+            return types.contains("single") || types.contains("ep")
+        }
+    }
+
+    private var otherReleases: [Album] {
+        albums.filter { album in
+            let types = album.releaseTypes?.map { $0.lowercased() } ?? []
+            return types.contains("compilation") || types.contains("soundtrack") || types.contains("remix") || types.contains("mixtape/street") || types.contains("live")
+        }
+    }
+
     private var discographySection: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("Discography")
+        let hasCategorization = !singlesAndEPs.isEmpty && !studioAlbums.isEmpty
+
+        return VStack(alignment: .leading, spacing: 28) {
+            if hasCategorization {
+                if !studioAlbums.isEmpty {
+                    albumSection(title: "Albums", albumList: studioAlbums)
+                }
+                if !singlesAndEPs.isEmpty {
+                    albumSection(title: "Singles & EPs", albumList: singlesAndEPs)
+                }
+                if !otherReleases.isEmpty {
+                    albumSection(title: "Compilations & More", albumList: otherReleases)
+                }
+            } else {
+                albumSection(title: "Discography", albumList: albums)
+            }
+        }
+    }
+
+    private func albumSection(title: String, albumList: [Album]) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title)
                 .font(.system(size: 18, weight: .black))
                 .foregroundColor(isDarkMode ? .white : .black)
                 .padding(.horizontal, isCompact ? 24 : 48)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 24) {
-                    ForEach(albums) { album in
+                    ForEach(albumList) { album in
                         AlbumCard(album: album, isDark: isDarkMode)
                             .frame(width: isCompact ? 160 : 200)
                     }
