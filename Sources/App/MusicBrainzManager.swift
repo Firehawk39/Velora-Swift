@@ -550,6 +550,7 @@ final class MusicBrainzManager: ObservableObject {
             finalMbid = resolved
         } else {
             AppLogger.shared.log("[Metadata] Silent prefetch: Failed to resolve MBID for \(artistName)")
+            AssetRegistry.shared.markArtistUnavailable(artistName: artistName)
             return
         }
 
@@ -591,6 +592,7 @@ final class MusicBrainzManager: ObservableObject {
         guard let mbid = resolved else {
             self.nameToMBIDCache["\(artistName)_\(albumName)"] = "NOT_FOUND"
             self.saveCache()
+            AssetRegistry.shared.markAlbumUnavailable(albumKey: "\(artistName)_\(albumName)")
             return
         }
 

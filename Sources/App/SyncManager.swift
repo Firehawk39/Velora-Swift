@@ -297,8 +297,10 @@ final class SyncManager: ObservableObject {
                     let elapsed = Date().timeIntervalSince(passStartTime)
                     let doneThisPass = tasksCompleted - alreadyDone
                     if elapsed >= 2.0 && doneThisPass > 0 {
+                        let remainingTasks = max(totalMissing - doneThisPass, 0)
                         let rate = doneThisPass / elapsed
-                        let rem = Int(max(totalMissing - doneThisPass, 0) / max(rate, 0.01))
+                        let maxSensibleRem = Int(remainingTasks * 5.0)
+                        let rem = min(Int(remainingTasks / max(rate, 0.01)), maxSensibleRem)
                         metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
                     }
                 }
@@ -350,8 +352,10 @@ final class SyncManager: ObservableObject {
                     let elapsed = Date().timeIntervalSince(passStartTime)
                     let doneThisPass = tasksCompleted - alreadyDone
                     if elapsed >= 2.0 && doneThisPass > 0 {
+                        let remainingTasks = max(totalMissing - doneThisPass, 0)
                         let rate = doneThisPass / elapsed
-                        let rem = Int(max(totalMissing - doneThisPass, 0) / max(rate, 0.01))
+                        let maxSensibleRem = Int(remainingTasks * 5.0)
+                        let rem = min(Int(remainingTasks / max(rate, 0.01)), maxSensibleRem)
                         metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
                     }
                 }
