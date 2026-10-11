@@ -637,8 +637,30 @@ extension NavidromeClient {
 
     // MARK: - Cover Art Caching
 
-    private static let coverArtLock = NSLock()
+    nonisolated private static let coverArtLock = NSLock()
     nonisolated(unsafe) private static var inFlightCoverCompletions: [String: [@Sendable (Bool) -> Void]] = [:]
+
+    nonisolated private static func registerInFlightCover(id: String, completion: (@Sendable (Bool) -> Void)?) -> Bool {
+        coverArtLock.lock()
+        defer { coverArtLock.unlock() }
+        if inFlightCoverCompletions[id] != nil {
+            if let completion = completion {
+                inFlightCoverCompletions[id]?.append(completion)
+            }
+            return false
+        }
+        inFlightCoverCompletions[id] = completion != nil ? [completion!] : []
+        return true
+    }
+
+    nonisolated private static func finishCoverArtCallbacks(id: String, success: Bool) {
+        coverArtLock.lock()
+        let callbacks = inFlightCoverCompletions.removeValue(forKey: id) ?? []
+        coverArtLock.unlock()
+        for cb in callbacks {
+            cb(success)
+        }
+    }
 
     func downloadCoverArt(id: String, completion: (@Sendable (Bool) -> Void)? = nil) {
         let coverArtDir = VeloraStorage.coverArt
@@ -660,16 +682,9 @@ extension NavidromeClient {
             return
         }
 
-        Self.coverArtLock.lock()
-        if Self.inFlightCoverCompletions[id] != nil {
-            if let completion = completion {
-                Self.inFlightCoverCompletions[id]?.append(completion)
-            }
-            Self.coverArtLock.unlock()
+        guard Self.registerInFlightCover(id: id, completion: completion) else {
             return
         }
-        Self.inFlightCoverCompletions[id] = completion != nil ? [completion!] : []
-        Self.coverArtLock.unlock()
 
         guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else {
             Self.finishCoverArtCallbacks(id: id, success: false)
@@ -702,15 +717,6 @@ extension NavidromeClient {
                 AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
                 notifyAndFinish(false)
             }
-        }
-    }
-
-    private static func finishCoverArtCallbacks(id: String, success: Bool) {
-        Self.coverArtLock.lock()
-        let callbacks = Self.inFlightCoverCompletions.removeValue(forKey: id) ?? []
-        Self.coverArtLock.unlock()
-        for cb in callbacks {
-            cb(success)
         }
     }
 

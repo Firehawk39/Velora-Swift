@@ -114,6 +114,22 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated private static let progressThrottleLock = NSLock()
     nonisolated(unsafe) private static var lastProgressDispatch: [String: Date] = [:]
 
+    nonisolated private static func shouldDispatchProgress(for trackId: String, progress: Double, now: Date) -> Bool {
+        progressThrottleLock.lock()
+        defer { progressThrottleLock.unlock() }
+        if let last = lastProgressDispatch[trackId], now.timeIntervalSince(last) < 0.10, progress < 1.0 {
+            return false
+        }
+        lastProgressDispatch[trackId] = now
+        return true
+    }
+
+    nonisolated private static func clearProgressThrottle(for trackId: String) {
+        progressThrottleLock.lock()
+        defer { progressThrottleLock.unlock() }
+        lastProgressDispatch.removeValue(forKey: trackId)
+    }
+
     private var player: AVQueuePlayer?
     private var artworkRetryCount = 0
     private var nextArtworkRetryTime: Date? = nil
@@ -1155,13 +1171,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
 
         let now = Date()
-        Self.progressThrottleLock.lock()
-        if let last = Self.lastProgressDispatch[trackId], now.timeIntervalSince(last) < 0.10, progress < 1.0 {
-            Self.progressThrottleLock.unlock()
-            return
-        }
-        Self.lastProgressDispatch[trackId] = now
-        Self.progressThrottleLock.unlock()
+        guard Self.shouldDispatchProgress(for: trackId, progress: progress, now: now) else { return }
 
         Task { @MainActor in
             self.downloadProgress[trackId] = progress
@@ -1210,6 +1220,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
             let attributes = try FileManager.default.attributesOfItem(atPath: destinationUrl.path)
             let fileSize = attributes[.size] as? Int64 ?? 0
+            Self.clearProgressThrottle(for: trackId)
 
             Task { @MainActor in
                 if fileSize < 1024 {
@@ -1248,9 +1259,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                      self.downloadETAs.removeValue(forKey: trackId)
                      self.downloadStartTimes.removeValue(forKey: trackId)
                      self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
-                     Self.progressThrottleLock.lock()
-                     Self.lastProgressDispatch.removeValue(forKey: trackId)
-                     Self.progressThrottleLock.unlock()
                      self.objectWillChange.send()
                 }
             }
@@ -1270,9 +1278,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         guard let desc = task.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
 
-        Self.progressThrottleLock.lock()
-        Self.lastProgressDispatch.removeValue(forKey: trackId)
-        Self.progressThrottleLock.unlock()
+        Self.clearProgressThrottle(for: trackId)
 
         Task { @MainActor in
             self.activeDownloadTasksByTrackId.removeValue(forKey: trackId)
