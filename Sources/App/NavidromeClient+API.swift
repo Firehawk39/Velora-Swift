@@ -638,7 +638,7 @@ extension NavidromeClient {
     // MARK: - Cover Art Caching
 
     private static let coverArtLock = NSLock()
-    private static var inFlightCoverCompletions: [String: [@Sendable (Bool) -> Void]] = [:]
+    nonisolated(unsafe) private static var inFlightCoverCompletions: [String: [@Sendable (Bool) -> Void]] = [:]
 
     func downloadCoverArt(id: String, completion: (@Sendable (Bool) -> Void)? = nil) {
         let coverArtDir = VeloraStorage.coverArt

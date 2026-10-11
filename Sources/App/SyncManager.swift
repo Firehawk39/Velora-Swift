@@ -551,19 +551,36 @@ final class SyncManager: ObservableObject {
 
             if totalToDownload == 0 {
                 // Ensure portraits and covers are also up to date from Navidrome even if all audio tracks are offline
-                let allAlbums = await DatabaseManager.shared.getAllAlbums()
-                for album in allAlbums {
+                var artIdsToDownload = Set<String>()
+                for album in client.albums {
                     let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
+                    artIdsToDownload.insert(cleanArtId)
+                }
+                for track in tracks {
+                    if let rawArt = track.coverArt ?? track.albumId {
+                        artIdsToDownload.insert(extractArtId(from: rawArt))
+                    }
+                }
+                for cleanArtId in artIdsToDownload {
                     let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
                     if !isValidImageFile(at: localCoverUrl) {
                         client.downloadCoverArt(id: cleanArtId)
                     }
                 }
-                let allArtists = await DatabaseManager.shared.getAllArtists()
-                for artist in allArtists {
-                    let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                    if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id) {
-                        client.downloadArtistPortrait(id: artist.id)
+
+                var artistIdsToDownload = Set<String>()
+                for artist in client.artists {
+                    artistIdsToDownload.insert(artist.id)
+                }
+                for track in tracks {
+                    if let artistId = track.artistId {
+                        artistIdsToDownload.insert(artistId)
+                    }
+                }
+                for artistId in artistIdsToDownload {
+                    let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
+                    if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artistId) {
+                        client.downloadArtistPortrait(id: artistId)
                     }
                 }
                 finalizeMediaSync("All \(Int(totalTracks)) tracks, covers & portraits offline.")
@@ -574,20 +591,36 @@ final class SyncManager: ObservableObject {
             AppLogger.shared.log("Queueing \(totalToDownload) tracks, covers, and portraits.", level: .info)
 
             // Concurrently download all missing album covers and artist portraits directly from Navidrome LAN
-            let allAlbums = await DatabaseManager.shared.getAllAlbums()
-            for album in allAlbums {
+            var artIdsToDownload = Set<String>()
+            for album in client.albums {
                 let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
+                artIdsToDownload.insert(cleanArtId)
+            }
+            for track in tracks {
+                if let rawArt = track.coverArt ?? track.albumId {
+                    artIdsToDownload.insert(extractArtId(from: rawArt))
+                }
+            }
+            for cleanArtId in artIdsToDownload {
                 let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
                 if !isValidImageFile(at: localCoverUrl) {
                     client.downloadCoverArt(id: cleanArtId)
                 }
             }
 
-            let allArtists = await DatabaseManager.shared.getAllArtists()
-            for artist in allArtists {
-                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id) {
-                    client.downloadArtistPortrait(id: artist.id)
+            var artistIdsToDownload = Set<String>()
+            for artist in client.artists {
+                artistIdsToDownload.insert(artist.id)
+            }
+            for track in tracks {
+                if let artistId = track.artistId {
+                    artistIdsToDownload.insert(artistId)
+                }
+            }
+            for artistId in artistIdsToDownload {
+                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
+                if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artistId) {
+                    client.downloadArtistPortrait(id: artistId)
                 }
             }
 

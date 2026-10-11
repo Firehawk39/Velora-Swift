@@ -111,8 +111,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
     private let maxRetries = 3
 
-    private static let progressThrottleLock = NSLock()
-    private static var lastProgressDispatch: [String: Date] = [:]
+    nonisolated private static let progressThrottleLock = NSLock()
+    nonisolated(unsafe) private static var lastProgressDispatch: [String: Date] = [:]
 
     private var player: AVQueuePlayer?
     private var artworkRetryCount = 0
