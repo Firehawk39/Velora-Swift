@@ -627,13 +627,13 @@ final class MusicBrainzManager: ObservableObject {
                 return
             }
 
-            let annotation = await fetchAnnotationAsync(entityMBID: mbid)
+            let annotation = await fetchAnnotationAsync(entityMBID: finalMbid)
             json["annotation"] = annotation
             if let savedData = try? JSONSerialization.data(withJSONObject: json) {
                 try? savedData.write(to: fileUrl)
             }
         } catch {
-            AppLogger.shared.log("[MusicBrainz] Download failed for album \(mbid): \(error.localizedDescription)", level: .warning)
+            AppLogger.shared.log("[MusicBrainz] Download failed for album \(finalMbid): \(error.localizedDescription)", level: .warning)
         }
     }
 
