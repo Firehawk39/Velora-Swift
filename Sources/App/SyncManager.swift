@@ -230,6 +230,7 @@ final class SyncManager: ObservableObject {
 
                 if totalMissing == 0 { break }
 
+                let passStartTime = Date()
                 var tasksCompleted = alreadyDone
 
                 // Phase A: Artist Metadata & Images
@@ -237,10 +238,10 @@ final class SyncManager: ObservableObject {
                 while artistStartIndex < missingArtists.count && isSyncingMetadata {
                     let endIndex = min(artistStartIndex + maxConcurrent, missingArtists.count)
                     let batch = Array(missingArtists[artistStartIndex..<endIndex])
-                    metadataStatus = "Syncing Artists: \(artistStartIndex)/\(missingArtists.count) (pass \(passCount))"
+                    metadataStatus = "Syncing Artists: \(artistStartIndex + 1)/\(missingArtists.count) (pass \(passCount))"
 
                     await withTaskGroup(of: Void.self) { group in
-                        for (_, artist) in batch.enumerated() {
+                        for artist in batch {
                             group.addTask {
                                 let mb = await MusicBrainzManager.shared
                                 let fa = await FanartManager.shared
@@ -249,32 +250,42 @@ final class SyncManager: ObservableObject {
                                 let hasArtist = await (mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
                                 let hasBackdrop = await (fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true)
                                 let hasClearLogo = await (fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true)
+                                
                                 if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
-                                    let info: SubsonicArtistInfo? = await withCheckedContinuation { continuation in
-                                        Task { @MainActor in
-                                            client.fetchArtistInfo(artistId: artist.id) { info in
-                                                continuation.resume(returning: info)
+                                    var safeMbid: String? = nil
+                                    var info: SubsonicArtistInfo? = nil
+
+                                    if !hasBackdrop || !hasClearLogo || !hasLocalPortrait || !hasArtist {
+                                        info = await withCheckedContinuation { continuation in
+                                            Task { @MainActor in
+                                                client.fetchArtistInfo(artistId: artist.id) { fetchedInfo in
+                                                    continuation.resume(returning: fetchedInfo)
+                                                }
                                             }
                                         }
-                                    }
-                                    // Use Navidrome's MBID for robust matching, but protect against Last.fm's "Zimmer" -> "Hans Zimmer" aliasing bug.
-                                    let safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : info?.musicBrainzId
-                                    await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
-                                    await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
-                                    
-                                    let hasImage = (info?.mediumImageUrl != nil && info?.mediumImageUrl?.isEmpty == false) || (info?.largeImageUrl != nil && info?.largeImageUrl?.isEmpty == false)
-                                    if !hasImage {
-                                        await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
-                                    } else {
-                                        await client.downloadArtistPortrait(id: artist.id)
+                                        safeMbid = (artist.primaryName.lowercased() == "zimmer") ? nil : info?.musicBrainzId
                                     }
 
-                                    await withCheckedContinuation { cont in
-                                        Task { @MainActor in
-                                            client.fetchArtist(id: artist.id) { _ in cont.resume() }
+                                    if !hasBackdrop {
+                                        await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
+                                    }
+
+                                    if !hasClearLogo {
+                                        await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
+                                    }
+
+                                    if !hasLocalPortrait {
+                                        let hasImage = (info?.mediumImageUrl != nil && info?.mediumImageUrl?.isEmpty == false) || (info?.largeImageUrl != nil && info?.largeImageUrl?.isEmpty == false)
+                                        if !hasImage {
+                                            await fa.downloadArtistPortraitSilently(for: artist.primaryName, artistId: artist.id, mbid: safeMbid)
+                                        } else {
+                                            await client.downloadArtistPortrait(id: artist.id)
                                         }
                                     }
-                                    await mb.downloadMetadataSilently(for: artist.primaryName, mbid: safeMbid)
+
+                                    if !hasArtist {
+                                        await mb.downloadMetadataSilently(for: artist.primaryName, mbid: safeMbid)
+                                    }
                                 }
                             }
                         }
@@ -283,10 +294,11 @@ final class SyncManager: ObservableObject {
                     tasksCompleted += Double(batch.count)
                     artistStartIndex += maxConcurrent
                     metadataProgress = min(tasksCompleted / totalAll, 0.99)
-                    let elapsed = Date().timeIntervalSince(startTime)
-                    if elapsed >= 2.0 && tasksCompleted > alreadyDone {
-                        let rate = (tasksCompleted - alreadyDone) / elapsed
-                        let rem = Int((totalAll - tasksCompleted) / max(rate, 0.01))
+                    let elapsed = Date().timeIntervalSince(passStartTime)
+                    let doneThisPass = tasksCompleted - alreadyDone
+                    if elapsed >= 2.0 && doneThisPass > 0 {
+                        let rate = doneThisPass / elapsed
+                        let rem = Int(max(totalMissing - doneThisPass, 0) / max(rate, 0.01))
                         metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
                     }
                 }
@@ -296,10 +308,10 @@ final class SyncManager: ObservableObject {
                 while albumStartIndex < missingAlbums.count && isSyncingMetadata {
                     let endIndex = min(albumStartIndex + maxConcurrent, missingAlbums.count)
                     let batch = Array(missingAlbums[albumStartIndex..<endIndex])
-                    metadataStatus = "Syncing Albums: \(albumStartIndex)/\(missingAlbums.count) (pass \(passCount))"
+                    metadataStatus = "Syncing Albums: \(albumStartIndex + 1)/\(missingAlbums.count) (pass \(passCount))"
 
                     await withTaskGroup(of: Void.self) { group in
-                        for (_, album) in batch.enumerated() {
+                        for album in batch {
                             group.addTask {
                                 let artistName = album.artist ?? "Unknown Artist"
                                 let mb = await MusicBrainzManager.shared
@@ -335,6 +347,13 @@ final class SyncManager: ObservableObject {
                     tasksCompleted += Double(batch.count)
                     albumStartIndex += maxConcurrent
                     metadataProgress = min(tasksCompleted / totalAll, 0.99)
+                    let elapsed = Date().timeIntervalSince(passStartTime)
+                    let doneThisPass = tasksCompleted - alreadyDone
+                    if elapsed >= 2.0 && doneThisPass > 0 {
+                        let rate = doneThisPass / elapsed
+                        let rem = Int(max(totalMissing - doneThisPass, 0) / max(rate, 0.01))
+                        metadataEta = rem > 3600 ? "\(rem/3600)h remaining" : rem > 60 ? "\(rem/60)m remaining" : "\(rem)s remaining"
+                    }
                 }
 
                 // Brief pause before re-scanning on battery to allow disk writes to flush (skipped when charging)

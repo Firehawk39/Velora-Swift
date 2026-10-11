@@ -877,75 +877,92 @@ final class FanartManager: ObservableObject {
         guard !activeClearLogoFetches.contains(key) else { return }
         activeClearLogoFetches.insert(key)
 
-        let resolve: (String) -> Void = { [weak self] resolvedMbid in
-            guard let self = self else { return }
-            if let apiKey = self.fanartApiKey, !apiKey.isEmpty {
-                let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMbid)?api_key=\(apiKey)"
-                self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] url, _ in
-                    guard let self = self else { return }
-                    if let url = url {
-                        self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
-                    } else {
-                        self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMbid, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl, isTrueNotFound in
-                            guard let self = self else { return }
-                            if let tadbUrl = tadbUrl {
-                                self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
-                            } else if isTrueNotFound {
-                                try? Data().write(to: fileUrl)
-                                Task { @MainActor in AssetRegistry.shared.markLogoUnavailable(key: key) }
-                                self.activeClearLogoFetches.remove(key)
-                            } else {
-                                self.activeClearLogoFetches.remove(key)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let finish: @MainActor @Sendable () -> Void = { [weak self] in
+                self?.activeClearLogoFetches.remove(key)
+                continuation.resume()
+            }
+
+            let resolve: @MainActor @Sendable (String) -> Void = { [weak self] resolvedMbid in
+                guard let self = self else { finish(); return }
+                if let apiKey = self.fanartApiKey, !apiKey.isEmpty {
+                    let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMbid)?api_key=\(apiKey)"
+                    self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] url, _ in
+                        guard let self = self else { finish(); return }
+                        if let url = url {
+                            self.downloadClearLogoFile(from: url, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid) {
+                                finish()
+                            }
+                        } else {
+                            self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMbid, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl, isTrueNotFound in
+                                guard let self = self else { finish(); return }
+                                if let tadbUrl = tadbUrl {
+                                    self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid) {
+                                        finish()
+                                    }
+                                } else {
+                                    if isTrueNotFound {
+                                        try? Data().write(to: fileUrl)
+                                        AssetRegistry.shared.markLogoUnavailable(key: key)
+                                    }
+                                    finish()
+                                }
                             }
                         }
                     }
-                }
-            } else {
-                // Fanart not configured, directly query TheAudioDB
-                self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMbid, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl, isTrueNotFound in
-                    guard let self = self else { return }
-                    if let tadbUrl = tadbUrl {
-                        self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid)
-                    } else if isTrueNotFound {
-                        try? Data().write(to: fileUrl)
-                        Task { @MainActor in AssetRegistry.shared.markLogoUnavailable(key: key) }
-                        self.activeClearLogoFetches.remove(key)
-                    } else {
-                        self.activeClearLogoFetches.remove(key)
+                } else {
+                    // Fanart not configured, directly query TheAudioDB
+                    self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMbid, priority: URLSessionTask.lowPriority) { [weak self] tadbUrl, isTrueNotFound in
+                        guard let self = self else { finish(); return }
+                        if let tadbUrl = tadbUrl {
+                            self.downloadClearLogoFile(from: tadbUrl, to: fileUrl, artist: artist, cacheKey: key, usedMbid: resolvedMbid) {
+                                finish()
+                            }
+                        } else {
+                            if isTrueNotFound {
+                                try? Data().write(to: fileUrl)
+                                AssetRegistry.shared.markLogoUnavailable(key: key)
+                            }
+                            finish()
+                        }
                     }
                 }
             }
-        }
 
-        if let m = mbid, !m.isEmpty {
-            resolve(m)
-        } else {
-            getMBIDSafe(for: artist) { [weak self] result in
-                guard let self = self else { return }
-                switch result {
-                case .found(let r):
-                    resolve(r)
-                case .notFound:
-                    try? Data().write(to: fileUrl)
-                    Task { @MainActor in AssetRegistry.shared.markLogoUnavailable(key: key) }
-                    self.activeClearLogoFetches.remove(key)
-                case .networkError:
-                    // Transient — skip negative cache, allow retry
-                    self.activeClearLogoFetches.remove(key)
+            if let m = mbid, !m.isEmpty {
+                resolve(m)
+            } else {
+                getMBIDSafe(for: artist) { [weak self] result in
+                    guard let self = self else { finish(); return }
+                    switch result {
+                    case .found(let r):
+                        resolve(r)
+                    case .notFound:
+                        try? Data().write(to: fileUrl)
+                        AssetRegistry.shared.markLogoUnavailable(key: key)
+                        finish()
+                    case .networkError:
+                        // Transient — skip negative cache, allow retry
+                        finish()
+                    }
                 }
             }
         }
     }
 
-    private func downloadClearLogoFile(from urlString: String, to localUrl: URL, artist: String, cacheKey: String, usedMbid: String? = nil) {
+    private func downloadClearLogoFile(from urlString: String, to localUrl: URL, artist: String, cacheKey: String, usedMbid: String? = nil, completion: (@MainActor @Sendable () -> Void)? = nil) {
         guard let url = URL(string: urlString) else {
             activeClearLogoFetches.remove(cacheKey)
+            completion?()
             return
         }
         var req = URLRequest(url: url)
         req.timeoutInterval = 20.0
         ThrottledNetworkManager.shared.enqueue(request: req) { [weak self] data, _, error in
-            guard let self = self else { return }
+            guard let self = self else {
+                Task { @MainActor in completion?() }
+                return
+            }
             DispatchQueue.main.async {
                 if let data = data, let img = UIImage(data: data) {
                     try? data.write(to: localUrl)
@@ -968,6 +985,7 @@ final class FanartManager: ObservableObject {
                     try? Data().write(to: localUrl)
                 }
                 self.activeClearLogoFetches.remove(cacheKey)
+                completion?()
             }
         }
     }
