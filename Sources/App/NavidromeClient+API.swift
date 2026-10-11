@@ -715,6 +715,35 @@ extension NavidromeClient {
         }
     }
 
+    func fetchOpenSubsonicLyrics(trackId: String) async -> (lrcText: String, isSynced: Bool)? {
+        guard let url = buildUrl(method: "getLyricsBySongId.view", params: ["id": trackId]) else { return nil }
+        do {
+            let (data, _) = try await ThrottledNetworkManager.shared.enqueue(request: URLRequest(url: url))
+            let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
+            let structured = decoded.subsonicResponse?.lyricsList?.structuredLyrics ?? []
+
+            // 1. Prioritize time-synced lyrics (synced == true)
+            if let syncedItem = structured.first(where: { $0.synced == true }),
+               let lrc = syncedItem.toLRC(), !lrc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return (lrcText: lrc, isSynced: true)
+            }
+
+            // 2. Fall back to unsynced structured lyrics
+            if let firstItem = structured.first,
+               let text = firstItem.toLRC(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return (lrcText: text, isSynced: false)
+            }
+
+            // 3. Fall back to legacy Subsonic lyrics field
+            if let legacy = decoded.subsonicResponse?.lyrics?.value, !legacy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return (lrcText: legacy, isSynced: false)
+            }
+        } catch {
+            return nil
+        }
+        return nil
+    }
+
     func fetchLyrics(trackId: String, artist: String, title: String, duration: Double, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
@@ -738,15 +767,30 @@ extension NavidromeClient {
             }
         }
 
-
         Task {
             guard NetworkMonitor.shared.isConnected else {
-                // Do not cache failure if we simply have no connection
                 completion(nil)
                 return
             }
 
-            // Only try LRCLIB API for lyrics (time-synced first, then plain)
+            // TIER 1: Native OpenSubsonic LAN lookup (10ms, line-speed)
+            var navidromeLyrics: String? = nil
+            var isNavidromeSynced = false
+
+            if let serverResult = await self.fetchOpenSubsonicLyrics(trackId: trackId) {
+                navidromeLyrics = serverResult.lrcText
+                isNavidromeSynced = serverResult.isSynced
+            }
+
+            // If Navidrome has time-synced lyrics, cache and finish immediately!
+            if isNavidromeSynced, let syncedText = navidromeLyrics, !syncedText.isEmpty {
+                try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? syncedText.write(to: cacheFile, atomically: true, encoding: .utf8)
+                completion(syncedText)
+                return
+            }
+
+            // TIER 2: Query LRCLIB for time-synced LRC if Navidrome only had unsynced or missing lyrics
             do {
                 if let lrclibLyrics = try await fetchFromLRCLIB(artist: artist, title: title, duration: duration, priority: priority), !lrclibLyrics.isEmpty {
                     try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -754,19 +798,25 @@ extension NavidromeClient {
                     completion(lrclibLyrics)
                     return
                 }
-
-                // Save empty file so we don't retry forever on un-lyric-able songs (404 Not Found)
-                try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
-                await MainActor.run {
-                    AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
-                }
-                completion(nil)
             } catch {
-                // Network error or 429 Rate Limited. Do NOT poison the cache.
-                AppLogger.shared.log("[LRCLIB] Fetch error/rate limit for \(title): \(error.localizedDescription)", level: .error)
-                completion(nil)
+                AppLogger.shared.log("[LRCLIB] Fetch error/rate limit for \(title): \(error.localizedDescription)", level: .warning)
             }
+
+            // TIER 3: Fall back to Navidrome's plain/unsynced lyrics so user has lyrics instead of blank screen
+            if let fallbackText = navidromeLyrics, !fallbackText.isEmpty {
+                try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? fallbackText.write(to: cacheFile, atomically: true, encoding: .utf8)
+                completion(fallbackText)
+                return
+            }
+
+            // TIER 4: Negative cache marker
+            try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
+            await MainActor.run {
+                AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
+            }
+            completion(nil)
         }
     }
 

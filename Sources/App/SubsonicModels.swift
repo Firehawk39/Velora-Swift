@@ -23,6 +23,7 @@ struct SubsonicBody: Codable {
     let randomSongs2: RandomSongsWrapper?
     let recentlyPlayed: RecentlyPlayedWrapper?
     let lyrics: SubsonicLyrics?
+    let lyricsList: OpenSubsonicLyricsList?
     let artist: SubsonicArtistDetail?
     let artistInfo: SubsonicArtistInfo?
     let artistInfo2: SubsonicArtistInfo?
@@ -161,3 +162,41 @@ struct SubsonicArtistInfo: Codable {
     let mediumImageUrl: String?
     let largeImageUrl: String?
 }
+
+// MARK: - OpenSubsonic Structured Lyrics
+struct OpenSubsonicLyricsList: Codable {
+    let structuredLyrics: [OpenSubsonicStructuredLyrics]?
+}
+
+struct OpenSubsonicStructuredLyrics: Codable {
+    let displayArtist: String?
+    let displayTitle: String?
+    let lang: String?
+    let synced: Bool?
+    let line: [OpenSubsonicLyricLine]?
+
+    func toLRC() -> String? {
+        guard let lines = line, !lines.isEmpty else { return nil }
+        if synced == true {
+            var formattedLines: [String] = []
+            for l in lines {
+                let startMs = max(l.start ?? 0, 0)
+                let totalSeconds = startMs / 1000
+                let minutes = totalSeconds / 60
+                let seconds = totalSeconds % 60
+                let hundredths = (startMs % 1000) / 10
+                let text = (l.value ?? "").trimmingCharacters(in: .whitespaces)
+                formattedLines.append(String(format: "[%02d:%02d.%02d] %@", minutes, seconds, hundredths, text))
+            }
+            return formattedLines.joined(separator: "\n")
+        } else {
+            return lines.compactMap { $0.value }.joined(separator: "\n")
+        }
+    }
+}
+
+struct OpenSubsonicLyricLine: Codable {
+    let start: Int?
+    let value: String?
+}
+

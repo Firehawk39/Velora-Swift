@@ -498,7 +498,7 @@ final class FanartManager: ObservableObject {
                                 continuation.resume(returning: true)
                             }
                         } else {
-                            if result.isTrueNotFound && NetworkMonitor.shared.isConnected {
+                            if NetworkMonitor.shared.isConnected {
                                 try? Data().write(to: fileUrl)
                                 let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
                                 try? Data().write(to: mbidFile)
@@ -713,7 +713,7 @@ final class FanartManager: ObservableObject {
                         continuation.resume()
                     }
                 } else {
-                    if result.isTrueNotFound {
+                    if NetworkMonitor.shared.isConnected {
                         try? Data().write(to: destFileUrl)
                         if let mk = mbidKey {
                             let mbidFileUrl = self.clearLogoDir.appendingPathComponent(mk + ".png")

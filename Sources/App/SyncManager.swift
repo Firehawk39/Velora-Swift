@@ -197,8 +197,8 @@ final class SyncManager: ObservableObject {
                 for (index, artist) in missingArtists.enumerated() {
                     let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
                     let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
-                    let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
-                    let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
+                    let hasBackdrop = (passCount > 1) || fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+                    let hasLogo = (passCount > 1) || fa.hasCheckedClearLogo(for: artist.primaryName)
                     let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
                     if !(hasLocalPortrait && hasBackdrop && hasLogo && hasArtist) {
                         missingArtistsThisPass.append(artist)
@@ -1056,6 +1056,11 @@ final class SyncManager: ObservableObject {
                 safeMbid = info?.musicBrainzId
             }
 
+            // 1. Ingest Navidrome metadata immediately (0ms internet latency)
+            if let validMbid = safeMbid, !validMbid.isEmpty {
+                await mb.saveArtistMetadata(artistName: artist.primaryName, mbid: validMbid, biography: info?.biography)
+            }
+
             if !hasBackdrop {
                 await fa.downloadBackdropSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
             }
@@ -1068,7 +1073,9 @@ final class SyncManager: ObservableObject {
                 await client.downloadArtistPortrait(id: artist.id)
             }
 
-            if !hasArtist {
+            // 2. Only download from public MusicBrainz over internet if still missing!
+            let stillNeedsArtist = await !(mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
+            if stillNeedsArtist {
                 await mb.downloadMetadataSilently(for: artist.primaryName, mbid: safeMbid)
             }
         }
@@ -1078,7 +1085,11 @@ final class SyncManager: ObservableObject {
         let artistName = album.artist ?? "Unknown Artist"
         let mb = await MusicBrainzManager.shared
         if !(await mb.hasAlbumMetadata(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId)) {
-            await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId)
+            if let validMbid = album.musicBrainzId, !validMbid.isEmpty {
+                await mb.saveAlbumMetadata(albumName: album.name, artistName: artistName, mbid: validMbid, year: album.year, genre: album.genre)
+            } else {
+                await mb.downloadAlbumMetadataSilently(albumName: album.name, artistName: artistName, mbid: album.musicBrainzId)
+            }
         }
         let rawArtId = album.coverArt ?? album.id
         let cleanArtId = extractArtId(from: rawArtId)

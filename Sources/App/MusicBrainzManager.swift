@@ -183,6 +183,69 @@ final class MusicBrainzManager: ObservableObject {
         return false
     }
 
+    func saveArtistMetadata(artistName: String, mbid: String, biography: String?, extra: [String: Any]? = nil) {
+        self.nameToMBIDCache[artistName] = mbid
+        self.saveCache()
+
+        let fileName = "artist_\(mbid).json"
+        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
+
+        if self.fileManager.fileExists(atPath: fileUrl.path) {
+            if let data = try? Data(contentsOf: fileUrl),
+               var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                var updated = false
+                if (json["biography"] as? String)?.isEmpty != false, let bio = biography, !bio.isEmpty {
+                    json["biography"] = bio
+                    if (json["annotation"] as? String)?.isEmpty != false {
+                        json["annotation"] = bio
+                    }
+                    updated = true
+                }
+                if updated, let saved = try? JSONSerialization.data(withJSONObject: json) {
+                    try? saved.write(to: fileUrl)
+                }
+            }
+            return
+        }
+
+        var dict: [String: Any] = extra ?? [:]
+        dict["id"] = mbid
+        dict["name"] = artistName
+        if let bio = biography, !bio.isEmpty {
+            dict["biography"] = bio
+            dict["annotation"] = bio
+        }
+        if let saved = try? JSONSerialization.data(withJSONObject: dict) {
+            try? saved.write(to: fileUrl)
+        }
+    }
+
+    func saveAlbumMetadata(albumName: String, artistName: String, mbid: String, year: Int? = nil, genre: String? = nil) {
+        let cacheKey = "\(artistName)_\(albumName)"
+        self.nameToMBIDCache[cacheKey] = mbid
+        self.saveCache()
+
+        let fileName = "album_\(mbid).json"
+        let fileUrl = self.metadataDir.appendingPathComponent(fileName)
+        if self.fileManager.fileExists(atPath: fileUrl.path) { return }
+
+        var dict: [String: Any] = [
+            "id": mbid,
+            "title": albumName,
+            "artist-credit": [["artist": ["name": artistName]]],
+            "status": "Official"
+        ]
+        if let y = year, y > 0 {
+            dict["date"] = "\(y)"
+        }
+        if let g = genre, !g.isEmpty {
+            dict["genres"] = [["name": g]]
+        }
+        if let saved = try? JSONSerialization.data(withJSONObject: dict) {
+            try? saved.write(to: fileUrl)
+        }
+    }
+
     func getArtistBiography(for artistName: String) -> String? {
         let mbid = nameToMBIDCache[artistName]
         guard let validMbid = mbid else { return nil }
@@ -193,7 +256,9 @@ final class MusicBrainzManager: ObservableObject {
         if fileManager.fileExists(atPath: fileUrl.path),
            let data = try? Data(contentsOf: fileUrl),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return json["annotation"] as? String ?? (json["annotation"] as? [String: Any])?["text"] as? String
+            return (json["annotation"] as? String)
+                ?? ((json["annotation"] as? [String: Any])?["text"] as? String)
+                ?? (json["biography"] as? String)
         }
         return nil
     }
@@ -222,6 +287,10 @@ final class MusicBrainzManager: ObservableObject {
                 let end = life?["end"] as? String
                 let lifeStr = begin != nil ? "\(begin!)\(end != nil ? " to \(end!)" : " — Present")" : nil
 
+                let annotation = (json["annotation"] as? String)
+                    ?? ((json["annotation"] as? [String: Any])?["text"] as? String)
+                    ?? (json["biography"] as? String)
+
                 let info = MBArtistInfo(
                     mbid: resolvedMBID,
                     country: json["country"] as? String,
@@ -229,7 +298,8 @@ final class MusicBrainzManager: ObservableObject {
                     lifeSpan: lifeStr,
                     area: (json["area"] as? [String: Any])?["name"] as? String,
                     disambiguation: json["disambiguation"] as? String,
-                    annotation: json["annotation"] as? String
+                    annotation: annotation,
+                    biography: (json["biography"] as? String) ?? annotation
                 )
                 self.currentArtistInfo = info
                 self.metadataProgress = 1.0
