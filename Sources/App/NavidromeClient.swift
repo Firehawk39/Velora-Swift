@@ -22,6 +22,17 @@ final class NavidromeClient: ObservableObject {
     private let clientName = "VeloraSwift"
     private let apiVersion = "1.16.1"
 
+    static var shared: NavidromeClient? = nil
+
+    init() {
+        NavidromeClient.shared = self
+    }
+
+    private static var activeBaseUrl: String = ""
+    private static var activeUsername: String = ""
+    private static var activeToken: String = ""
+    private static var activeSalt: String = ""
+
     // MARK: - Configuration
 
     func configure(url: String, user: String, pass: String) {
@@ -29,6 +40,33 @@ final class NavidromeClient: ObservableObject {
         self.username = user
         self.salt = SubsonicAuth.generateSalt()
         self.token = SubsonicAuth.generateToken(password: pass, salt: self.salt)
+
+        NavidromeClient.activeBaseUrl = self.baseUrl
+        NavidromeClient.activeUsername = self.username
+        NavidromeClient.activeSalt = self.salt
+        NavidromeClient.activeToken = self.token
+    }
+
+    nonisolated static func buildCoverArtUrl(id: String, size: Int = 500) -> String {
+        let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(id).jpg")
+        if FileManager.default.fileExists(atPath: localUrl.path),
+           let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
+           let fileSize = attr[.size] as? Int64, fileSize > 0 {
+            return localUrl.absoluteString
+        }
+        guard !activeBaseUrl.isEmpty else { return "" }
+        var components = URLComponents(string: "\(activeBaseUrl)/rest/getCoverArt.view")
+        components?.queryItems = [
+            URLQueryItem(name: "u", value: activeUsername),
+            URLQueryItem(name: "t", value: activeToken),
+            URLQueryItem(name: "s", value: activeSalt),
+            URLQueryItem(name: "v", value: "1.16.1"),
+            URLQueryItem(name: "c", value: "VeloraSwift"),
+            URLQueryItem(name: "f", value: "json"),
+            URLQueryItem(name: "id", value: id),
+            URLQueryItem(name: "size", value: "\(size)")
+        ]
+        return components?.url?.absoluteString ?? ""
     }
 
     // MARK: - URL Construction
@@ -57,13 +95,7 @@ final class NavidromeClient: ObservableObject {
     }
 
     func getCoverArtUrl(id: String, size: Int = 500) -> String {
-        let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(id).jpg")
-        if FileManager.default.fileExists(atPath: localUrl.path),
-           let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
-           let fileSize = attr[.size] as? Int64, fileSize > 0 {
-            return localUrl.absoluteString
-        }
-        return buildUrl(method: "getCoverArt.view", params: ["id": id, "size": "\(size)"])?.absoluteString ?? ""
+        Self.buildCoverArtUrl(id: id, size: size)
     }
 
     private var cacheDir: URL {

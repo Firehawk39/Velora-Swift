@@ -571,13 +571,14 @@ extension NavidromeClient {
 
     // MARK: - Cover Art Caching
 
-    func downloadCoverArt(id: String) {
+    func downloadCoverArt(id: String, completion: (@Sendable (Bool) -> Void)? = nil) {
         let coverArtDir = VeloraStorage.coverArt
         let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
 
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
             if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
-               let size = attr[.size] as? Int64, size > 0 {
+               let size = attr[.size] as? Int64, size > 100 {
+                completion?(true)
                 return // Valid cache exists
             } else {
                 // Delete 0-byte corrupted marker
@@ -585,25 +586,44 @@ extension NavidromeClient {
             }
         }
 
-        guard NetworkMonitor.shared.isConnected else { return }
-        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
+        guard NetworkMonitor.shared.isConnected else {
+            completion?(false)
+            return
+        }
+        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else {
+            completion?(false)
+            return
+        }
 
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             guard let data = data, error == nil else {
                 AppLogger.shared.log("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
+                completion?(false)
                 return
             }
             do {
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode != 200 {
+                    completion?(false)
                     return
                 }
                 if UIImage(data: data) != nil {
                     try data.write(to: destinationUrl)
+                    completion?(true)
                 } else {
                     AppLogger.shared.log("Failed to save cover art for \(id): Not a valid image.")
+                    completion?(false)
                 }
             } catch {
                 AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
+                completion?(false)
+            }
+        }
+    }
+
+    func downloadCoverArtAsync(id: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            downloadCoverArt(id: id) { success in
+                continuation.resume(returning: success)
             }
         }
     }

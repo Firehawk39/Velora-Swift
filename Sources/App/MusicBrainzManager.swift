@@ -482,7 +482,7 @@ final class MusicBrainzManager: ObservableObject {
         if knownBandNamesWithDelimiters.contains(trimmed.lowercased()) {
             return trimmed
         }
-        let delimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
+        let delimiters = [" • ", "•", "・", " feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
         var primary = trimmed
         for delimiter in delimiters {
             if let range = primary.range(of: delimiter, options: .caseInsensitive) {

@@ -770,6 +770,68 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
             let artworkUrl = track.coverArtUrl
 
+            let applyArtwork: (UIImage, Data) -> Void = { [weak self] image, data in
+                guard let self = self else { return }
+                var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+                if artId.contains("getCoverArt"),
+                   let artUrl = URL(string: artId),
+                   let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
+                   let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
+                    artId = idParam
+                }
+                let coverArtDir = VeloraStorage.coverArt
+                let localUrl = coverArtDir.appendingPathComponent("\(artId).jpg")
+                if !FileManager.default.fileExists(atPath: localUrl.path) {
+                    try? data.write(to: localUrl)
+                }
+                if let aid = track.albumId, !aid.isEmpty {
+                    let cleanAid = extractArtId(from: aid)
+                    let albumUrl = coverArtDir.appendingPathComponent("\(cleanAid).jpg")
+                    if !FileManager.default.fileExists(atPath: albumUrl.path) {
+                        try? data.write(to: albumUrl)
+                    }
+                }
+
+                let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                let extractedColor = image.dominantColor() ?? .black
+                let extractedPalette = image.extractPalette(count: 5)
+
+                Task { @MainActor in
+                    if self.currentTrack?.id == track.id {
+                        var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
+                        updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                        MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                        self.currentPrimaryColor = extractedColor
+                        self.currentPalette = extractedPalette
+
+                        if self.currentArtworkTrackId != track.id {
+                            self.playbackSessionId = UUID()
+                        }
+                        self.currentArtworkTrackId = track.id
+                    }
+                    self.artworkRetryCount = 0
+                    self.nextArtworkRetryTime = nil
+                    self.downloadingArtworkTrackId = nil
+                    self.artworkDownloadTask = nil
+                }
+            }
+
+            // Fast path for local offline artwork: read directly from disk without URLSession
+            if let artworkUrl = artworkUrl, artworkUrl.isFileURL,
+               let data = try? Data(contentsOf: artworkUrl),
+               let image = UIImage(data: data) {
+                applyArtwork(image, data)
+                return
+            }
+
+            // Fallback for offline play: attempt extracting embedded ID3/FLAC front-cover directly
+            if let embeddedUrl = extractEmbeddedArtwork(for: track.id, albumId: track.albumId, artId: track.coverArt),
+               let data = try? Data(contentsOf: embeddedUrl),
+               let image = UIImage(data: data) {
+                applyArtwork(image, data)
+                return
+            }
+
             if let url = artworkUrl {
                 if !url.isFileURL && !NetworkMonitor.shared.isConnected {
                     return
@@ -778,7 +840,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 return
             }
 
-            // Cancel the previous download task if it is still in flight
+            // Cancel previous download task if still in flight
             artworkDownloadTask?.cancel()
             artworkDownloadTask = nil
 
@@ -788,7 +850,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 let task = URLSession.shared.dataTask(with: artworkUrl) { [weak self] data, _, error in
                     guard let self = self else { return }
 
-                    // On failure, clear downloadingArtworkTrackId so the next tick can retry
                     if error != nil || data == nil {
                         Task { @MainActor in
                             if self.downloadingArtworkTrackId == track.id {
@@ -813,45 +874,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                         return
                     }
 
-                    // Persist to the local CoverArt cache so subsequent plays load instantly
-                    var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-                    // Extract the real ID from a server URL (e.g., "https://...?id=al-123" → "al-123")
-                    if artId.contains("getCoverArt"),
-                       let artUrl = URL(string: artId),
-                       let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
-                       let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
-                        artId = idParam
-                    }
-                    let coverArtDir = VeloraStorage.coverArt
-                    let localUrl = coverArtDir.appendingPathComponent("\(artId).jpg")
-                    if !FileManager.default.fileExists(atPath: coverArtDir.path) {
-                        try? FileManager.default.createDirectory(at: coverArtDir, withIntermediateDirectories: true, attributes: nil)
-                    }
-                    try? data.write(to: localUrl)
-
-                    let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-                    let extractedColor = image.dominantColor() ?? .black
-                    let extractedPalette = image.extractPalette(count: 5)
-
-                    Task { @MainActor in
-                        if self.currentTrack?.id == track.id {
-                            var updatedInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
-                            updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                            MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
-                            self.currentPrimaryColor = extractedColor
-                            self.currentPalette = extractedPalette
-
-                            // If this was a successful self-healing attempt after a failure, force the UI to refresh
-                            if self.currentArtworkTrackId != track.id {
-                                self.playbackSessionId = UUID()
-                            }
-                            self.currentArtworkTrackId = track.id
-                        }
-                        self.artworkRetryCount = 0
-                        self.nextArtworkRetryTime = nil
-                        self.downloadingArtworkTrackId = nil
-                        self.artworkDownloadTask = nil
-                    }
+                    applyArtwork(image, data)
                 }
                 artworkDownloadTask = task
                 task.resume()
@@ -1111,16 +1134,14 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
             // Trigger cover art download alongside the track
             let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-            let cleanArtId: String
-            if rawArtId.contains("getCoverArt"),
-               let url = URL(string: rawArtId),
-               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-               let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
-                cleanArtId = idParam
-            } else {
-                cleanArtId = rawArtId
-            }
+            let cleanArtId = extractArtId(from: rawArtId)
             client.downloadCoverArt(id: cleanArtId)
+            if let aid = track.albumId, !aid.isEmpty {
+                let cleanAid = extractArtId(from: aid)
+                if cleanAid != cleanArtId {
+                    client.downloadCoverArt(id: cleanAid)
+                }
+            }
 
             // Trigger lyrics fetch alongside the track for offline use (skipped during bulk music downloads to keep all bandwidth focused on Navidrome and avoid LRCLIB 429 limits)
             if !isDownloadingAll {
@@ -1205,6 +1226,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 } else {
                      IntegrityManager.shared.registerDownload(trackId: trackId, fileName: destinationUrl.lastPathComponent, size: fileSize)
                      self.downloadedTrackIds.insert(trackId)
+                     let matchedTrack = LibraryDataCache.shared.allTracks.first(where: { $0.id == trackId })
+                     extractEmbeddedArtwork(for: trackId, albumId: matchedTrack?.albumId, artId: matchedTrack?.coverArt)
+                     if self.currentTrack?.id == trackId {
+                         self.updateNowPlayingInfo()
+                     }
                      self.downloadProgress.removeValue(forKey: trackId)
                      self.downloadETAs.removeValue(forKey: trackId)
                      self.downloadStartTimes.removeValue(forKey: trackId)

@@ -51,6 +51,7 @@ struct VeloraApp: App {
                 }
             }
         }
+        FanartManager.shared.wipeNegativeFanartCaches()
     }
 
 

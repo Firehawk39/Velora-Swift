@@ -126,7 +126,8 @@ final class FanartManager: ObservableObject {
 
     /// Synchronously checks if a backdrop exists in cache and returns it
     nonisolated func getCachedBackdrop(for artist: String, artistId: String? = nil) -> UIImage? {
-        let keys = [artistId, sanitizeFileName(artist)].compactMap { $0 }.filter { !$0.isEmpty }
+        let primary = extractPrimaryArtist(artist)
+        let keys = [artistId, sanitizeFileName(artist), sanitizeFileName(primary)].compactMap { $0 }.filter { !$0.isEmpty }
         for key in keys {
             if let memoryCached = imageCache.object(forKey: key as NSString) {
                 return memoryCached
@@ -148,7 +149,8 @@ final class FanartManager: ObservableObject {
     }
 
     func hasBackdrop(for artist: String, artistId: String? = nil) -> Bool {
-        let keys = [artistId, sanitizeFileName(artist)].compactMap { $0 }.filter { !$0.isEmpty }
+        let primary = extractPrimaryArtist(artist)
+        let keys = [artistId, sanitizeFileName(artist), sanitizeFileName(primary)].compactMap { $0 }.filter { !$0.isEmpty }
         for key in keys {
             let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
             if FileManager.default.fileExists(atPath: fileUrl.path) {
@@ -162,15 +164,19 @@ final class FanartManager: ObservableObject {
     /// Returns true if a valid backdrop exists OR it was verified unavailable on Fanart.tv (only if Fanart is configured)
     func hasCheckedBackdrop(for artist: String, artistId: String? = nil) -> Bool {
         guard isFanartConfigured else { return false }
-        let keys = [artistId, sanitizeFileName(artist)].compactMap { $0 }.filter { !$0.isEmpty }
+        let primary = extractPrimaryArtist(artist)
+        let keys = [artistId, sanitizeFileName(artist), sanitizeFileName(primary)].compactMap { $0 }.filter { !$0.isEmpty }
         for key in keys {
+            if AssetRegistry.shared.isBackdropUnavailable(key: key) { return true }
             let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
             if FileManager.default.fileExists(atPath: fileUrl.path) {
                 let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
                 if size > 100 { return true }
-                // Self-heal corrupted or 0-byte markers to allow fresh download
-                try? FileManager.default.removeItem(at: fileUrl)
-                return false
+                if isNegativeCacheExpired(at: fileUrl) {
+                    try? FileManager.default.removeItem(at: fileUrl)
+                    return false
+                }
+                return true // Verified unavailable on Fanart within TTL
             }
         }
         return false
@@ -185,23 +191,36 @@ final class FanartManager: ObservableObject {
     }
 
     func hasClearLogo(for artist: String) -> Bool {
-        let key = "logo_" + sanitizeFileName(artist)
-        let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
-        guard fileManager.fileExists(atPath: fileUrl.path) else { return false }
-        let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
-        return size > 100
+        let primary = extractPrimaryArtist(artist)
+        let keys = [sanitizeFileName(artist), sanitizeFileName(primary)]
+        for k in keys {
+            let fileUrl = clearLogoDir.appendingPathComponent("logo_" + k + ".png")
+            if fileManager.fileExists(atPath: fileUrl.path) {
+                let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+                if size > 100 { return true }
+            }
+        }
+        return false
     }
 
     /// Returns true if a valid clear logo exists OR it was verified unavailable on Fanart.tv (only if Fanart is configured)
     func hasCheckedClearLogo(for artist: String) -> Bool {
         guard isFanartConfigured else { return false }
-        let key = "logo_" + sanitizeFileName(artist)
-        let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
-        if fileManager.fileExists(atPath: fileUrl.path) {
-            let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
-            if size > 100 { return true }
-            try? fileManager.removeItem(at: fileUrl)
-            return false
+        let primary = extractPrimaryArtist(artist)
+        let keys = [sanitizeFileName(artist), sanitizeFileName(primary)]
+        for k in keys {
+            let key = "logo_" + k
+            if AssetRegistry.shared.isLogoUnavailable(key: key) { return true }
+            let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
+            if fileManager.fileExists(atPath: fileUrl.path) {
+                let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+                if size > 100 { return true }
+                if isNegativeCacheExpired(at: fileUrl) {
+                    try? fileManager.removeItem(at: fileUrl)
+                    return false
+                }
+                return true // Verified unavailable on Fanart within TTL
+            }
         }
         return false
     }
@@ -960,10 +979,10 @@ final class FanartManager: ObservableObject {
         
         let urlString: String
         if let knownMbid = mbid, !knownMbid.isEmpty {
-            urlString = "https://theaudiodb.com/api/v1/json/2/artist-mb.php?i=\(knownMbid)"
+            urlString = "https://theaudiodb.com/api/v1/json/123/artist-mb.php?i=\(knownMbid)"
         } else {
             let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? primary
-            urlString = "https://www.theaudiodb.com/api/v1/json/2/search.php?s=\(encoded)"
+            urlString = "https://theaudiodb.com/api/v1/json/123/search.php?s=\(encoded)"
         }
         
         guard let url = URL(string: urlString) else {
@@ -1134,11 +1153,17 @@ final class FanartManager: ObservableObject {
         ThrottledNetworkManager.shared.enqueue(request: req, priority: priority) { data, _, _ in
             if let data = data, let image = UIImage(data: data) {
                 try? data.write(to: localUrl)
+                let sanitizedName = self.sanitizeFileName(primaryArtistName)
+                let altUrl = self.backdropDir.appendingPathComponent("\(sanitizedName).jpg")
+                if altUrl.path != localUrl.path && !FileManager.default.fileExists(atPath: altUrl.path) {
+                    try? data.write(to: altUrl)
+                }
 
                 // CRITICAL: Even if this was a "silent" or background fetch,
                 // if the artist is the one we are currently viewing, update the UI!
                 DispatchQueue.main.async {
                     self.imageCache.setObject(image, forKey: cacheKey as NSString)
+                    self.imageCache.setObject(image, forKey: sanitizedName as NSString)
                     if self.currentArtistName == primaryArtistName {
                         withAnimation(.easeInOut(duration: 0.8)) {
                             self.currentBackdrop = image
@@ -1168,7 +1193,7 @@ final class FanartManager: ObservableObject {
         if knownBandNamesWithDelimiters.contains(trimmed.lowercased()) {
             return trimmed
         }
-        let delimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
+        let delimiters = [" • ", "•", "・", " feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
         var primary = trimmed
         for delimiter in delimiters {
             if let range = primary.range(of: delimiter, options: .caseInsensitive) {

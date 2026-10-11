@@ -601,29 +601,29 @@ struct AppSettingsView: View {
                                         AuditMetricRow(
                                             icon: "photo.fill",
                                             title: "Album Artwork",
-                                            detail: "\(stats.cachedCoverArt) cached",
-                                            isComplete: stats.cachedCoverArt > 0,
+                                            detail: "\(stats.cachedCoverArt) / \(stats.totalAlbums) cached" + (stats.unlistedCoverArt > 0 ? " • \(stats.unlistedCoverArt) unlisted" : ""),
+                                            isComplete: (stats.cachedCoverArt + stats.unlistedCoverArt) >= stats.totalAlbums && stats.totalAlbums > 0,
                                             isDark: isDark
                                         )
                                         AuditMetricRow(
                                             icon: "person.crop.circle.fill",
                                             title: "Artist Portraits",
-                                            detail: "\(stats.cachedPortraits) cached" + (stats.unlistedPortraits > 0 ? " • \(stats.unlistedPortraits) server unlisted" : ""),
-                                            isComplete: true,
+                                            detail: "\(stats.cachedPortraits) / \(stats.totalArtists) cached" + (stats.unlistedPortraits > 0 ? " • \(stats.unlistedPortraits) server unlisted" : ""),
+                                            isComplete: (stats.cachedPortraits + stats.unlistedPortraits) >= stats.totalArtists && stats.totalArtists > 0,
                                             isDark: isDark
                                         )
                                         AuditMetricRow(
                                             icon: "sparkles",
                                             title: "Backdrops & Logos",
                                             detail: "\(stats.cachedBackdrops + stats.cachedLogos) cached" + (stats.unlistedBackdrops > 0 ? " • \(stats.unlistedBackdrops) not on Fanart" : ""),
-                                            isComplete: true,
+                                            isComplete: (stats.cachedBackdrops + stats.unlistedBackdrops) >= stats.totalArtists && stats.totalArtists > 0,
                                             isDark: isDark
                                         )
                                         AuditMetricRow(
                                             icon: "text.quote",
                                             title: "Synced Lyrics",
-                                            detail: "\(stats.cachedLyrics) cached" + (stats.instrumentalLyrics > 0 ? " • \(stats.instrumentalLyrics) instrumental" : ""),
-                                            isComplete: true,
+                                            detail: "\(stats.cachedLyrics) / \(stats.totalLibraryTracks) cached" + (stats.instrumentalLyrics > 0 ? " • \(stats.instrumentalLyrics) instrumental" : ""),
+                                            isComplete: (stats.cachedLyrics + stats.instrumentalLyrics) >= stats.totalLibraryTracks && stats.totalLibraryTracks > 0,
                                             isDark: isDark
                                         )
                                     }

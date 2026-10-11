@@ -18,35 +18,147 @@ func extractArtId(from serverUrlOrId: String) -> String {
     return serverUrlOrId
 }
 
-func resolveCoverArtUrl(id: String, serverUrl: String?) -> URL? {
+import UIKit
+import AVFoundation
+
+/// Extracts embedded front-cover artwork directly from the downloaded audio file in VeloraStorage.tracks.
+/// Saves the extracted image to VeloraStorage.coverArt/<trackId>.jpg and mirrors to albumId/artId for seamless lookups.
+@discardableResult
+func extractEmbeddedArtwork(for trackId: String, albumId: String? = nil, artId: String? = nil) -> URL? {
     let fm = FileManager.default
     let coverDir = VeloraStorage.coverArt
-    let resolvedId = extractArtId(from: id)
+    let localArtUrl = coverDir.appendingPathComponent("\(trackId).jpg")
     
-    // Candidate IDs to check (handles 'al-' prefix mismatch between server and local disk)
-    var candidates: [String] = [resolvedId]
-    if resolvedId.hasPrefix("al-") {
-        candidates.append(String(resolvedId.dropFirst(3)))
-    } else {
-        candidates.append("al-" + resolvedId)
+    if fm.fileExists(atPath: localArtUrl.path),
+       let attr = try? fm.attributesOfItem(atPath: localArtUrl.path),
+       let size = attr[.size] as? Int64, size > 100 {
+        return localArtUrl
     }
-    if let sUrl = serverUrl {
-        let extractedServerId = extractArtId(from: sUrl)
-        if !candidates.contains(extractedServerId) {
-            candidates.append(extractedServerId)
+    
+    let trackDir = VeloraStorage.tracks
+    var audioUrl: URL? = nil
+    
+    // 1. Check IntegrityManager index for registered exact filename
+    if let fileName = IntegrityManager.shared.getFileName(for: trackId) {
+        let candidate = trackDir.appendingPathComponent(fileName)
+        if fm.fileExists(atPath: candidate.path) {
+            audioUrl = candidate
         }
     }
-
-    for candidate in candidates {
-        let localUrl = coverDir.appendingPathComponent("\(candidate).jpg")
-        if fm.fileExists(atPath: localUrl.path) {
-            if let attr = try? fm.attributesOfItem(atPath: localUrl.path),
-               let size = attr[.size] as? Int64, size > 100 {
-                return localUrl // Valid local image
-            } else {
-                try? fm.removeItem(at: localUrl) // Purge corrupt 0-byte file
+    
+    // 2. Fallback: check audio extensions
+    if audioUrl == nil {
+        let audioExtensions = ["flac", "mp3", "m4a", "alac", "wav", "aac", "ogg", "opus"]
+        for ext in audioExtensions {
+            let candidate = trackDir.appendingPathComponent("\(trackId).\(ext)")
+            if fm.fileExists(atPath: candidate.path) {
+                audioUrl = candidate
+                break
             }
         }
+    }
+    
+    // 3. Fallback: check raw trackId directly
+    if audioUrl == nil && fm.fileExists(atPath: trackDir.appendingPathComponent(trackId).path) {
+        audioUrl = trackDir.appendingPathComponent(trackId)
+    }
+    
+    guard let audioUrl = audioUrl else { return nil }
+    
+    let asset = AVAsset(url: audioUrl)
+    let metadataItems = asset.commonMetadata + asset.metadata
+    for item in metadataItems {
+        let isArtwork: Bool
+        if item.commonKey == .commonKeyArtwork {
+            isArtwork = true
+        } else if let id = item.identifier, id == .commonIdentifierArtwork {
+            isArtwork = true
+        } else if let key = item.key as? String, ["APIC", "PIC", "covr"].contains(key) {
+            isArtwork = true
+        } else {
+            isArtwork = false
+        }
+        
+        if isArtwork,
+           let data = item.dataValue ?? (item.value as? Data),
+           !data.isEmpty,
+           UIImage(data: data) != nil {
+            try? data.write(to: localArtUrl)
+            
+            // Mirror to albumId and artId so all lookups succeed instantly
+            if let aid = albumId, !aid.isEmpty {
+                let cleanAid = extractArtId(from: aid)
+                let albumUrl = coverDir.appendingPathComponent("\(cleanAid).jpg")
+                if !fm.fileExists(atPath: albumUrl.path) {
+                    try? data.write(to: albumUrl)
+                }
+            }
+            if let art = artId, !art.isEmpty {
+                let cleanArt = extractArtId(from: art)
+                let artUrl = coverDir.appendingPathComponent("\(cleanArt).jpg")
+                if !fm.fileExists(atPath: artUrl.path) {
+                    try? data.write(to: artUrl)
+                }
+            }
+            return localArtUrl
+        }
+    }
+    return nil
+}
+
+func resolveCoverArtUrl(id: String, serverUrl: String?, albumId: String? = nil, trackId: String? = nil) -> URL? {
+    let fm = FileManager.default
+    let coverDir = VeloraStorage.coverArt
+    
+    // Comprehensive candidate key collection (resolves song ID, album ID, and server URL keys)
+    var candidates = [String]()
+    
+    func addCandidate(_ raw: String?) {
+        guard let raw = raw, !raw.isEmpty else { return }
+        let clean = extractArtId(from: raw)
+        guard !clean.isEmpty else { return }
+        if !candidates.contains(clean) { candidates.append(clean) }
+        let alt = clean.hasPrefix("al-") ? String(clean.dropFirst(3)) : ("al-" + clean)
+        if !candidates.contains(alt) { candidates.append(alt) }
+    }
+    
+    addCandidate(id)
+    addCandidate(serverUrl)
+    addCandidate(albumId)
+    addCandidate(trackId)
+    
+    for candidate in candidates {
+        for ext in ["jpg", "jpeg", "png"] {
+            let localUrl = coverDir.appendingPathComponent("\(candidate).\(ext)")
+            if fm.fileExists(atPath: localUrl.path) {
+                if let attr = try? fm.attributesOfItem(atPath: localUrl.path),
+                   let size = attr[.size] as? Int64, size > 100 {
+                    return localUrl // Valid local image
+                } else {
+                    try? fm.removeItem(at: localUrl) // Purge corrupt 0-byte file
+                }
+            }
+        }
+    }
+    
+    // Offline safety net: if audio file exists locally, extract embedded front-cover artwork
+    if let tid = trackId, let embeddedUrl = extractEmbeddedArtwork(for: tid, albumId: albumId, artId: id) {
+        return embeddedUrl
+    }
+    let resolvedId = extractArtId(from: id)
+    if let embeddedUrl = extractEmbeddedArtwork(for: resolvedId, albumId: albumId, artId: id) {
+        return embeddedUrl
+    }
+
+    // 1. If serverUrl is already a valid absolute HTTP(S) URL, return it
+    if let sUrl = serverUrl, let url = URL(string: sUrl), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+        return url
+    }
+
+    // 2. Fallback: dynamically generate the active Navidrome streaming cover art URL
+    let liveUrlStr = NavidromeClient.buildCoverArtUrl(id: resolvedId)
+    if let liveUrl = URL(string: liveUrlStr), let scheme = liveUrl.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+        return liveUrl
     }
 
     return serverUrl.flatMap { URL(string: $0) }
@@ -80,6 +192,17 @@ func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
                 try? fm.removeItem(at: localUrl)
             }
         }
+    }
+
+    // 1. If serverUrl is already a valid absolute HTTP(S) URL, return it
+    if let sUrl = serverUrl, let url = URL(string: sUrl), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+        return url
+    }
+
+    // 2. Fallback: dynamically generate the active Navidrome portrait URL
+    let liveUrlStr = NavidromeClient.buildCoverArtUrl(id: resolvedId)
+    if let liveUrl = URL(string: liveUrlStr), let scheme = liveUrl.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+        return liveUrl
     }
 
     return serverUrl.flatMap { URL(string: $0) }
@@ -139,7 +262,7 @@ struct Artist: Identifiable, Codable, Sendable {
         }
         var list: [String] = []
         var temp = trimmed
-        let textDelimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
+        let textDelimiters = [" • ", "•", " feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
         for delim in textDelimiters {
             temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
         }
@@ -172,7 +295,7 @@ struct Album: Identifiable, Codable, Sendable {
     var coverArt: String?
     var created: String?
 
-    var coverArtUrl: URL? { resolveCoverArtUrl(id: coverArt ?? id, serverUrl: coverArt) }
+    var coverArtUrl: URL? { resolveCoverArtUrl(id: coverArt ?? id, serverUrl: coverArt, albumId: id) }
 }
 
 struct Track: Identifiable, Codable, Equatable, Sendable {
@@ -193,7 +316,7 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
 
     var coverArtUrl: URL? {
         let artId = coverArt ?? albumId ?? id.components(separatedBy: ".").first ?? id
-        return resolveCoverArtUrl(id: artId, serverUrl: coverArt)
+        return resolveCoverArtUrl(id: artId, serverUrl: coverArt, albumId: albumId, trackId: id)
     }
 
     var durationFormatted: String {
@@ -212,7 +335,7 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
         }
         var list: [String] = []
         var temp = trimmed
-        let textDelimiters = [" feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
+        let textDelimiters = [" • ", "•", " feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
         for delim in textDelimiters {
             temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
         }

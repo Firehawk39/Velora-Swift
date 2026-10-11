@@ -178,7 +178,10 @@ final class IntegrityManager: ObservableObject {
     struct LibraryAuditStats {
         let totalLibraryTracks: Int
         let offlineTracks: Int
+        let totalAlbums: Int
+        let totalArtists: Int
         let cachedCoverArt: Int
+        let unlistedCoverArt: Int
         let cachedPortraits: Int
         let unlistedPortraits: Int
         let cachedBackdrops: Int
@@ -191,7 +194,7 @@ final class IntegrityManager: ObservableObject {
         let availableStorageGB: String
 
         var isOfflineReady: Bool {
-            totalLibraryTracks > 0 && offlineTracks >= totalLibraryTracks
+            totalLibraryTracks > 0 && offlineTracks >= totalLibraryTracks && (cachedCoverArt + unlistedCoverArt) >= totalAlbums
         }
     }
 
@@ -199,6 +202,10 @@ final class IntegrityManager: ObservableObject {
         let fm = FileManager.default
         let storage = getStorageInfo()
         let offlineTracksCount = downloadedIds.count
+
+        let allTracks = await DatabaseManager.shared.getAllTracks()
+        let totalAlbumsCount = LibraryDataCache.shared.synthesizeAlbums(from: allTracks).count
+        let totalArtistsCount = LibraryDataCache.shared.synthesizeArtists(from: allTracks).count
 
         // Count Cover Art
         let coverCount = (try? fm.contentsOfDirectory(at: VeloraStorage.coverArt, includingPropertiesForKeys: [.fileSizeKey]))?.filter {
@@ -254,6 +261,7 @@ final class IntegrityManager: ObservableObject {
         }
 
         // Merge with AssetRegistry records
+        let unlistedCoverArtCount = AssetRegistry.shared.unavailableCoverArtCount
         unlistedPortraitsCount = max(unlistedPortraitsCount, AssetRegistry.shared.unavailablePortraitsCount)
         if FanartManager.shared.isFanartConfigured {
             unlistedBackdropsCount = max(unlistedBackdropsCount, AssetRegistry.shared.unavailableBackdropsCount)
@@ -267,7 +275,10 @@ final class IntegrityManager: ObservableObject {
         return LibraryAuditStats(
             totalLibraryTracks: totalTracks,
             offlineTracks: offlineTracksCount,
+            totalAlbums: totalAlbumsCount,
+            totalArtists: totalArtistsCount,
             cachedCoverArt: coverCount,
+            unlistedCoverArt: unlistedCoverArtCount,
             cachedPortraits: portraitCount,
             unlistedPortraits: unlistedPortraitsCount,
             cachedBackdrops: backdropCount,

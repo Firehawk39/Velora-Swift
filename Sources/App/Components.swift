@@ -838,8 +838,20 @@ struct LowThresholdRefreshControl: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
+        // Guard: only do the one-time setup once. Repeated async dispatches on every
+        // SwiftUI re-render (driven by SyncManager progress updates) would constantly
+        // poke beginRefreshing/endRefreshing and interrupt the scroll view's momentum.
+        if context.coordinator.scrollView != nil {
+            let rc = context.coordinator.scrollView?.refreshControl
+            let currently = rc?.isRefreshing ?? false
+            if isRefreshing, !currently { rc?.beginRefreshing() }
+            else if !isRefreshing, currently { rc?.endRefreshing() }
+            return
+        }
+
         DispatchQueue.main.async {
             guard let sv = uiView.firstScrollViewParent() else { return }
+            context.coordinator.scrollView = sv
             if sv.refreshControl == nil {
                 let rc = UIRefreshControl()
                 rc.addTarget(context.coordinator,
@@ -857,6 +869,7 @@ struct LowThresholdRefreshControl: UIViewRepresentable {
 
     class Coordinator: NSObject {
         var parent: LowThresholdRefreshControl
+        weak var scrollView: UIScrollView?
         init(_ p: LowThresholdRefreshControl) { parent = p }
         @MainActor @objc func handleRefresh() {
             parent.isRefreshing = true

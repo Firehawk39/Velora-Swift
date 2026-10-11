@@ -25,6 +25,8 @@ final class AssetRegistry {
         var unavailableArtists: Set<String> = []
         /// Album keys (artist_album) verified not to have MusicBrainz album data
         var unavailableAlbums: Set<String> = []
+        /// Cover art IDs verified unavailable on Navidrome server
+        var unavailableCoverArts: Set<String> = []
     }
 
     private var data = RegistryData()
@@ -116,11 +118,23 @@ final class AssetRegistry {
         save()
     }
 
+    // MARK: - Cover Art
+    func isCoverArtUnavailable(id: String) -> Bool {
+        data.unavailableCoverArts.contains(id)
+    }
+
+    func markCoverArtUnavailable(id: String) {
+        data.unavailableCoverArts.insert(id)
+        isDirty = true
+        save()
+    }
+
     // MARK: - Counts
     var unavailableBackdropsCount: Int { data.unavailableBackdrops.count }
     var unavailableLogosCount: Int { data.unavailableLogos.count }
     var unavailableLyricsCount: Int { data.unavailableLyrics.count }
     var unavailablePortraitsCount: Int { data.unavailablePortraits.count }
+    var unavailableCoverArtCount: Int { data.unavailableCoverArts.count }
 
     // MARK: - Deep Reset
     /// Wipes all negative caches so the user can force a 100% deep re-scan if desired
@@ -131,6 +145,7 @@ final class AssetRegistry {
         data.unavailablePortraits.removeAll()
         data.unavailableArtists.removeAll()
         data.unavailableAlbums.removeAll()
+        data.unavailableCoverArts.removeAll()
         isDirty = true
         save()
     }

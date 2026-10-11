@@ -165,7 +165,7 @@ final class SyncManager: ObservableObject {
                 let rawArtId = album.coverArt ?? album.id
                 let cleanArtId = extractArtId(from: rawArtId)
                 let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                let hasCover = isValidImageFile(at: localArtUrl)
+                let hasCover = isValidImageFile(at: localArtUrl) || AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId)
                 let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
                 if !(hasCover && hasMeta) {
                     initialMissingAlbums.append(album)
@@ -213,7 +213,7 @@ final class SyncManager: ObservableObject {
                     let rawArtId = album.coverArt ?? album.id
                     let cleanArtId = extractArtId(from: rawArtId)
                     let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                    let hasCover = isValidImageFile(at: localArtUrl)
+                    let hasCover = isValidImageFile(at: localArtUrl) || AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId)
                     let hasMeta = mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) || AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey)
                     if !(hasCover && hasMeta) {
                         missingAlbumsThisPass.append(album)
@@ -245,8 +245,8 @@ final class SyncManager: ObservableObject {
                                 let mb = await MusicBrainzManager.shared
                                 let fa = await FanartManager.shared
                                 let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artist.id).jpg")
-                                let hasLocalPortrait = FileManager.default.fileExists(atPath: localPortraitUrl.path)
-                                let hasArtist = await mb.hasArtistMetadata(for: artist.primaryName)
+                                let hasLocalPortrait = isValidImageFile(at: localPortraitUrl) || AssetRegistry.shared.isPortraitUnavailable(artistId: artist.id)
+                                let hasArtist = await (mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
                                 let hasBackdrop = await (fa.isFanartConfigured ? fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id) : true)
                                 let hasClearLogo = await (fa.isFanartConfigured ? fa.hasCheckedClearLogo(for: artist.primaryName) : true)
                                 if !(hasArtist && hasBackdrop && hasClearLogo && hasLocalPortrait) {
@@ -309,8 +309,24 @@ final class SyncManager: ObservableObject {
                                 let rawArtId = album.coverArt ?? album.id
                                 let cleanArtId = extractArtId(from: rawArtId)
                                 let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                                if !isValidImageFile(at: localArtUrl) {
-                                    await client.downloadCoverArt(id: cleanArtId)
+                                if !isValidImageFile(at: localArtUrl) && !AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId) {
+                                    _ = await client.downloadCoverArtAsync(id: cleanArtId)
+                                    let cleanAlbumId = extractArtId(from: album.id)
+                                    if cleanAlbumId != cleanArtId {
+                                        let albumArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanAlbumId).jpg")
+                                        if !isValidImageFile(at: albumArtUrl) {
+                                            _ = await client.downloadCoverArtAsync(id: cleanAlbumId)
+                                        }
+                                    }
+                                    // Fallback: extract embedded artwork directly from any downloaded track of this album
+                                    if !isValidImageFile(at: localArtUrl) {
+                                        let albumTracks = await DatabaseManager.shared.getAllTracks().filter { $0.albumId == album.id || $0.album == album.name }
+                                        for t in albumTracks {
+                                            if extractEmbeddedArtwork(for: t.id, albumId: album.id, artId: cleanArtId) != nil {
+                                                break
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -338,12 +354,26 @@ final class SyncManager: ObservableObject {
                 if !mb.hasArtistMetadata(for: artist.primaryName) {
                     AssetRegistry.shared.markArtistUnavailable(artistName: artist.primaryName)
                 }
+                if fa.isFanartConfigured && !fa.hasBackdrop(for: artist.primaryName, artistId: artist.id) {
+                    let key = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
+                    AssetRegistry.shared.markBackdropUnavailable(key: key)
+                }
+                if fa.isFanartConfigured && !fa.hasClearLogo(for: artist.primaryName) {
+                    let key = "logo_" + fa.sanitizeFileName(artist.primaryName)
+                    AssetRegistry.shared.markLogoUnavailable(key: key)
+                }
             }
             for album in missingAlbums {
                 let artistName = album.artist ?? "Unknown Artist"
                 let albumKey = "\(artistName)_\(album.name)"
                 if !mb.hasAlbumMetadata(albumName: album.name, artistName: artistName) {
                     AssetRegistry.shared.markAlbumUnavailable(albumKey: albumKey)
+                }
+                let rawArtId = album.coverArt ?? album.id
+                let cleanArtId = extractArtId(from: rawArtId)
+                let localArtUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+                if !isValidImageFile(at: localArtUrl) {
+                    AssetRegistry.shared.markCoverArtUnavailable(id: cleanArtId)
                 }
             }
 
