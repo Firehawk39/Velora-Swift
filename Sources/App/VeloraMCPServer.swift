@@ -480,10 +480,10 @@ final class VeloraMCPServer: ObservableObject {
                 pm?.togglePlayPause()
                 return "Playback toggled. isPlaying: \(pm?.isPlaying ?? false)"
             case "next":
-                pm?.nextTrack()
+                pm?.skipForward()
                 return "Skipped to next track"
             case "previous":
-                pm?.previousTrack()
+                pm?.skipBackward()
                 return "Returned to previous track"
             default:
                 return "Unknown playback action: \(action)"
@@ -595,10 +595,10 @@ final class VeloraMCPServer: ObservableObject {
             }
             return "Playback paused."
         } else if p.contains("next") || p.contains("skip") {
-            PlaybackManager.shared?.nextTrack()
+            PlaybackManager.shared?.skipForward()
             return "Skipped to next track."
         } else if p.contains("previous") || p.contains("back") {
-            PlaybackManager.shared?.previousTrack()
+            PlaybackManager.shared?.skipBackward()
             return "Returned to previous track."
         } else if p.contains("heal") || p.contains("fix") || p.contains("repair") || p.contains("cache") {
             FanartManager.shared.wipeNegativeFanartCaches()
