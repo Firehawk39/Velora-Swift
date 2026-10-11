@@ -11,6 +11,15 @@
         "NAVIDROME_USERNAME": "Harsh",
         "NAVIDROME_PASSWORD": "123"
       }
+    },
+    "velora": {
+      "command": "node",
+      "args": [
+        "velora_mcp_bridge.js"
+      ],
+      "env": {
+        "VELORA_URL": "http://192.168.1.6:8765/mcp"
+      }
     }
   }
 }

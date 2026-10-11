@@ -138,9 +138,8 @@ final class SyncManager: ObservableObject {
             let mb = MusicBrainzManager.shared
             let activeCores = ProcessInfo.processInfo.activeProcessorCount
             let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
-            // Cap metadata worker batch size to 12 on battery, or 48 when plugged in / charging.
-            let isCharging = DevicePowerMonitor.isPluggedInOrCharging
-            let maxConcurrent = isCharging ? 48 : 12
+            // Full unthrottled metadata worker batch size (64). External rate limits are governed by CircuitBreaker.
+            let maxConcurrent = 64
             let startTime = Date()
 
             // Pre-flight check: determine what's truly missing
@@ -360,10 +359,6 @@ final class SyncManager: ObservableObject {
                     }
                 }
 
-                // Brief pause before re-scanning on battery to allow disk writes to flush (skipped when charging)
-                if isSyncingMetadata && !DevicePowerMonitor.isPluggedInOrCharging {
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                }
 
             } while isSyncingMetadata && passCount < 5
             // Cap at 5 passes — if something still fails after that, it's a permanent API gap.
@@ -436,8 +431,8 @@ final class SyncManager: ObservableObject {
             }
 
             let lyricsDir = VeloraStorage.lyrics
-            let isCharging = DevicePowerMonitor.isPluggedInOrCharging
-            let maxConcurrent = isCharging ? 24 : 4
+            // Unthrottled lyrics concurrency pool (24). LRCLIB rate limits are governed by CircuitBreaker.
+            let maxConcurrent = 24
             let totalTasks = Double(tracks.count)
             let startTime = Date()
 
@@ -471,12 +466,6 @@ final class SyncManager: ObservableObject {
                     ? "Syncing Lyrics: \(attemptedSoFar)/\(missingSongs.count) songs"
                     : "Retrying \(missingSongs.count) songs (pass \(passCount))"
 
-                // Exponential back-off between passes: 0, 5s, 10s, 20s, 40s (skipped when charging)
-                if passCount > 1 && !DevicePowerMonitor.isPluggedInOrCharging {
-                    let backoffSeconds = UInt64(5 * (1 << (passCount - 2)))
-                    lyricsStatus = "Rate limited — waiting \(backoffSeconds)s before retry..."
-                    try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
-                }
 
                 // Continuous bounded task group (Worker Pool Pattern)
                 // Keeps exactly `maxConcurrent` tasks in flight at all times without batch stalls.
@@ -956,21 +945,13 @@ final class SyncManager: ObservableObject {
                 var lyricsFixed = 0
                 lyricsFailed = 0
 
-                // Concurrency: 25 with 0ms stagger when charging; 5 with 300ms stagger on battery
-                let isCharging = DevicePowerMonitor.isPluggedInOrCharging
-                let lyricsBatchSize = isCharging ? 25 : 5
-                let lyricsStaggerNs: UInt64 = isCharging ? 0 : 300_000_000
+                // Concurrency: 25 with 0ms stagger — zero artificial battery throttling
+                let lyricsBatchSize = 25
+                let lyricsStaggerNs: UInt64 = 0
 
                 while !pendingLyrics.isEmpty && isRepairing && lyricPassCount < 5 {
                     lyricPassCount += 1
                     var stillFailing: [(id: String, artist: String, title: String, duration: Double)] = []
-
-                    if lyricPassCount > 1 && !DevicePowerMonitor.isPluggedInOrCharging {
-                        let backoffSeconds = UInt64(5 * (1 << (lyricPassCount - 2)))
-                        repairStatus = "Rate limited — waiting \(backoffSeconds)s before retry (pass \(lyricPassCount))..."
-                        AppLogger.shared.log("[RepairSync] Lyrics rate limited. Waiting \(backoffSeconds)s before pass \(lyricPassCount).", level: .warning)
-                        try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
-                    }
 
                     var startIndex = 0
                     while startIndex < pendingLyrics.count && isRepairing {

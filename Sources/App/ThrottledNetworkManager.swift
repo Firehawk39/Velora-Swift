@@ -123,21 +123,8 @@ private class DomainThrottler: @unchecked Sendable {
         self.host = host
         self.minInterval = minInterval
         self.isLocal = isLocal
-        self.defaultMaxConcurrency = isLocal ? 64 : maxConcurrency
-        let isCharging = DevicePowerMonitor.isPluggedInOrCharging
-        self.queue.maxConcurrentOperationCount = isLocal ? 64 : (isCharging ? 16 : maxConcurrency)
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(powerStateChanged),
-            name: .devicePowerStateDidChange,
-            object: nil
-        )
-    }
-
-    @objc private func powerStateChanged(_ notification: Notification) {
-        let isCharging = (notification.userInfo?["isCharging"] as? Bool) ?? DevicePowerMonitor.isPluggedInOrCharging
-        queue.maxConcurrentOperationCount = isLocal ? 64 : (isCharging ? 16 : defaultMaxConcurrency)
+        self.defaultMaxConcurrency = isLocal ? 64 : 16
+        self.queue.maxConcurrentOperationCount = isLocal ? 64 : 16
     }
 
     func addOperation(_ op: Operation) {
@@ -145,18 +132,9 @@ private class DomainThrottler: @unchecked Sendable {
     }
 
     func waitForSlot() -> Bool {
-        if isLocal || DevicePowerMonitor.isPluggedInOrCharging {
-            // Charging or Local: ZERO THROTTLING!
-            // Requests proceed at maximum line speed without artificial delay.
-            if isCircuitOpen {
-                lock.lock()
-                defer { lock.unlock() }
-                let now = Date()
-                if now < circuitResumeTime {
-                    return false
-                }
-                isCircuitOpen = false
-            }
+        if isLocal {
+            // Local Navidrome server: ZERO THROTTLING!
+            // Requests proceed at maximum line speed without delay.
             return true
         }
 

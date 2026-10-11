@@ -562,14 +562,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             let track = queue[i]
             let primaryArtist = track.primaryArtist
             guard !primaryArtist.isEmpty else { continue }
-            let isCharging = DevicePowerMonitor.isPluggedInOrCharging
-            let delay = isCharging ? 0.0 : (Double(i - start) * 1.5)
 
             Task {
-                if delay > 0 {
-                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                }
-
                 // 1. Prefetch Backdrop Silently
                 await FanartManager.shared.downloadBackdropSilently(for: track.allArtists, artistId: track.artistId)
 
