@@ -631,7 +631,8 @@ final class FanartManager: ObservableObject {
                     }
                 }
 
-                let query: @MainActor @Sendable (String) -> Void = { resolvedMBID in
+                let query: @MainActor @Sendable (String) -> Void = { [weak self] resolvedMBID in
+                    guard let self = self else { continuation.resume(returning: false); return }
                     guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
                         fetchTadbFallback(resolvedMBID)
                         return
@@ -804,7 +805,7 @@ final class FanartManager: ObservableObject {
             }
         }
 
-        resolveOrFetchMBID(for: primary, providedMbid: mbid, priority: URLSessionTask.highPriority) { [weak self] resolvedMbid in
+        self.resolveOrFetchMBID(for: primary, providedMbid: mbid, priority: URLSessionTask.highPriority) { [weak self] resolvedMbid in
             guard let self = self else { return }
             if let apiKey = self.fanartApiKey, !apiKey.isEmpty, let validMbid = resolvedMbid, !validMbid.isEmpty {
                 let urlString = "https://webservice.fanart.tv/v3/music/\(validMbid)?api_key=\(apiKey)"
@@ -846,7 +847,14 @@ final class FanartManager: ObservableObject {
             let nextIndex = (currentIndex + 1) % pool.count
             self.clearLogoCycleIndices[primaryArtist] = nextIndex
             let nextUrl = pool[nextIndex]
-            let effectiveMbid = mbid ?? self.mbidCache[primaryArtist] ?? (try? String(contentsOf: self.clearLogoDir.appendingPathComponent("logo_\(sanitizeFileName(primaryArtist)).mbid"), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines))
+            var effectiveMbid = mbid ?? self.mbidCache[primaryArtist]
+            if effectiveMbid == nil {
+                let sidecarUrl = self.clearLogoDir.appendingPathComponent("logo_\(sanitizeFileName(primaryArtist)).mbid")
+                if let content = try? String(contentsOf: sidecarUrl, encoding: .utf8) {
+                    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty { effectiveMbid = trimmed }
+                }
+            }
             AppLogger.shared.log("[ClearLogo] Cycling to variant \(nextIndex + 1)/\(pool.count) for \(primaryArtist)")
             self.downloadClearLogoFile(from: nextUrl, to: destFileUrl, artist: primaryArtist, cacheKey: primaryKey, artistId: artistId, usedMbid: effectiveMbid) {
                 completion()
@@ -855,7 +863,7 @@ final class FanartManager: ObservableObject {
         }
 
         // 2. Pool not populated yet: Query Fanart and TheAudioDB to populate pool
-        resolveOrFetchMBID(for: primaryArtist, providedMbid: mbid, priority: URLSessionTask.highPriority) { [weak self] resolvedMbid in
+        self.resolveOrFetchMBID(for: primaryArtist, providedMbid: mbid, priority: URLSessionTask.highPriority) { [weak self] resolvedMbid in
             guard let self = self else { completion(); return }
 
             let cycleWithDiscoveredPool: @MainActor @Sendable () -> Void = {
@@ -1354,6 +1362,50 @@ final class FanartManager: ObservableObject {
         return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
             .components(separatedBy: .whitespaces).joined(separator: "_")
             .lowercased()
+    }
+
+    /// Resolves an MBID with memory cache and on-disk sidecar fallbacks before initiating a network search.
+    func resolveOrFetchMBID(
+        for artist: String,
+        providedMbid: String? = nil,
+        priority: Float = URLSessionTask.defaultPriority,
+        completion: @escaping @MainActor @Sendable (String?) -> Void
+    ) {
+        let primary = extractPrimaryArtist(artist)
+        if let valid = providedMbid, !valid.isEmpty {
+            self.mbidCache[primary] = valid
+            completion(valid)
+            return
+        }
+        if let cached = self.mbidCache[primary], !cached.isEmpty {
+            completion(cached)
+            return
+        }
+        let backdropSidecar = self.backdropDir.appendingPathComponent(getCacheKey(artistName: primary) + ".mbid")
+        if let data = try? Data(contentsOf: backdropSidecar),
+           let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !cachedMbid.isEmpty {
+            self.mbidCache[primary] = cachedMbid
+            completion(cachedMbid)
+            return
+        }
+        let logoSidecar = self.clearLogoDir.appendingPathComponent("logo_" + sanitizeFileName(primary) + ".mbid")
+        if let data = try? Data(contentsOf: logoSidecar),
+           let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !cachedMbid.isEmpty {
+            self.mbidCache[primary] = cachedMbid
+            completion(cachedMbid)
+            return
+        }
+        self.getMBIDSafe(for: primary, priority: priority) { [weak self] result in
+            switch result {
+            case .found(let mbid):
+                self?.mbidCache[primary] = mbid
+                completion(mbid)
+            case .notFound, .networkError:
+                completion(nil)
+            }
+        }
     }
 
     /// Legacy convenience wrapper — used by fetchClearLogo/fetchArtistPortrait UI paths
