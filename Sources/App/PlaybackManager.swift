@@ -176,8 +176,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             configuration.sessionSendsLaunchEvents = true
         }
 
-        // Adaptive socket limits per host
-        configuration.httpMaximumConnectionsPerHost = 32
+        // Maximum concurrent streams to host
+        configuration.httpMaximumConnectionsPerHost = 64
         configuration.timeoutIntervalForRequest = 45
         configuration.timeoutIntervalForResource = 3600
         configuration.allowsCellularAccess = true
@@ -186,7 +186,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         let sessionQueue = OperationQueue()
         sessionQueue.name = "com.velora.downloadSessionQueue"
-        sessionQueue.maxConcurrentOperationCount = 8
+        sessionQueue.maxConcurrentOperationCount = 16
         sessionQueue.qualityOfService = .userInitiated
 
         let newSession = URLSession(configuration: configuration, delegate: self, delegateQueue: sessionQueue)
@@ -203,10 +203,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     private func updateAdaptiveConcurrency() {
-        if DevicePowerMonitor.isPluggedInOrCharging {
-            maxConcurrentDownloads = 64
+        if ProcessInfo.processInfo.isLowPowerModeEnabled {
+            maxConcurrentDownloads = 16
+            AppLogger.shared.log("🔋 [Power] iOS Low Power Mode active — scaling downloads to 16 streams", level: .info)
         } else {
-            maxConcurrentDownloads = 32
+            maxConcurrentDownloads = 64
         }
     }
 
@@ -231,7 +232,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         // Listen for app termination to clear now playing info
         NotificationCenter.default.addObserver(self, selector: #selector(handleTerminate), name: UIApplication.willTerminateNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(handlePowerStateChanged), name: .devicePowerStateDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handlePowerStateChanged), name: Notification.Name.NSProcessInfoPowerStateDidChange, object: nil)
     }
 
     @objc private func handlePowerStateChanged() {
