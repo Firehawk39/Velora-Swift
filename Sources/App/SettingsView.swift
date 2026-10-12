@@ -1003,9 +1003,9 @@ struct AppSettingsView: View {
                             }
                         }
 
-                        // AI Engine & MCP Powerhouse Section
+                        // MCP Server Section
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("AI Engine & MCP Powerhouse")
+                            Text("MCP Powerhouse")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(labelCol)
                                 .textCase(.uppercase)
@@ -1017,10 +1017,10 @@ struct AppSettingsView: View {
                                         .font(.system(size: 20))
                                         .foregroundColor(.purple)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Local MCP Server")
+                                        Text("MCP Server")
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(isDark ? .white : .black)
-                                        Text("Model Context Protocol for Antigravity & AI Engine")
+                                        Text("Model Context Protocol")
                                             .font(.system(size: 12))
                                             .foregroundColor(.gray)
                                     }
@@ -1038,13 +1038,13 @@ struct AppSettingsView: View {
                                         Text("Endpoint:")
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundColor(.gray)
-                                        Text("http://\(ip):\(mcpServer.serverPort)/mcp")
+                                        Text(verbatim: "http://\(ip):\(String(mcpServer.serverPort))/mcp")
                                             .font(.system(size: 12, design: .monospaced))
                                             .foregroundColor(isDark ? .white : .black)
                                             .lineLimit(1)
                                         Spacer()
                                         Button(action: {
-                                            UIPasteboard.general.string = "http://\(ip):\(mcpServer.serverPort)/mcp"
+                                            UIPasteboard.general.string = "http://\(ip):\(String(mcpServer.serverPort))/mcp"
                                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                         }) {
                                             Image(systemName: "doc.on.doc")
