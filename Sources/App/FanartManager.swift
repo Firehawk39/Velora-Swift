@@ -892,13 +892,13 @@ final class FanartManager: ObservableObject {
                 self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: primaryArtist, randomize: false, priority: URLSessionTask.highPriority) { [weak self] _, _ in
                     guard let self = self else { completion(); return }
                     self.fetchFromTheAudioDB(artistName: primaryArtist, mbid: validMbid, priority: URLSessionTask.highPriority) { [weak self] _ in
-                        guard let self = self else { completion(); return }
+                        guard self != nil else { completion(); return }
                         cycleWithDiscoveredPool()
                     }
                 }
             } else {
                 self.fetchFromTheAudioDB(artistName: primaryArtist, mbid: resolvedMbid, priority: URLSessionTask.highPriority) { [weak self] _ in
-                    guard let self = self else { completion(); return }
+                    guard self != nil else { completion(); return }
                     cycleWithDiscoveredPool()
                 }
             }
@@ -1242,43 +1242,38 @@ final class FanartManager: ObservableObject {
                     } else if type == .clearlogo {
                         let hdUrls  = (json["hdmusiclogo"]  as? [[String: Any]])?.compactMap { $0["url"] as? String } ?? []
                         let sdUrls  = (json["musiclogo"]    as? [[String: Any]])?.compactMap { $0["url"] as? String } ?? []
-                        var allUrls: [String] = []
+                        var collectedUrls: [String] = []
                         for u in (hdUrls + sdUrls) {
                             let trimmed = u.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !trimmed.isEmpty && !allUrls.contains(trimmed) {
-                                allUrls.append(trimmed)
+                            if !trimmed.isEmpty && !collectedUrls.contains(trimmed) {
+                                collectedUrls.append(trimmed)
                             }
                         }
 
-                        Task { @MainActor in
-                            if !allUrls.isEmpty {
-                                var pool = FanartManager.shared.clearLogoUrlsByArtist[artistName] ?? []
-                                for u in allUrls {
-                                    if !pool.contains(u) { pool.append(u) }
-                                }
-                                FanartManager.shared.clearLogoUrlsByArtist[artistName] = pool
-                            }
-                        }
-
-                        if allUrls.isEmpty {
+                        if collectedUrls.isEmpty {
                             DispatchQueue.main.async { completion(nil, true) }
                             return
                         }
 
-                        if randomize && allUrls.count > 1 {
-                            Task { @MainActor in
-                                let current = FanartManager.shared.clearLogoCycleIndices[artistName] ?? 0
-                                let nextIndex = (current + 1) % allUrls.count
-                                FanartManager.shared.clearLogoCycleIndices[artistName] = nextIndex
-                                let selected = allUrls[nextIndex]
-                                AppLogger.shared.log("[Fanart] Cycled clearlogo for \(artistName) to variant \(nextIndex + 1)/\(allUrls.count)")
-                                completion(selected, false)
+                        let finalUrls = collectedUrls
+                        Task { @MainActor in
+                            var pool = FanartManager.shared.clearLogoUrlsByArtist[artistName] ?? []
+                            for u in finalUrls {
+                                if !pool.contains(u) { pool.append(u) }
                             }
-                            return
-                        }
+                            FanartManager.shared.clearLogoUrlsByArtist[artistName] = pool
 
-                        let selected = allUrls.first
-                        DispatchQueue.main.async { completion(selected, false) }
+                            if randomize && finalUrls.count > 1 {
+                                let current = FanartManager.shared.clearLogoCycleIndices[artistName] ?? 0
+                                let nextIndex = (current + 1) % finalUrls.count
+                                FanartManager.shared.clearLogoCycleIndices[artistName] = nextIndex
+                                let selected = finalUrls[nextIndex]
+                                AppLogger.shared.log("[Fanart] Cycled clearlogo for \(artistName) to variant \(nextIndex + 1)/\(finalUrls.count)")
+                                completion(selected, false)
+                            } else {
+                                completion(finalUrls.first, false)
+                            }
+                        }
                         return
                     } else {
                         if let thumbs = json["artistthumb"] as? [[String: Any]],
