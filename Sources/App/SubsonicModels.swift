@@ -154,7 +154,7 @@ struct SearchResult3: Codable {
     let song: [SubsonicSong]?
 }
 
-struct SubsonicArtistInfo: Codable {
+struct SubsonicArtistInfo: Codable, Sendable {
     let biography: String?
     let musicBrainzId: String?
     let lastFmUrl: String?

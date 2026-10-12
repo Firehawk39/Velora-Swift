@@ -345,6 +345,23 @@ struct Artist: Identifiable, Codable, Sendable {
     var albumCount: Int?
     var coverArt: String?
     var created: String?
+    var musicBrainzId: String?
+
+    init(
+        id: String,
+        name: String,
+        albumCount: Int? = nil,
+        coverArt: String? = nil,
+        created: String? = nil,
+        musicBrainzId: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.albumCount = albumCount
+        self.coverArt = coverArt
+        self.created = created
+        self.musicBrainzId = musicBrainzId
+    }
 
     // Convenience computed URL
     var coverArtUrl: URL? { resolveArtistPortraitUrl(id: id, serverUrl: coverArt) }

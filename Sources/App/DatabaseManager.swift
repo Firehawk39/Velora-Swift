@@ -50,7 +50,8 @@ actor DatabaseManager {
             playCount INTEGER,
             suffix TEXT,
             track INTEGER,
-            discNumber INTEGER
+            discNumber INTEGER,
+            musicBrainzId TEXT
         );
         """
 
@@ -65,6 +66,9 @@ actor DatabaseManager {
             os_log("CREATE TABLE statement could not be prepared.", log: logger, type: .error)
         }
         sqlite3_finalize(createTableStatement)
+
+        // Lightweight schema migration for existing databases
+        sqlite3_exec(db, "ALTER TABLE Tracks ADD COLUMN musicBrainzId TEXT;", nil, nil, nil)
     }
 
     func insertOrUpdateTracks(_ tracks: [Track]) {
@@ -73,10 +77,10 @@ actor DatabaseManager {
         sqlite3_exec(db, "BEGIN TRANSACTION", nil, nil, nil)
 
         let insertStatementString = """
-        INSERT INTO Tracks (id, title, album, artist, duration, coverArt, artistId, albumId, created, isStarred, playCount, suffix, track, discNumber)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Tracks (id, title, album, artist, duration, coverArt, artistId, albumId, created, isStarred, playCount, suffix, track, discNumber, musicBrainzId)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-        title=excluded.title, album=excluded.album, artist=excluded.artist, duration=excluded.duration, coverArt=excluded.coverArt, artistId=excluded.artistId, albumId=excluded.albumId, created=excluded.created, isStarred=excluded.isStarred, playCount=excluded.playCount, suffix=excluded.suffix, track=excluded.track, discNumber=excluded.discNumber;
+        title=excluded.title, album=excluded.album, artist=excluded.artist, duration=excluded.duration, coverArt=excluded.coverArt, artistId=excluded.artistId, albumId=excluded.albumId, created=excluded.created, isStarred=excluded.isStarred, playCount=excluded.playCount, suffix=excluded.suffix, track=excluded.track, discNumber=excluded.discNumber, musicBrainzId=excluded.musicBrainzId;
         """
 
         var insertStatement: OpaquePointer?
@@ -99,6 +103,7 @@ actor DatabaseManager {
                 if let suffix = track.suffix { sqlite3_bind_text(insertStatement, 12, (suffix as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 12) }
                 if let trackNum = track.track { sqlite3_bind_int(insertStatement, 13, Int32(trackNum)) } else { sqlite3_bind_null(insertStatement, 13) }
                 if let discNumber = track.discNumber { sqlite3_bind_int(insertStatement, 14, Int32(discNumber)) } else { sqlite3_bind_null(insertStatement, 14) }
+                if let mbid = track.musicBrainzId { sqlite3_bind_text(insertStatement, 15, (mbid as NSString).utf8String, -1, SQLITE_TRANSIENT) } else { sqlite3_bind_null(insertStatement, 15) }
 
                 if sqlite3_step(insertStatement) != SQLITE_DONE {
                     os_log("Could not insert row.", log: self.logger, type: .error)
@@ -316,8 +321,9 @@ actor DatabaseManager {
         let suffix = sqlite3_column_type(statement, 11) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 11)) : nil
         let trackNum = sqlite3_column_type(statement, 12) != SQLITE_NULL ? Int(sqlite3_column_int(statement, 12)) : nil
         let discNumber = sqlite3_column_type(statement, 13) != SQLITE_NULL ? Int(sqlite3_column_int(statement, 13)) : nil
+        let musicBrainzId = sqlite3_column_type(statement, 14) != SQLITE_NULL ? String(cString: sqlite3_column_text(statement, 14)) : nil
 
-        return Track(id: id, title: title, album: album, artist: artist, duration: duration, coverArt: coverArt, artistId: artistId, albumId: albumId, created: created, isStarred: isStarred, playCount: playCount, suffix: suffix, track: trackNum, discNumber: discNumber)
+        return Track(id: id, title: title, album: album, artist: artist, duration: duration, coverArt: coverArt, artistId: artistId, albumId: albumId, created: created, isStarred: isStarred, playCount: playCount, suffix: suffix, track: trackNum, discNumber: discNumber, musicBrainzId: musicBrainzId)
     }
 
 }

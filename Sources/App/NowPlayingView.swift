@@ -999,28 +999,37 @@ struct NowPlayingView: View {
         self.artistBiography = nil
         self.loadArtistPortrait(for: track)
 
-        // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
-        // This prevents the "waiting for Navidrome response" flicker
-        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil, allowNetwork: false)
+        // 1. Immediately trigger backdrop fetch with cached MBID (FanartManager will check cache instantly)
+        let cachedMbid = track.artistId.flatMap { playback.client.getCachedArtistMbid(artistId: $0) }
+        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: cachedMbid, allowNetwork: false)
 
         // 1b. Trigger clearlogo fetch (cache-first, non-blocking)
-        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: nil)
+        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: cachedMbid)
 
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
-            isFetchingArtistInfo = true
-            playback.client.fetchArtistInfo(artistId: artistId) { info in
-                Task { @MainActor in
-                    // Check if we haven't skipped to another track in the meantime
-                    guard self.playback.currentTrack?.id == track.id else { return }
+            if let cachedInfo = playback.client.getCachedArtistInfo(artistId: artistId) {
+                self.artistBiography = cachedInfo.biography
+                self.isFetchingArtistInfo = false
 
-                    self.artistBiography = info?.biography
-                    self.isFetchingArtistInfo = false
+                let artistMbid = (cachedInfo.musicBrainzId?.isEmpty == false ? cachedInfo.musicBrainzId : nil)
+                fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
+                fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
+            } else {
+                isFetchingArtistInfo = true
+                playback.client.fetchArtistInfo(artistId: artistId) { info in
+                    Task { @MainActor in
+                        // Check if we haven't skipped to another track in the meantime
+                        guard self.playback.currentTrack?.id == track.id else { return }
 
-                    // If Navidrome provides the true artist MBID, use it; otherwise nil allows FanartManager to resolve via MusicBrainz
-                    let artistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : nil)
-                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
-                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
+                        self.artistBiography = info?.biography
+                        self.isFetchingArtistInfo = false
+
+                        // If Navidrome provides the true artist MBID, use it; otherwise nil allows FanartManager to resolve via MusicBrainz
+                        let artistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : nil)
+                        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
+                        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
+                    }
                 }
             }
         }

@@ -86,6 +86,12 @@ struct ArtistDetailView: View {
             }
         }
         .onAppear {
+            if self.mbid == nil {
+                self.mbid = client.getCachedArtistMbid(artistId: artistId)
+            }
+            if self.biography == nil, let cachedBio = client.getCachedArtistInfo(artistId: artistId)?.biography {
+                self.biography = cachedBio
+            }
             fetchArtistData()
         }
     }

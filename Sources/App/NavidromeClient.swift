@@ -8,12 +8,34 @@ final class NavidromeClient: ObservableObject {
     @Published var albums: [Album] = []
     @Published var recentlyPlayed: [Track] = []
     @Published var playlists: [Playlist] = []
+    /// Persistent cache of Navidrome-provided artist details (biography, musicBrainzId, etc.) keyed by artistId
+    @Published var artistInfoCache: [String: SubsonicArtistInfo] = [:]
     /// Set when any background fetch fails — the UI can observe this to surface an error banner.
     @Published var fetchError: String? = nil
 
     private var pendingSaveTask: Task<Void, Never>?
+    var inFlightArtistInfoRequests: [String: [@MainActor @Sendable (SubsonicArtistInfo?) -> Void]] = [:]
 
     var recentTracks: [Track] { recentlyPlayed }
+
+    func getCachedArtistInfo(artistId: String) -> SubsonicArtistInfo? {
+        return artistInfoCache[artistId]
+    }
+
+    func getCachedArtistMbid(artistId: String) -> String? {
+        if let mbid = artistInfoCache[artistId]?.musicBrainzId?.trimmingCharacters(in: .whitespacesAndNewlines), !mbid.isEmpty {
+            return mbid
+        }
+        if let mbid = artists.first(where: { $0.id == artistId })?.musicBrainzId?.trimmingCharacters(in: .whitespacesAndNewlines), !mbid.isEmpty {
+            return mbid
+        }
+        return nil
+    }
+
+    func cacheArtistInfo(_ info: SubsonicArtistInfo, for artistId: String) {
+        artistInfoCache[artistId] = info
+        saveOfflineMetadata()
+    }
 
     private(set) var username: String = ""
     private var baseUrl: String = ""
@@ -89,6 +111,9 @@ final class NavidromeClient: ObservableObject {
             let recentUrl = dir.appendingPathComponent("cached_recently_played.json")
             let loadedRecent = (try? Data(contentsOf: recentUrl)).flatMap { try? decoder.decode([Track].self, from: $0) }
 
+            let artistInfoUrl = dir.appendingPathComponent("cached_artist_info.json")
+            let loadedArtistInfo = (try? Data(contentsOf: artistInfoUrl)).flatMap { try? decoder.decode([String: SubsonicArtistInfo].self, from: $0) }
+
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
                 if var artists = loadedArtists {
@@ -116,8 +141,11 @@ final class NavidromeClient: ObservableObject {
                     }
                     self.recentlyPlayed = recent
                 }
+                if let info = loadedArtistInfo {
+                    self.artistInfoCache = info
+                }
 
-                AppLogger.shared.log("[Offline Cache] Loaded metadata asynchronously: \(self.artists.count) artists, \(self.albums.count) albums")
+                AppLogger.shared.log("[Offline Cache] Loaded metadata asynchronously: \(self.artists.count) artists, \(self.albums.count) albums, \(self.artistInfoCache.count) cached artist infos")
             }
         }
     }
@@ -131,6 +159,7 @@ final class NavidromeClient: ObservableObject {
         let copyAlbums = self.albums
         let copyPlaylists = self.playlists
         let copyRecentlyPlayed = self.recentlyPlayed
+        let copyArtistInfo = self.artistInfoCache
 
         pendingSaveTask = Task.detached(priority: .background) {
             // Debounce by 1 second to bundle concurrent network fetch calls
@@ -163,6 +192,11 @@ final class NavidromeClient: ObservableObject {
                 try? data.write(to: recentUrl, options: writeOptions)
             }
 
+            let artistInfoUrl = dir.appendingPathComponent("cached_artist_info.json")
+            if let data = try? encoder.encode(copyArtistInfo) {
+                try? data.write(to: artistInfoUrl, options: writeOptions)
+            }
+
             AppLogger.shared.log("[Offline Cache] Coalesced metadata saved atomically.")
         }
     }
@@ -186,6 +220,7 @@ final class NavidromeClient: ObservableObject {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_albums.json"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_playlists.json"))
         try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_recently_played.json"))
+        try? FileManager.default.removeItem(at: dir.appendingPathComponent("cached_artist_info.json"))
 
         self.baseUrl = ""
         self.username = ""
@@ -196,5 +231,6 @@ final class NavidromeClient: ObservableObject {
         self.albums = []
         self.recentlyPlayed = []
         self.playlists = []
+        self.artistInfoCache = [:]
     }
 }

@@ -302,19 +302,58 @@ extension NavidromeClient {
     }
 
     func fetchArtistInfo(artistId: String, completion: @escaping @MainActor @Sendable (SubsonicArtistInfo?) -> Void) {
-        guard NetworkMonitor.shared.isConnected else { completion(nil); return }
-        guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil); return }
-        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
+        // 1. Instant cache hit from memory or disk (0ms latency)
+        if let cached = getCachedArtistInfo(artistId: artistId) {
+            completion(cached)
+            return
+        }
+
+        // 2. If offline, return nil immediately
+        guard NetworkMonitor.shared.isConnected else {
+            completion(nil)
+            return
+        }
+
+        // 3. Deduplicate in-flight requests for the same artistId
+        if inFlightArtistInfoRequests[artistId] != nil {
+            inFlightArtistInfoRequests[artistId]?.append(completion)
+            return
+        }
+        inFlightArtistInfoRequests[artistId] = [completion]
+
+        guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else {
+            let callbacks = inFlightArtistInfoRequests.removeValue(forKey: artistId) ?? []
+            for cb in callbacks { cb(nil) }
+            return
+        }
+
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, error in
             guard error == nil, let data = data else {
-                Task { @MainActor in completion(nil) }
+                Task { @MainActor [weak self] in
+                    let callbacks = self?.inFlightArtistInfoRequests.removeValue(forKey: artistId) ?? []
+                    for cb in callbacks { cb(nil) }
+                }
                 return
             }
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let info = decoded.subsonicResponse?.artistInfo ?? decoded.subsonicResponse?.artistInfo2
-                Task { @MainActor in completion(info) }
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    if let validInfo = info {
+                        self.cacheArtistInfo(validInfo, for: artistId)
+                        if let idx = self.artists.firstIndex(where: { $0.id == artistId }) {
+                            self.artists[idx].musicBrainzId = validInfo.musicBrainzId
+                        }
+                    }
+                    let callbacks = self.inFlightArtistInfoRequests.removeValue(forKey: artistId) ?? []
+                    for cb in callbacks { cb(info) }
+                }
             } catch {
-                Task { @MainActor in completion(nil) }
+                Task { @MainActor [weak self] in
+                    let callbacks = self?.inFlightArtistInfoRequests.removeValue(forKey: artistId) ?? []
+                    for cb in callbacks { cb(nil) }
+                }
             }
         }
     }
