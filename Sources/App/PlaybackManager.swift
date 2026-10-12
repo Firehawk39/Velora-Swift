@@ -143,35 +143,72 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     var client: NavidromeClient
 
-    private lazy var downloadSession: URLSession = {
-        let serverUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
-        let isLocalNetwork = serverUrl.contains("192.168.") || serverUrl.contains("10.") || serverUrl.contains("172.") || serverUrl.contains(".local") || serverUrl.contains("localhost") || serverUrl.contains("127.0.0.1")
+    private var _downloadSession: URLSession?
+    private var currentSessionIsLocal: Bool? = nil
 
+    private var downloadSession: URLSession {
+        getDownloadSession()
+    }
+
+    private func getDownloadSession() -> URLSession {
+        let serverUrl = UserDefaults.standard.string(forKey: "velora_server_url") ?? ""
+        let isLocal = isLocalNetworkAddress(serverUrl)
+
+        if let session = _downloadSession, currentSessionIsLocal == isLocal {
+            return session
+        }
+
+        if let existing = _downloadSession {
+            existing.finishTasksAndInvalidate()
+        }
+
+        currentSessionIsLocal = isLocal
         let configuration: URLSessionConfiguration
-        if isLocalNetwork {
-            // iOS 15 Background Daemon is blocked from accessing Local Network IPs.
-            // Fall back to a standard foreground session to allow local downloads.
+        if isLocal {
+            // iOS 15+ background daemon strictly blocks local network RFC 1918 / mDNS IPs.
+            // Using default foreground session with connectivity persistence.
             configuration = URLSessionConfiguration.default
             configuration.waitsForConnectivity = true
         } else {
+            // Remote domain / public server: use background daemon to continue across system locks
             configuration = URLSessionConfiguration.background(withIdentifier: "com.velora.downloads")
             configuration.isDiscretionary = false
             configuration.sessionSendsLaunchEvents = true
         }
 
-        // Maximize connections to the host so up to 64 concurrent streams flow with raw power
-        configuration.httpMaximumConnectionsPerHost = 64
-        configuration.timeoutIntervalForRequest = 60
+        // Adaptive socket limits per host
+        configuration.httpMaximumConnectionsPerHost = 32
+        configuration.timeoutIntervalForRequest = 45
         configuration.timeoutIntervalForResource = 3600
         configuration.allowsCellularAccess = true
         configuration.allowsConstrainedNetworkAccess = true
         configuration.allowsExpensiveNetworkAccess = true
+
         let sessionQueue = OperationQueue()
         sessionQueue.name = "com.velora.downloadSessionQueue"
         sessionQueue.maxConcurrentOperationCount = 8
         sessionQueue.qualityOfService = .userInitiated
-        return URLSession(configuration: configuration, delegate: self, delegateQueue: sessionQueue)
-    }()
+
+        let newSession = URLSession(configuration: configuration, delegate: self, delegateQueue: sessionQueue)
+        self._downloadSession = newSession
+        return newSession
+    }
+
+    private func isLocalNetworkAddress(_ rawUrl: String) -> Bool {
+        let s = rawUrl.lowercased()
+        return s.contains("192.168.") || s.contains("10.") || s.contains("172.16.") ||
+               s.contains("172.17.") || s.contains("172.18.") || s.contains("172.19.") ||
+               s.contains("172.2") || s.contains("172.30.") || s.contains("172.31.") ||
+               s.contains(".local") || s.contains("localhost") || s.contains("127.0.0.1")
+    }
+
+    private func updateAdaptiveConcurrency() {
+        if DevicePowerMonitor.isPluggedInOrCharging {
+            maxConcurrentDownloads = 64
+        } else {
+            maxConcurrentDownloads = 32
+        }
+    }
 
     init(client: NavidromeClient) {
         self.client = client
@@ -179,11 +216,16 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         PlaybackManager.shared = self
         configureAudioSession()
         setupRemoteCommandCenter()
+        updateAdaptiveConcurrency()
+        _ = getDownloadSession()
 
         // Bind to IntegrityManager's indexed IDs
         self.downloadedTrackIds = integrityManager.downloadedIds
-        // Use a simple sink or notification to keep it in sync
-        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in }
+
+        // Re-evaluate download session topology whenever server URL changes
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            _ = self?.getDownloadSession()
+        }
 
         loadDownloadedTracks()
 
@@ -193,7 +235,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     @objc private func handlePowerStateChanged() {
-        maxConcurrentDownloads = 64
+        updateAdaptiveConcurrency()
         processQueue()
     }
 
@@ -1199,6 +1241,56 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
+    // MARK: - Audio Container Magic Header Validator
+
+    private static func isValidAudioContainer(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let headerData = try? handle.read(upToCount: 32), headerData.count >= 4 else { return false }
+        let bytes = [UInt8](headerData)
+
+        // 1. MP3 with ID3v2 tag: "ID3" (0x49, 0x44, 0x33)
+        if bytes[0] == 0x49 && bytes[1] == 0x44 && bytes[2] == 0x33 {
+            return true
+        }
+
+        // 2. MP3 raw MPEG frame sync: 11 bits set (0xFF followed by 0xE0 mask)
+        if bytes[0] == 0xFF && (bytes[1] & 0xE0) == 0xE0 {
+            return true
+        }
+
+        // 3. FLAC: "fLaC" (0x66, 0x4C, 0x61, 0x43)
+        if bytes[0] == 0x66 && bytes[1] == 0x4C && bytes[2] == 0x61 && bytes[3] == 0x43 {
+            return true
+        }
+
+        // 4. Ogg (Opus / Vorbis): "OggS" (0x4F, 0x67, 0x67, 0x53)
+        if bytes[0] == 0x4F && bytes[1] == 0x67 && bytes[2] == 0x67 && bytes[3] == 0x53 {
+            return true
+        }
+
+        // 5. M4A / MP4 / AAC / ALAC: Contains "ftyp" within first 16 bytes
+        if headerData.count >= 8 {
+            for i in 0...(headerData.count - 4) {
+                if bytes[i] == 0x66 && bytes[i+1] == 0x74 && bytes[i+2] == 0x79 && bytes[i+3] == 0x70 {
+                    return true
+                }
+            }
+        }
+
+        // 6. WAV: "RIFF" (0x52, 0x49, 0x46, 0x46)
+        if bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 {
+            return true
+        }
+
+        // 7. Matroska / WebM: 0x1A 0x45 0xDF 0xA3
+        if bytes[0] == 0x1A && bytes[1] == 0x45 && bytes[2] == 0xDF && bytes[3] == 0xA3 {
+            return true
+        }
+
+        return false
+    }
+
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let desc = downloadTask.taskDescription, let separatorIdx = desc.firstIndex(of: "|") else { return }
         let trackId = String(desc[..<separatorIdx])
@@ -1208,21 +1300,31 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
 
         do {
-            // Ensure target directory exists before any move/copy operations
+            // 1. Strict HTTP status code verification: reject HTML error pages (404, 500, 502, etc.)
+            if let httpResponse = downloadTask.response as? HTTPURLResponse {
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    throw NSError(domain: "com.velora.download", code: httpResponse.statusCode, userInfo: [
+                        NSLocalizedDescriptionKey: "Server rejected download with HTTP \(httpResponse.statusCode) (\(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)))"
+                    ])
+                }
+            }
+
+            // 2. Ensure target storage directory exists
             if !FileManager.default.fileExists(atPath: downloadsDir.path) {
                 try FileManager.default.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
             }
 
+            // 3. Remove existing file at destination if present
             if FileManager.default.fileExists(atPath: destinationUrl.path) {
                 try FileManager.default.removeItem(at: destinationUrl)
             }
 
-            // Verify temporary file is present before attempting disk I/O
+            // 4. Verify temporary file is present before attempting disk I/O
             guard FileManager.default.fileExists(atPath: location.path) else {
                 throw NSError(domain: "com.velora.download", code: 404, userInfo: [NSLocalizedDescriptionKey: "Temporary file at \(location.lastPathComponent) was unlinked or purged by OS before delegate execution."])
             }
 
-            // APFS Fast Move First: instantaneous 0ms inode link across sandbox
+            // 5. APFS Fast Move First: instantaneous 0ms inode link across sandbox
             do {
                 try FileManager.default.moveItem(at: location, to: destinationUrl)
             } catch {
@@ -1240,9 +1342,12 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             let fileSize = attributes[.size] as? Int64 ?? 0
             Self.clearProgressThrottle(for: trackId)
 
+            // 6. Magic byte audio container inspection
+            let hasValidHeader = Self.isValidAudioContainer(at: destinationUrl)
+
             Task { @MainActor in
-                if fileSize < 1024 {
-                     AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is corrupted. Retrying.", level: .error)
+                if fileSize < 1024 || !hasValidHeader {
+                     AppLogger.shared.log("FAILURE: Downloaded file for \(trackId) is invalid audio stream (size: \(fileSize)B, validHeader: \(hasValidHeader)). Retrying.", level: .error)
                      try? FileManager.default.removeItem(at: destinationUrl)
                      let retries = self.downloadRetryCount[trackId, default: 0]
                      if retries < self.maxRetries {
