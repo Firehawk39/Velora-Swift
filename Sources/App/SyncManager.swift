@@ -823,14 +823,13 @@ final class SyncManager: ObservableObject {
                     missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
                 }
 
-                // 4. Check Backdrops & Clear Logos (Fanart.tv & TheAudioDB fallback)
+                // 4. Check Backdrops & Clear Logos (Fanart.tv exclusively for backdrops)
                 let artistName = track.primaryArtist
-                let trackMbid = track.musicBrainzId
-                if !fa.hasBackdrop(for: artistName, artistId: track.artistId, mbid: trackMbid) {
-                    missingBackdrops.insert(BackdropRepairItem(artists: track.allArtists, artistId: track.artistId, mbid: trackMbid))
+                if !fa.hasBackdrop(for: artistName, artistId: track.artistId, mbid: nil) {
+                    missingBackdrops.insert(BackdropRepairItem(artists: track.allArtists, artistId: track.artistId, mbid: nil))
                 }
-                if !fa.hasClearLogo(for: artistName, artistId: track.artistId, mbid: trackMbid) {
-                    missingLogos.insert(ClearLogoRepairItem(artists: track.allArtists, artistId: track.artistId, mbid: trackMbid))
+                if !fa.hasClearLogo(for: artistName, artistId: track.artistId, mbid: nil) {
+                    missingLogos.insert(ClearLogoRepairItem(artists: track.allArtists, artistId: track.artistId, mbid: nil))
                 }
 
                 if index % 50 == 0 { await Task.yield() }

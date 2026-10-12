@@ -365,23 +365,8 @@ final class FanartManager: ObservableObject {
         let doCycle: (String) -> Void = { [weak self] resolvedMBID in
             guard let self = self else { completion(); return }
             guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
-                // If Fanart is not configured, cycle through TheAudioDB backdrops sequentially
-                self.fetchFromTheAudioDB(artistName: primaryArtist, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { [weak self] result in
-                    guard let self = self else { completion(); return }
-                    if !result.backdropUrls.isEmpty {
-                        let idx = (self.backdropCycleIndices[primaryArtist] ?? 0) % result.backdropUrls.count
-                        let tadbUrl = result.backdropUrls[idx]
-                        self.backdropCycleIndices[primaryArtist] = (idx + 1) % result.backdropUrls.count
-                        self.downloadAndCache(from: tadbUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: result.mbid ?? resolvedMBID, priority: URLSessionTask.highPriority) { image in
-                            if let img = image, self.currentArtistName == primaryArtist {
-                                withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
-                            }
-                            completion()
-                        }
-                    } else {
-                        completion()
-                    }
-                }
+                AppLogger.shared.log("[Fanart] API key not configured, cannot cycle backdrop.")
+                completion()
                 return
             }
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
@@ -395,25 +380,43 @@ final class FanartManager: ObservableObject {
                         }
                         completion()
                     }
-                } else {
-                    // Try TheAudioDB as backdrop fallback with cycling
-                    self.fetchFromTheAudioDB(artistName: primaryArtist, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { [weak self] result in
+                } else if isEmpty {
+                    // Self-healing recovery: If the MBID used returned 404, query MusicBrainz by name to see if we had the wrong MBID!
+                    let primary = self.extractPrimaryArtist(primaryArtist)
+                    self.mbidCache.removeValue(forKey: primary)
+                    self.mbidCache.removeValue(forKey: primaryArtist)
+                    self.getMBIDSafe(for: primaryArtist, priority: URLSessionTask.highPriority) { [weak self] mbResult in
                         guard let self = self else { completion(); return }
-                        if !result.backdropUrls.isEmpty {
-                            let idx = (self.backdropCycleIndices[primaryArtist] ?? 0) % result.backdropUrls.count
-                            let tadbUrl = result.backdropUrls[idx]
-                            self.backdropCycleIndices[primaryArtist] = (idx + 1) % result.backdropUrls.count
-                            self.downloadAndCache(from: tadbUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: result.mbid ?? resolvedMBID, priority: URLSessionTask.highPriority) { image in
-                                if let img = image, self.currentArtistName == primaryArtist {
-                                    withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
+                        Task { @MainActor in
+                            if case .found(let healedMbid) = mbResult, healedMbid != resolvedMBID {
+                                AppLogger.shared.log("[Fanart] Self-healing MBID during cycle for \(primaryArtist): \(resolvedMBID) -> \(healedMbid)")
+                                try? healedMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                                self.mbidCache[primaryArtist] = healedMbid
+                                self.mbidCache[primary] = healedMbid
+                                let retryUrlString = "https://webservice.fanart.tv/v3/music/\(healedMbid)?api_key=\(apiKey)"
+                                self.fetchFromFanart(urlString: retryUrlString, type: .background, artistName: primaryArtist, randomize: true, priority: URLSessionTask.highPriority) { [weak self] retryUrl, _ in
+                                    guard let self = self else { completion(); return }
+                                    if let rUrl = retryUrl {
+                                        self.downloadAndCache(from: rUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: healedMbid, priority: URLSessionTask.highPriority) { image in
+                                            if let img = image, self.currentArtistName == primaryArtist {
+                                                withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
+                                            }
+                                            completion()
+                                        }
+                                    } else {
+                                        AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist) (Fanart only)")
+                                        completion()
+                                    }
                                 }
+                            } else {
+                                AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist) (Fanart only)")
                                 completion()
                             }
-                        } else {
-                            AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist)")
-                            completion()
                         }
                     }
+                } else {
+                    AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist)")
+                    completion()
                 }
             }
         }
@@ -463,13 +466,26 @@ final class FanartManager: ObservableObject {
 
         activeBackdropFetches.insert(key)
 
-        // 3. Resolve MBID and Fetch (prefer provided MBID from Picard / Navidrome)
-        if index == 0, let validMBID = providedMbid, !validMBID.isEmpty {
-            let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+        // 3. Resolve MBID and Fetch (prefer provided MBID from Navidrome or on-disk sidecar)
+        let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+        var candidateMbid = (index == 0) ? providedMbid : nil
+        var isProvidedMbid = (candidateMbid != nil && !candidateMbid!.isEmpty)
+
+        if candidateMbid == nil || candidateMbid!.isEmpty {
+            if let data = try? Data(contentsOf: sidecarUrl),
+               let cached = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !cached.isEmpty {
+                candidateMbid = cached
+                isProvidedMbid = true // Treat cached sidecar as provided so it can self-heal if invalid!
+            }
+        }
+
+        if let validMBID = candidateMbid, !validMBID.isEmpty {
             try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-            self.executeFanartQuery(resolvedMBID: validMBID, isProvided: true, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+            self.executeFanartQuery(resolvedMBID: validMBID, isProvided: isProvidedMbid, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
         } else {
-            self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { result in
+            self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { [weak self] result in
+                guard let self = self else { return }
                 switch result {
                 case .found(let resolved):
                     let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
@@ -478,27 +494,18 @@ final class FanartManager: ObservableObject {
                         self.executeFanartQuery(resolvedMBID: resolved, isProvided: false, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
                     }
                 case .notFound:
-                    // MusicBrainz doesn't have an MBID match — fall back to TheAudioDB name search!
+                    // MusicBrainz doesn't have an MBID match — backdrops are strictly Fanart.tv only!
                     Task { @MainActor in
-                        self.fetchFromTheAudioDB(artistName: artist, mbid: nil, priority: URLSessionTask.highPriority) { result in
-                            if let tadbUrl = result.backdropUrls.first {
-                                AppLogger.shared.log("[TheAudioDB] Found fallback backdrop for \(artist) via name search")
-                                self.downloadAndCache(from: tadbUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: result.mbid, priority: URLSessionTask.highPriority) { _ in
-                                    self.activeBackdropFetches.remove(key)
-                                }
-                            } else {
-                                if result.isTrueNotFound {
-                                    try? Data().write(to: fileUrl)
-                                }
-                                self.activeBackdropFetches.remove(key)
-                                self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-                            }
-                        }
+                        try? Data().write(to: fileUrl)
+                        self.activeBackdropFetches.remove(key)
+                        self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                     }
                 case .networkError:
                     // Transient failure — do NOT write negative cache, allow retry on next pass
-                    self.activeBackdropFetches.remove(key)
-                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                    Task { @MainActor in
+                        self.activeBackdropFetches.remove(key)
+                        self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                    }
                 }
             }
         }
@@ -515,30 +522,10 @@ final class FanartManager: ObservableObject {
         index: Int,
         allowNetwork: Bool
     ) {
-        let tryTheAudioDBFallback: @MainActor @Sendable () -> Void = { [weak self] in
-            guard let self = self else { return }
-            self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { result in
-                if let tadbUrl = result.backdropUrls.first {
-                    AppLogger.shared.log("[TheAudioDB] Found fallback backdrop URL for \(artist)")
-                    self.downloadAndCache(from: tadbUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: result.mbid ?? resolvedMBID, priority: URLSessionTask.highPriority) { image in
-                        self.activeBackdropFetches.remove(key)
-                    }
-                } else {
-                    if result.isTrueNotFound {
-                        AppLogger.shared.log("[TheAudioDB] No backdrop found for \(artist). Negative caching.")
-                        try? Data().write(to: fileUrl)
-                        let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
-                        try? Data().write(to: mbidFile)
-                    }
-                    self.activeBackdropFetches.remove(key)
-                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-                }
-            }
-        }
-
         guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
-            // Fanart not configured — seamlessly fallback to TheAudioDB
-            tryTheAudioDBFallback()
+            AppLogger.shared.log("[Fanart] API key not configured, skipping backdrop fetch.")
+            self.activeBackdropFetches.remove(key)
+            self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
             return
         }
 
@@ -552,8 +539,55 @@ final class FanartManager: ObservableObject {
                     self.activeBackdropFetches.remove(key)
                 }
             } else if isEmpty {
-                AppLogger.shared.log("[Fanart] No backdrop on Fanart for \(artist), trying TheAudioDB fallback...")
-                tryTheAudioDBFallback()
+                // If the MBID was provided (or was loaded from an unverified sidecar), it might be wrong (e.g. recording MBID).
+                // Self-Healing MBID Recovery: Query MusicBrainz directly by artist name to resolve true artist MBID!
+                if isProvided {
+                    AppLogger.shared.log("[Fanart] No backdrop on Fanart for \(artist) with provided MBID \(resolvedMBID). Attempting self-healing via MusicBrainz...")
+                    let primary = self.extractPrimaryArtist(artist)
+                    self.mbidCache.removeValue(forKey: primary)
+                    self.mbidCache.removeValue(forKey: artist)
+                    self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { [weak self] mbResult in
+                        guard let self = self else { return }
+                        Task { @MainActor in
+                            if case .found(let healedMbid) = mbResult, healedMbid != resolvedMBID {
+                                AppLogger.shared.log("[Fanart] Self-healing MBID for \(artist): replaced invalid MBID \(resolvedMBID) with true artist MBID \(healedMbid)")
+                                let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+                                try? healedMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                                self.mbidCache[artist] = healedMbid
+                                self.mbidCache[primary] = healedMbid
+
+                                // Retry Fanart query immediately with the healed MBID
+                                self.executeFanartQuery(
+                                    resolvedMBID: healedMbid,
+                                    isProvided: false,
+                                    artist: artist,
+                                    primaryArtist: primaryArtist,
+                                    key: key,
+                                    fileUrl: fileUrl,
+                                    artists: artists,
+                                    index: index,
+                                    allowNetwork: allowNetwork
+                                )
+                                return
+                            }
+
+                            // Genuine 404 on Fanart with real MBID, or MusicBrainz has no better MBID
+                            AppLogger.shared.log("[Fanart] No backdrop on Fanart for \(artist). Negative caching (Fanart only).")
+                            try? Data().write(to: fileUrl)
+                            let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                            try? Data().write(to: mbidFile)
+                            self.activeBackdropFetches.remove(key)
+                            self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                        }
+                    }
+                } else {
+                    AppLogger.shared.log("[Fanart] No backdrop on Fanart for \(artist). Negative caching (Fanart only).")
+                    try? Data().write(to: fileUrl)
+                    let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                    try? Data().write(to: mbidFile)
+                    self.activeBackdropFetches.remove(key)
+                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                }
             } else {
                 AppLogger.shared.log("[Fanart] Fetch failed/rate-limited for \(artist)")
                 self.activeBackdropFetches.remove(key)
@@ -608,33 +642,11 @@ final class FanartManager: ObservableObject {
             }
 
             let success: Bool = await withCheckedContinuation { continuation in
-                let fetchTadbFallback: @MainActor @Sendable (String?) -> Void = { resolvedMBID in
-                    self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMBID, priority: URLSessionTask.lowPriority) { result in
-                        let finalMbid = result.mbid ?? resolvedMBID
-                        if let tadbUrl = result.backdropUrls.first {
-                            self.downloadAndCache(from: tadbUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: finalMbid, priority: URLSessionTask.lowPriority) { _ in
-                                self.activeBackdropFetches.remove(key)
-                                continuation.resume(returning: true)
-                            }
-                        } else {
-                            if result.isTrueNotFound && NetworkMonitor.shared.isConnected {
-                                try? Data().write(to: fileUrl)
-                                if let validMbid = finalMbid, !validMbid.isEmpty {
-                                    let mbidFile = self.backdropDir.appendingPathComponent("\(validMbid).jpg")
-                                    try? Data().write(to: mbidFile)
-                                }
-                                Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
-                            }
-                            self.activeBackdropFetches.remove(key)
-                            continuation.resume(returning: false)
-                        }
-                    }
-                }
-
-                let query: @MainActor @Sendable (String) -> Void = { [weak self] resolvedMBID in
+                let query: @MainActor @Sendable (String, Bool) -> Void = { [weak self] resolvedMBID, isProvided in
                     guard let self = self else { continuation.resume(returning: false); return }
                     guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
-                        fetchTadbFallback(resolvedMBID)
+                        self.activeBackdropFetches.remove(key)
+                        continuation.resume(returning: false)
                         return
                     }
                     let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
@@ -646,7 +658,54 @@ final class FanartManager: ObservableObject {
                                 continuation.resume(returning: true)
                             }
                         } else if isEmpty {
-                            fetchTadbFallback(resolvedMBID)
+                            if isProvided {
+                                let primary = self.extractPrimaryArtist(artist)
+                                self.mbidCache.removeValue(forKey: primary)
+                                self.mbidCache.removeValue(forKey: artist)
+                                self.getMBIDSafe(for: artist, priority: URLSessionTask.lowPriority) { [weak self] mbResult in
+                                    guard let self = self else { continuation.resume(returning: false); return }
+                                    Task { @MainActor in
+                                        if case .found(let healedMbid) = mbResult, healedMbid != resolvedMBID {
+                                            AppLogger.shared.log("[Fanart] Silently self-healing MBID for \(artist): \(resolvedMBID) -> \(healedMbid)")
+                                            let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+                                            try? healedMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                                            self.mbidCache[artist] = healedMbid
+                                            self.mbidCache[primary] = healedMbid
+                                            let retryUrl = "https://webservice.fanart.tv/v3/music/\(healedMbid)?api_key=\(apiKey)"
+                                            self.fetchFromFanart(urlString: retryUrl, type: .background, artistName: artist, priority: URLSessionTask.lowPriority) { [weak self] retryUrlStr, _ in
+                                                guard let self = self else { continuation.resume(returning: false); return }
+                                                if let rUrl = retryUrlStr {
+                                                    self.downloadAndCache(from: rUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: healedMbid, priority: URLSessionTask.lowPriority) { _ in
+                                                        self.activeBackdropFetches.remove(key)
+                                                        continuation.resume(returning: true)
+                                                    }
+                                                } else {
+                                                    try? Data().write(to: fileUrl)
+                                                    let mbidFile = self.backdropDir.appendingPathComponent("\(healedMbid).jpg")
+                                                    try? Data().write(to: mbidFile)
+                                                    Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                                    self.activeBackdropFetches.remove(key)
+                                                    continuation.resume(returning: false)
+                                                }
+                                            }
+                                            return
+                                        }
+                                        try? Data().write(to: fileUrl)
+                                        let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                                        try? Data().write(to: mbidFile)
+                                        Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                        self.activeBackdropFetches.remove(key)
+                                        continuation.resume(returning: false)
+                                    }
+                                }
+                            } else {
+                                try? Data().write(to: fileUrl)
+                                let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                                try? Data().write(to: mbidFile)
+                                Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                self.activeBackdropFetches.remove(key)
+                                continuation.resume(returning: false)
+                            }
                         } else {
                             self.activeBackdropFetches.remove(key)
                             continuation.resume(returning: false)
@@ -654,18 +713,34 @@ final class FanartManager: ObservableObject {
                     }
                 }
 
-                if index == 0, let validMBID = mbid, !validMBID.isEmpty {
-                    Task { @MainActor in query(validMBID) }
+                let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
+                var candidateMbid = (index == 0) ? mbid : nil
+                var isProvidedMbid = (candidateMbid != nil && !candidateMbid!.isEmpty)
+
+                if candidateMbid == nil || candidateMbid!.isEmpty {
+                    if let data = try? Data(contentsOf: sidecarUrl),
+                       let cached = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !cached.isEmpty {
+                        candidateMbid = cached
+                        isProvidedMbid = true
+                    }
+                }
+
+                if let validMBID = candidateMbid, !validMBID.isEmpty {
+                    Task { @MainActor in query(validMBID, isProvidedMbid) }
                 } else {
                     getMBIDSafe(for: artist, priority: URLSessionTask.lowPriority) { result in
                         switch result {
                         case .found(let resolved):
-                            Task { @MainActor in query(resolved) }
+                            Task { @MainActor in query(resolved, false) }
                         case .notFound:
-                            // Fallback to TheAudioDB name search instead of failing!
-                            Task { @MainActor in fetchTadbFallback(nil) }
+                            Task { @MainActor in
+                                try? Data().write(to: fileUrl)
+                                Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                self.activeBackdropFetches.remove(key)
+                                continuation.resume(returning: false)
+                            }
                         case .networkError:
-                            // Transient — skip negative cache, allow retry
                             self.activeBackdropFetches.remove(key)
                             continuation.resume(returning: false)
                         }
@@ -794,13 +869,6 @@ final class FanartManager: ObservableObject {
                     self.activeClearLogoFetches.remove(primaryKey)
                     if let aid = artistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
                     if let mk = mbid, !mk.isEmpty { self.activeClearLogoFetches.remove("logo_" + mk) }
-                }
-
-                // Bonus: If TheAudioDB has a backdrop and we don't have one cached yet, cache it!
-                if let backdropUrl = result.backdropUrls.first, !self.hasBackdrop(for: primary, artistId: artistId, mbid: resolvedMbid) {
-                    let backdropKey = self.getCacheKey(artistName: primary, artistId: artistId)
-                    let backdropFile = self.backdropDir.appendingPathComponent(backdropKey + ".jpg")
-                    self.downloadAndCache(from: backdropUrl, to: backdropFile, primaryArtistName: primary, cacheKey: backdropKey, mbid: resolvedMbid, priority: URLSessionTask.defaultPriority) { _ in }
                 }
             }
         }
@@ -962,13 +1030,6 @@ final class FanartManager: ObservableObject {
 
                     if let rm = resolvedMbid, !rm.isEmpty {
                         self.mbidCache[primary] = rm
-                    }
-
-                    // If TheAudioDB has a backdrop and we lack one, fetch it silently too
-                    if let backdropUrl = result.backdropUrls.first, !self.hasBackdrop(for: primary, artistId: artistId, mbid: resolvedMbid) {
-                        let backdropKey = self.getCacheKey(artistName: primary, artistId: artistId)
-                        let backdropFile = self.backdropDir.appendingPathComponent(backdropKey + ".jpg")
-                        self.downloadAndCache(from: backdropUrl, to: backdropFile, primaryArtistName: primary, cacheKey: backdropKey, mbid: resolvedMbid, priority: URLSessionTask.lowPriority) { _ in }
                     }
 
                     if let tadbUrl = result.logoUrl {

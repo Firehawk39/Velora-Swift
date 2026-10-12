@@ -839,8 +839,7 @@ struct NowPlayingView: View {
                 if !artists.isEmpty {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isCyclingBackdrop = true
-                    let initialMbid = track.musicBrainzId
-                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId, mbid: initialMbid) {
+                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId, mbid: nil) {
                         isCyclingBackdrop = false
                     }
                 }
@@ -872,9 +871,7 @@ struct NowPlayingView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isCyclingClearLogo = true
 
-        let initialMbid = track.musicBrainzId
-
-        FanartManager.shared.cycleClearLogo(for: artists, artistId: track.artistId, mbid: initialMbid) {
+        FanartManager.shared.cycleClearLogo(for: artists, artistId: track.artistId, mbid: nil) {
             isCyclingClearLogo = false
         }
     }
@@ -973,14 +970,12 @@ struct NowPlayingView: View {
         self.artistBiography = nil
         self.loadArtistPortrait(for: track)
 
-        let initialMbid = track.musicBrainzId
-
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker
-        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: initialMbid, allowNetwork: false)
+        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil, allowNetwork: false)
 
         // 1b. Trigger clearlogo fetch (cache-first, non-blocking)
-        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: initialMbid)
+        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: nil)
 
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
@@ -993,10 +988,10 @@ struct NowPlayingView: View {
                     self.artistBiography = info?.biography
                     self.isFetchingArtistInfo = false
 
-                    // Use Navidrome's Picard-tagged MBID directly for robust matching (preserving initialMbid fallback)
-                    let safeMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : initialMbid)
-                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: safeMbid, allowNetwork: true)
-                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: safeMbid)
+                    // If Navidrome provides the true artist MBID, use it; otherwise nil allows FanartManager to resolve via MusicBrainz
+                    let artistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : nil)
+                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
+                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
                 }
             }
         }

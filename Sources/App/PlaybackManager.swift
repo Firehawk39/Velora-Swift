@@ -601,9 +601,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self?.applyLyrics(lyrics, for: track) }
         }
 
-        let trackMbid = track.musicBrainzId
-        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: trackMbid)
-        FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: trackMbid)
+        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil)
+        FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: nil)
 
         if NetworkMonitor.shared.isConnected {
             client.scrobble(track: track, submission: false)
