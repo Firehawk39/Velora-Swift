@@ -166,7 +166,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         configuration.allowsCellularAccess = true
         configuration.allowsConstrainedNetworkAccess = true
         configuration.allowsExpensiveNetworkAccess = true
-        return URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
+        let sessionQueue = OperationQueue()
+        sessionQueue.name = "com.velora.downloadSessionQueue"
+        sessionQueue.maxConcurrentOperationCount = 8
+        sessionQueue.qualityOfService = .userInitiated
+        return URLSession(configuration: configuration, delegate: self, delegateQueue: sessionQueue)
     }()
 
     init(client: NavidromeClient) {
@@ -1204,18 +1208,32 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let destinationUrl = downloadsDir.appendingPathComponent("\(trackId).\(suffix)")
 
         do {
+            // Ensure target directory exists before any move/copy operations
+            if !FileManager.default.fileExists(atPath: downloadsDir.path) {
+                try FileManager.default.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
+            }
+
             if FileManager.default.fileExists(atPath: destinationUrl.path) {
                 try FileManager.default.removeItem(at: destinationUrl)
             }
 
-            // iOS 15 Sandbox Fix: Copy the file instead of moving it to avoid "Operation not permitted"
-            // when modifying the system-owned temporary directory.
+            // Verify temporary file is present before attempting disk I/O
+            guard FileManager.default.fileExists(atPath: location.path) else {
+                throw NSError(domain: "com.velora.download", code: 404, userInfo: [NSLocalizedDescriptionKey: "Temporary file at \(location.lastPathComponent) was unlinked or purged by OS before delegate execution."])
+            }
+
+            // APFS Fast Move First: instantaneous 0ms inode link across sandbox
             do {
-                try FileManager.default.copyItem(at: location, to: destinationUrl)
+                try FileManager.default.moveItem(at: location, to: destinationUrl)
             } catch {
-                // Absolute fallback: Read into memory and write to disk
-                let data = try Data(contentsOf: location)
-                try data.write(to: destinationUrl)
+                // Sandbox fallback: Copy if cross-filesystem or OS restriction applies
+                do {
+                    try FileManager.default.copyItem(at: location, to: destinationUrl)
+                } catch {
+                    // Absolute memory fallback
+                    let data = try Data(contentsOf: location)
+                    try data.write(to: destinationUrl, options: .atomic)
+                }
             }
 
             let attributes = try FileManager.default.attributesOfItem(atPath: destinationUrl.path)
