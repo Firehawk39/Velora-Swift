@@ -138,9 +138,9 @@ final class SyncManager: ObservableObject {
             let mb = MusicBrainzManager.shared
             let activeCores = ProcessInfo.processInfo.activeProcessorCount
             let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
-            // Optimal bounded continuous worker pool (16 parallel workers).
-            // Maximizes throughput on external APIs (MusicBrainz/Fanart) without triggering rate limits or circuit breaker stalls.
-            let metadataWorkerPoolSize = 16
+            // Optimal bounded continuous worker pool (4 parallel workers).
+            // Maximizes throughput on external APIs (MusicBrainz/TheAudioDB/Fanart) without triggering rate limits or circuit breaker stalls.
+            let metadataWorkerPoolSize = 4
             let startTime = Date()
 
             // Pre-flight check: determine what cloud metadata is truly missing
@@ -148,7 +148,7 @@ final class SyncManager: ObservableObject {
             var initialMissingArtists = [Artist]()
             for (index, artist) in artists.enumerated() {
                 let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
-                let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName)
+                let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName, artistId: artist.id)
                 let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
                 if !(hasBackdrop && hasLogo && hasArtist) {
                     initialMissingArtists.append(artist)
@@ -189,8 +189,8 @@ final class SyncManager: ObservableObject {
                 // Re-scan on every pass so we only work on what's still missing
                 var missingArtistsThisPass = [Artist]()
                 for (index, artist) in missingArtists.enumerated() {
-                    let hasBackdrop = (passCount > 1) || fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
-                    let hasLogo = (passCount > 1) || fa.hasCheckedClearLogo(for: artist.primaryName)
+                    let hasBackdrop = fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
+                    let hasLogo = fa.hasCheckedClearLogo(for: artist.primaryName, artistId: artist.id)
                     let hasArtist = mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName)
                     if !(hasBackdrop && hasLogo && hasArtist) {
                         missingArtistsThisPass.append(artist)
@@ -318,7 +318,7 @@ final class SyncManager: ObservableObject {
                     let key = fa.getCacheKey(artistName: artist.primaryName, artistId: artist.id)
                     AssetRegistry.shared.markBackdropUnavailable(key: key)
                 }
-                if fa.isFanartConfigured && !fa.hasClearLogo(for: artist.primaryName) {
+                if !fa.hasClearLogo(for: artist.primaryName, artistId: artist.id) {
                     let key = "logo_" + fa.sanitizeFileName(artist.primaryName)
                     AssetRegistry.shared.markLogoUnavailable(key: key)
                 }
@@ -773,14 +773,18 @@ final class SyncManager: ObservableObject {
             struct BackdropRepairItem: Hashable {
                 let artists: [String]
                 let artistId: String?
+                let mbid: String?
+            }
+            struct ClearLogoRepairItem: Hashable {
+                let artists: [String]
+                let artistId: String?
+                let mbid: String?
             }
             var missingBackdrops: Set<BackdropRepairItem> = []
-            var missingLogoArtists: Set<String> = []
+            var missingLogos: Set<ClearLogoRepairItem> = []
             let fa = FanartManager.shared
-            if fa.isFanartConfigured {
-                fa.checkAndInvalidateIfKeyChanged()
-                fa.wipeNegativeFanartCaches()
-            }
+            fa.checkAndInvalidateIfKeyChanged()
+            fa.wipeNegativeFanartCaches()
 
             repairStatus = "Auditing library integrity..."
 
@@ -819,22 +823,21 @@ final class SyncManager: ObservableObject {
                     missingLyricsIds.append((id: track.id, artist: track.primaryArtist, title: track.title, duration: Double(track.duration ?? 0)))
                 }
 
-                // 4. Check Fanart Backdrops & Clear Logos
-                if fa.isFanartConfigured {
-                    let artistName = track.primaryArtist
-                    let artId = track.artistId ?? track.primaryArtist
-                    if !fa.hasBackdrop(for: artistName, artistId: artId) {
-                        missingBackdrops.insert(BackdropRepairItem(artists: track.allArtists, artistId: track.artistId))
-                    }
-                    if !fa.hasClearLogo(for: artistName) {
-                        missingLogoArtists.insert(artistName)
-                    }
+                // 4. Check Backdrops & Clear Logos (Fanart.tv & TheAudioDB fallback)
+                let artistName = track.primaryArtist
+                let artId = track.artistId ?? track.primaryArtist
+                let trackMbid = track.musicBrainzId
+                if !fa.hasBackdrop(for: artistName, artistId: artId, mbid: trackMbid) {
+                    missingBackdrops.insert(BackdropRepairItem(artists: track.allArtists, artistId: track.artistId, mbid: trackMbid))
+                }
+                if !fa.hasClearLogo(for: artistName, artistId: track.artistId, mbid: trackMbid) {
+                    missingLogos.insert(ClearLogoRepairItem(artists: track.allArtists, artistId: track.artistId, mbid: trackMbid))
                 }
 
                 if index % 50 == 0 { await Task.yield() }
             }
 
-            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count + missingBackdrops.count + missingLogoArtists.count
+            let totalTasks = missingCoverArtIds.count + missingArtistPortraitIds.count + missingLyricsIds.count + missingBackdrops.count + missingLogos.count
             if totalTasks == 0 {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 finalizeRepairSync("Library is 100% healthy. All \(localTracks.count) offline tracks verified.")
@@ -899,7 +902,7 @@ final class SyncManager: ObservableObject {
                 }
             }
 
-            // Repair Fanart Backdrops
+            // Repair Backdrops
             if !missingBackdrops.isEmpty && isRepairing {
                 let items = Array(missingBackdrops)
                 var startIndex = 0
@@ -909,7 +912,7 @@ final class SyncManager: ObservableObject {
                     await withTaskGroup(of: Void.self) { group in
                         for item in batch {
                             group.addTask {
-                                await fa.downloadBackdropSilently(for: item.artists, artistId: item.artistId)
+                                await fa.downloadBackdropSilently(for: item.artists, artistId: item.artistId, mbid: item.mbid)
                             }
                         }
                     }
@@ -920,17 +923,17 @@ final class SyncManager: ObservableObject {
                 }
             }
 
-            // Repair Fanart Clear Logos
-            if !missingLogoArtists.isEmpty && isRepairing {
-                let items = Array(missingLogoArtists)
+            // Repair Clear Logos
+            if !missingLogos.isEmpty && isRepairing {
+                let items = Array(missingLogos)
                 var startIndex = 0
                 while startIndex < items.count && isRepairing {
                     let endIndex = min(startIndex + repairBatchSize, items.count)
                     let batch = Array(items[startIndex..<endIndex])
                     await withTaskGroup(of: Void.self) { group in
-                        for name in batch {
+                        for item in batch {
                             group.addTask {
-                                await fa.downloadClearLogoSilently(for: name)
+                                await fa.downloadClearLogoSilently(for: item.artists, artistId: item.artistId, mbid: item.mbid)
                             }
                         }
                     }
@@ -1082,7 +1085,7 @@ final class SyncManager: ObservableObject {
         let fa = await FanartManager.shared
         let hasArtist = await (mb.hasArtistMetadata(for: artist.primaryName) || AssetRegistry.shared.isArtistUnavailable(artistName: artist.primaryName))
         let hasBackdrop = await fa.hasCheckedBackdrop(for: artist.primaryName, artistId: artist.id)
-        let hasClearLogo = await fa.hasCheckedClearLogo(for: artist.primaryName)
+        let hasClearLogo = await fa.hasCheckedClearLogo(for: artist.primaryName, artistId: artist.id)
 
         if !(hasArtist && hasBackdrop && hasClearLogo) {
             var safeMbid: String? = nil
@@ -1109,7 +1112,7 @@ final class SyncManager: ObservableObject {
             }
 
             if !hasClearLogo {
-                await fa.downloadClearLogoSilently(for: artist.primaryName, mbid: safeMbid)
+                await fa.downloadClearLogoSilently(for: artist.allNames, artistId: artist.id, mbid: safeMbid)
             }
 
             // 2. Only download from public MusicBrainz over internet if still missing!

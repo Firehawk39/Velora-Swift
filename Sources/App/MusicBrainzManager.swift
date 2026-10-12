@@ -551,20 +551,6 @@ final class MusicBrainzManager: ObservableObject {
         }
     }
 
-    private func extractPrimaryArtist(_ name: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if knownBandNamesWithDelimiters.contains(trimmed.lowercased()) {
-            return trimmed
-        }
-        let delimiters = [" • ", "•", "・", " feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
-        var primary = trimmed
-        for delimiter in delimiters {
-            if let range = primary.range(of: delimiter, options: .caseInsensitive) {
-                primary = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        return primary.isEmpty ? trimmed : primary
-    }
 
     private func resolveAlbumMBID(album: String, artist: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let query = "release:\(album) AND artist:\(artist)"

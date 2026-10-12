@@ -28,6 +28,7 @@ struct NowPlayingView: View {
     @State private var artistPortraitImage: UIImage? = nil
     @State private var currentPortraitArtistId: String? = nil
     @State private var isCyclingBackdrop: Bool = false
+    @State private var isCyclingClearLogo: Bool = false
     
     @AppStorage("velora_theme_preference") private var isDarkMode: Bool = true
 
@@ -440,14 +441,23 @@ struct NowPlayingView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .overlay(alignment: .bottomTrailing) {
                             if let logo = fanart.currentClearLogo {
-                                Image(uiImage: logo)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: isLargeCanvas ? 240 : 180, maxHeight: isShortCanvas ? 54 : 72)
-                                    // Resetting offset so it naturally perfectly sits on the same line as the bottom-aligned Lossless badge!
-                                    .offset(y: 0)
-                                    .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                                Button {
+                                    cycleClearLogoAction()
+                                } label: {
+                                    Image(uiImage: logo)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(maxWidth: isLargeCanvas ? 240 : 180, maxHeight: isShortCanvas ? 54 : 72)
+                                        // Resetting offset so it naturally perfectly sits on the same line as the bottom-aligned Lossless badge!
+                                        .offset(y: 0)
+                                        .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                                        .opacity(isCyclingClearLogo ? 0.35 : 1.0)
+                                        .scaleEffect(isCyclingClearLogo ? 0.94 : 1.0)
+                                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Change Artist Clear Logo")
+                                .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                             }
                         }
                     }
@@ -825,10 +835,14 @@ struct NowPlayingView: View {
         Button {
             resetIdleTimer()
             if let track = playback.currentTrack, !isCyclingBackdrop {
-                let artists = [track.primaryArtist].filter { !$0.isEmpty }
+                let artists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
                 if !artists.isEmpty {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isCyclingBackdrop = true
-                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId) {
+                    let initialMbid = playback.client.artists.first(where: {
+                        $0.name.lowercased() == track.primaryArtist.lowercased()
+                    })?.musicBrainzId ?? track.musicBrainzId
+                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId, mbid: initialMbid) {
                         isCyclingBackdrop = false
                     }
                 }
@@ -849,6 +863,24 @@ struct NowPlayingView: View {
             .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
         .accessibilityLabel("Change Backdrop")
+    }
+
+    private func cycleClearLogoAction() {
+        resetIdleTimer()
+        guard let track = playback.currentTrack, !isCyclingClearLogo else { return }
+        let artists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
+        guard !artists.isEmpty else { return }
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        isCyclingClearLogo = true
+
+        let initialMbid = playback.client.artists.first(where: {
+            $0.name.lowercased() == track.primaryArtist.lowercased()
+        })?.musicBrainzId ?? track.musicBrainzId
+
+        FanartManager.shared.cycleClearLogo(for: artists, artistId: track.artistId, mbid: initialMbid) {
+            isCyclingClearLogo = false
+        }
     }
 
     private var inlineLyricsView: some View {
@@ -909,15 +941,22 @@ struct NowPlayingView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 if let logo = fanart.currentClearLogo {
-                    Image(uiImage: logo)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: isLargeCanvas ? 240 : (isSE ? 140 : 180), maxHeight: isShortCanvas ? 54 : 72)
-                        .padding(.trailing, 10)
-                        .opacity(0.8)
-                        .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                        .allowsHitTesting(false)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                    Button {
+                        cycleClearLogoAction()
+                    } label: {
+                        Image(uiImage: logo)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: isLargeCanvas ? 240 : (isSE ? 140 : 180), maxHeight: isShortCanvas ? 54 : 72)
+                            .padding(.trailing, 10)
+                            .opacity(isCyclingClearLogo ? 0.35 : 0.8)
+                            .scaleEffect(isCyclingClearLogo ? 0.94 : 1.0)
+                            .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Change Artist Clear Logo")
+                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                 }
             }
         }
@@ -938,12 +977,14 @@ struct NowPlayingView: View {
         self.artistBiography = nil
         self.loadArtistPortrait(for: track)
 
+        let initialMbid = playback.client.artists.first(where: { $0.id == track.artistId })?.musicBrainzId ?? track.musicBrainzId
+
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker
-        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil, allowNetwork: false)
+        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: initialMbid, allowNetwork: false)
 
         // 1b. Trigger clearlogo fetch (cache-first, non-blocking)
-        fanart.fetchClearLogo(for: track.primaryArtist)
+        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: initialMbid)
 
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
@@ -956,10 +997,10 @@ struct NowPlayingView: View {
                     self.artistBiography = info?.biography
                     self.isFetchingArtistInfo = false
 
-                    // Use Navidrome's Picard-tagged MBID directly for robust matching
-                    let safeMbid = info?.musicBrainzId
+                    // Use Navidrome's Picard-tagged MBID directly for robust matching (preserving initialMbid fallback)
+                    let safeMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : initialMbid)
                     fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: safeMbid, allowNetwork: true)
-                    fanart.fetchClearLogo(for: track.primaryArtist, mbid: safeMbid)
+                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: safeMbid)
                 }
             }
         }

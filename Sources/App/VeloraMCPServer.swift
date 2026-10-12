@@ -588,11 +588,12 @@ final class VeloraMCPServer: ObservableObject {
             guard let artist = arguments["artist"] as? String, !artist.isEmpty else {
                 return "Missing artist name"
             }
-            await FanartManager.shared.downloadBackdropSilently(for: [artist])
-            await FanartManager.shared.downloadClearLogoSilently(for: artist)
-            let hasBackdrop = FanartManager.shared.hasBackdrop(for: artist)
-            let hasLogo = FanartManager.shared.hasClearLogo(for: artist)
-            return "Fanart query finished for '\(artist)'. hasBackdrop: \(hasBackdrop), hasClearLogo: \(hasLogo)"
+            let mbid = arguments["mbid"] as? String
+            await FanartManager.shared.downloadBackdropSilently(for: [artist], mbid: mbid)
+            await FanartManager.shared.downloadClearLogoSilently(for: artist, mbid: mbid)
+            let hasBackdrop = FanartManager.shared.hasBackdrop(for: artist, mbid: mbid)
+            let hasLogo = FanartManager.shared.hasClearLogo(for: artist, mbid: mbid)
+            return "Fanart & TheAudioDB query finished for '\(artist)' (mbid: \(mbid ?? "none")). hasBackdrop: \(hasBackdrop), hasClearLogo: \(hasLogo)"
 
         case "velora_ai_engine_intent":
             guard let prompt = arguments["prompt"] as? String else { return "Missing prompt" }

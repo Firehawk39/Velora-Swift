@@ -196,8 +196,148 @@ let knownBandNamesWithDelimiters: Set<String> = [
     "ziggy marley & the melody makers",
     "frankie lymon & the teenagers",
     "junior walker & the all stars",
-    "king gizzard & the lizard wizard"
+    "king gizzard & the lizard wizard",
+    "iron & wine",
+    "arms and sleepers",
+    "blood, sweat & tears",
+    "emerson, lake & palmer",
+    "peter, paul and mary"
 ]
+
+/// Extracts the clean primary artist name while protecting bands that have delimiters in their name (e.g. "Chase & Status")
+/// and properly splitting featuring/collaboration delimiters (e.g. "; ", " feat.", " ft.", " x ", etc.)
+func extractPrimaryArtist(_ name: String) -> String {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return name }
+    let lower = trimmed.lowercased()
+
+    // 1. Direct match with known band
+    if knownBandNamesWithDelimiters.contains(lower) {
+        return trimmed
+    }
+
+    // 2. Check if name starts with any known band followed by a delimiter/space
+    for known in knownBandNamesWithDelimiters {
+        if lower.hasPrefix(known) {
+            let remainder = lower.dropFirst(known.count)
+            if remainder.isEmpty || remainder.hasPrefix(" ") || remainder.hasPrefix(";") || remainder.hasPrefix(",") || remainder.hasPrefix("/") || remainder.hasPrefix("•") {
+                let index = trimmed.index(trimmed.startIndex, offsetBy: known.count)
+                return String(trimmed[..<index]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+    }
+
+    // 3. Priority delimiters: Features and guest appearances
+    let featureDelimiters = [" feat. ", " feat.", " feat ", " ft. ", " ft.", " ft ", " featuring ", " with "]
+    var primary = trimmed
+    for delim in featureDelimiters {
+        if let range = primary.range(of: delim, options: .caseInsensitive) {
+            let candidate = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if knownBandNamesWithDelimiters.contains(candidate.lowercased()) {
+                return candidate
+            }
+            primary = candidate
+        }
+    }
+
+    // 4. Secondary delimiters: Semicolons (Navidrome multi-artist standard), bullets, slashes, commas, vs, x
+    let secondaryDelimiters = ["; ", ";", " • ", "•", "・", " / ", " /", "/ ", "/", ", ", " x ", " vs. ", " vs "]
+    for delim in secondaryDelimiters {
+        if let range = primary.range(of: delim, options: .caseInsensitive) {
+            let candidate = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if knownBandNamesWithDelimiters.contains(candidate.lowercased()) {
+                return candidate
+            }
+            primary = candidate
+        }
+    }
+
+    // 5. Conjunction delimiters: " & ", " and " (ONLY if not a known band)
+    let conjunctionDelimiters = [" & ", " and "]
+    for delim in conjunctionDelimiters {
+        if let range = primary.range(of: delim, options: .caseInsensitive) {
+            let candidate = String(primary[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if knownBandNamesWithDelimiters.contains(candidate.lowercased()) {
+                return candidate
+            }
+            primary = candidate
+        }
+    }
+
+    return primary.isEmpty ? trimmed : primary
+}
+
+/// Parses all artists from a composite string (including featured artists, co-artists, and Navidrome semicolons)
+func parseAllArtistNames(_ name: String) -> [String] {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return ["Unknown Artist"] }
+    let lower = trimmed.lowercased()
+
+    if knownBandNamesWithDelimiters.contains(lower) {
+        return [trimmed]
+    }
+
+    // 1. Check known band prefix first (e.g. "Chase & Status feat. Takura")
+    for known in knownBandNamesWithDelimiters {
+        if lower.hasPrefix(known) {
+            let remainder = lower.dropFirst(known.count)
+            if remainder.isEmpty || remainder.hasPrefix(" ") || remainder.hasPrefix(";") || remainder.hasPrefix(",") || remainder.hasPrefix("/") || remainder.hasPrefix("•") {
+                let bandIndex = trimmed.index(trimmed.startIndex, offsetBy: known.count)
+                let bandName = String(trimmed[..<bandIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+                var list = [bandName]
+                let rest = String(trimmed[bandIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !rest.isEmpty {
+                    var tempRest = rest
+                    let allDelims = [
+                        " feat. ", " feat.", " feat ", " ft. ", " ft.", " ft ", " featuring ", " with ",
+                        "; ", ";", " • ", "•", "・", " / ", " /", "/ ", "/", ", ", " x ", " vs. ", " vs ",
+                        " & ", " and "
+                    ]
+                    for d in allDelims {
+                        tempRest = tempRest.replacingOccurrences(of: d, with: "|||", options: .caseInsensitive)
+                    }
+                    let extraParts = tempRest.components(separatedBy: "|||")
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    for p in extraParts {
+                        if !list.contains(p) { list.append(p) }
+                    }
+                }
+                if !list.contains(trimmed) { list.append(trimmed) }
+                return list
+            }
+        }
+    }
+
+    // 2. Standard multi-artist extraction
+    var list: [String] = []
+    let primary = extractPrimaryArtist(trimmed)
+    if !primary.isEmpty {
+        list.append(primary)
+    }
+
+    var temp = trimmed
+    let textDelimiters = [
+        " feat. ", " feat.", " feat ", " ft. ", " ft.", " ft ", " featuring ", " with ",
+        "; ", ";", " • ", "•", "・", " / ", " /", "/ ", "/", ", ", " x ", " vs. ", " vs ",
+        " & ", " and "
+    ]
+    for delim in textDelimiters {
+        temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
+    }
+    let parts = temp.components(separatedBy: "|||")
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+    for part in parts {
+        if !list.contains(part) {
+            list.append(part)
+        }
+    }
+    if !list.contains(trimmed) {
+        list.append(trimmed)
+    }
+    return list.isEmpty ? [trimmed] : list
+}
 
 struct Artist: Identifiable, Codable, Sendable {
     let id: String
@@ -210,33 +350,11 @@ struct Artist: Identifiable, Codable, Sendable {
     var coverArtUrl: URL? { resolveArtistPortraitUrl(id: id, serverUrl: coverArt) }
 
     var allNames: [String] {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lower = trimmed.lowercased()
-        if knownBandNamesWithDelimiters.contains(lower) {
-            return [trimmed]
-        }
-        var list: [String] = []
-        var temp = trimmed
-        let textDelimiters = [" • ", "•", " feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
-        for delim in textDelimiters {
-            temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
-        }
-        let parts = temp.components(separatedBy: "|||")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        for part in parts {
-            if !list.contains(part) {
-                list.append(part)
-            }
-        }
-        if !list.contains(trimmed) {
-            list.append(trimmed)
-        }
-        return list.isEmpty ? [trimmed] : list
+        return parseAllArtistNames(name)
     }
 
     var primaryName: String {
-        return allNames.first ?? name
+        return extractPrimaryArtist(name)
     }
 }
 
@@ -360,33 +478,12 @@ struct Track: Identifiable, Codable, Equatable, Sendable {
 
     var allArtists: [String] {
         guard let artist = artist, !artist.isEmpty else { return ["Unknown Artist"] }
-        let trimmed = artist.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lower = trimmed.lowercased()
-        if knownBandNamesWithDelimiters.contains(lower) {
-            return [trimmed]
-        }
-        var list: [String] = []
-        var temp = trimmed
-        let textDelimiters = [" • ", "•", " feat.", " ft.", " featuring ", " x ", " vs.", " & ", " / ", ", "]
-        for delim in textDelimiters {
-            temp = temp.replacingOccurrences(of: delim, with: "|||", options: .caseInsensitive)
-        }
-        let parts = temp.components(separatedBy: "|||")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        for part in parts {
-            if !list.contains(part) {
-                list.append(part)
-            }
-        }
-        if !list.contains(trimmed) {
-            list.append(trimmed)
-        }
-        return list.isEmpty ? [trimmed] : list
+        return parseAllArtistNames(artist)
     }
 
     var primaryArtist: String {
-        return allArtists.first ?? artist ?? "Unknown Artist"
+        guard let artist = artist, !artist.isEmpty else { return "Unknown Artist" }
+        return extractPrimaryArtist(artist)
     }
 }
 

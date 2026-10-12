@@ -541,8 +541,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.currentPalette = [.black, .black, .black, .black, .black]
 
         self.currentArtworkTrackId = nil
-        FanartManager.shared.currentBackdrop = nil
-        FanartManager.shared.currentClearLogo = nil
 
         client.fetchLyrics(
             trackId: track.id,
@@ -554,7 +552,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self?.applyLyrics(lyrics, for: track) }
         }
 
-        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId)
+        let trackMbid = client.artists.first(where: {
+            $0.id == track.artistId || $0.name.lowercased() == track.primaryArtist.lowercased()
+        })?.musicBrainzId ?? track.musicBrainzId
+        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: trackMbid)
+        FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: trackMbid)
 
         if NetworkMonitor.shared.isConnected {
             client.scrobble(track: track, submission: false)
