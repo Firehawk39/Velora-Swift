@@ -1003,9 +1003,9 @@ struct AppSettingsView: View {
                             }
                         }
 
-                        // MCP Server Section
+                        // MCP Section
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("MCP Powerhouse")
+                            Text("MCP")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(labelCol)
                                 .textCase(.uppercase)
