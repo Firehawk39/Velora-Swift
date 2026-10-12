@@ -552,9 +552,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self?.applyLyrics(lyrics, for: track) }
         }
 
-        let trackMbid = client.artists.first(where: {
-            $0.id == track.artistId || $0.name.lowercased() == track.primaryArtist.lowercased()
-        })?.musicBrainzId ?? track.musicBrainzId
+        let trackMbid = track.musicBrainzId
         FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: trackMbid)
         FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: trackMbid)
 

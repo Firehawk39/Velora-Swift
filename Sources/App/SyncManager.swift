@@ -825,9 +825,8 @@ final class SyncManager: ObservableObject {
 
                 // 4. Check Backdrops & Clear Logos (Fanart.tv & TheAudioDB fallback)
                 let artistName = track.primaryArtist
-                let artId = track.artistId ?? track.primaryArtist
                 let trackMbid = track.musicBrainzId
-                if !fa.hasBackdrop(for: artistName, artistId: artId, mbid: trackMbid) {
+                if !fa.hasBackdrop(for: artistName, artistId: track.artistId, mbid: trackMbid) {
                     missingBackdrops.insert(BackdropRepairItem(artists: track.allArtists, artistId: track.artistId, mbid: trackMbid))
                 }
                 if !fa.hasClearLogo(for: artistName, artistId: track.artistId, mbid: trackMbid) {

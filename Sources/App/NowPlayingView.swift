@@ -839,9 +839,7 @@ struct NowPlayingView: View {
                 if !artists.isEmpty {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isCyclingBackdrop = true
-                    let initialMbid = playback.client.artists.first(where: {
-                        $0.name.lowercased() == track.primaryArtist.lowercased()
-                    })?.musicBrainzId ?? track.musicBrainzId
+                    let initialMbid = track.musicBrainzId
                     FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId, mbid: initialMbid) {
                         isCyclingBackdrop = false
                     }
@@ -874,9 +872,7 @@ struct NowPlayingView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isCyclingClearLogo = true
 
-        let initialMbid = playback.client.artists.first(where: {
-            $0.name.lowercased() == track.primaryArtist.lowercased()
-        })?.musicBrainzId ?? track.musicBrainzId
+        let initialMbid = track.musicBrainzId
 
         FanartManager.shared.cycleClearLogo(for: artists, artistId: track.artistId, mbid: initialMbid) {
             isCyclingClearLogo = false
@@ -977,7 +973,7 @@ struct NowPlayingView: View {
         self.artistBiography = nil
         self.loadArtistPortrait(for: track)
 
-        let initialMbid = playback.client.artists.first(where: { $0.id == track.artistId })?.musicBrainzId ?? track.musicBrainzId
+        let initialMbid = track.musicBrainzId
 
         // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
         // This prevents the "waiting for Navidrome response" flicker
