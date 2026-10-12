@@ -97,19 +97,23 @@ struct NowPlayingView: View {
                             AlbumAmbientGradientView(colors: playback.currentPalette)
                         }
                     } else {
-                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop
-                        if let backdrop = fanart.currentBackdrop {
-                            Image(uiImage: backdrop)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                                .clipped()
-                                .id(backdrop)
-                                .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                .opacity(isIdle ? 0.45 : 0.35)
-                        } else {
-                            // No fanart — Apple Music-style ambient gradient from album color
+                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
+                        ZStack {
+                            // 1. BASE LAYER: Always active Apple Music-style ambient gradient
+                            // Ensures the backdrop is NEVER pitch black, showing rich ambient visuals instantly
                             AlbumAmbientGradientView(colors: playback.currentPalette)
+
+                            // 2. TOP LAYER: High-Fidelity Fanart Backdrop (smoothly overlays when available)
+                            if let backdrop = fanart.currentBackdrop {
+                                Image(uiImage: backdrop)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                    .clipped()
+                                    .id(backdrop)
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                                    .opacity(isIdle ? 0.45 : 0.35)
+                            }
                         }
                     }
                 }
@@ -441,23 +445,22 @@ struct NowPlayingView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .overlay(alignment: .bottomTrailing) {
                             if let logo = fanart.currentClearLogo {
-                                Button {
-                                    cycleClearLogoAction()
-                                } label: {
-                                    Image(uiImage: logo)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(maxWidth: isLargeCanvas ? 240 : 180, maxHeight: isShortCanvas ? 54 : 72)
-                                        // Resetting offset so it naturally perfectly sits on the same line as the bottom-aligned Lossless badge!
-                                        .offset(y: 0)
-                                        .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                                        .opacity(isCyclingClearLogo ? 0.35 : 1.0)
-                                        .scaleEffect(isCyclingClearLogo ? 0.94 : 1.0)
-                                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Change Artist Clear Logo")
-                                .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                                Image(uiImage: logo)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: isLargeCanvas ? 240 : 180, maxHeight: isShortCanvas ? 54 : 72)
+                                    // Resetting offset so it naturally perfectly sits on the same line as the bottom-aligned Lossless badge!
+                                    .offset(y: 0)
+                                    .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                                    .opacity(isCyclingClearLogo ? 0.35 : 1.0)
+                                    .scaleEffect(isCyclingClearLogo ? 0.94 : 1.0)
+                                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture(count: 2) {
+                                        cycleClearLogoAction()
+                                    }
+                                    .accessibilityLabel("Double tap to change Artist Clear Logo")
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                             }
                         }
                     }
@@ -934,22 +937,21 @@ struct NowPlayingView: View {
             }
             .overlay(alignment: .bottomTrailing) {
                 if let logo = fanart.currentClearLogo {
-                    Button {
-                        cycleClearLogoAction()
-                    } label: {
-                        Image(uiImage: logo)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: isLargeCanvas ? 240 : (isSE ? 140 : 180), maxHeight: isShortCanvas ? 54 : 72)
-                            .padding(.trailing, 10)
-                            .opacity(isCyclingClearLogo ? 0.35 : 0.8)
-                            .scaleEffect(isCyclingClearLogo ? 0.94 : 1.0)
-                            .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
-                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Change Artist Clear Logo")
-                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
+                    Image(uiImage: logo)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: isLargeCanvas ? 240 : (isSE ? 140 : 180), maxHeight: isShortCanvas ? 54 : 72)
+                        .padding(.trailing, 10)
+                        .opacity(isCyclingClearLogo ? 0.35 : 0.8)
+                        .scaleEffect(isCyclingClearLogo ? 0.94 : 1.0)
+                        .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            cycleClearLogoAction()
+                        }
+                        .accessibilityLabel("Double tap to change Artist Clear Logo")
+                        .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                 }
             }
         }
@@ -1130,13 +1132,32 @@ extension UIColor {
 struct AlbumAmbientGradientView: View {
     let colors: [UIColor]
 
+    private var activeColors: [UIColor] {
+        let isAllBlack = colors.isEmpty || colors.allSatisfy {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            $0.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return r < 0.05 && g < 0.05 && b < 0.05
+        }
+        if isAllBlack {
+            return [
+                UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0), // Deep ambient violet
+                UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0), // Deep ambient plum
+                UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0), // Deep ambient indigo
+                UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
+                UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
+            ]
+        }
+        return colors
+    }
+
     var body: some View {
         if #available(iOS 18.0, *) {
-            AnimatedMeshGradientView(colors: colors)
+            AnimatedMeshGradientView(colors: activeColors)
         } else {
             // Below iOS 18: Zero GPU overload — static LinearGradient
-            let primary = colors.indices.contains(0) ? Color(colors[0]) : Color.black
-            let secondary = colors.indices.contains(1) ? Color(colors[1]) : Color.black
+            let cols = activeColors
+            let primary = cols.indices.contains(0) ? Color(cols[0]) : Color.black
+            let secondary = cols.indices.contains(1) ? Color(cols[1]) : Color.black
             LinearGradient(
                 gradient: Gradient(colors: [
                     primary.opacity(0.8),

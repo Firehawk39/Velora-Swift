@@ -382,7 +382,7 @@ final class FanartManager: ObservableObject {
                     }
                 } else if isEmpty {
                     // Self-healing recovery: If the MBID used returned 404, query MusicBrainz by name to see if we had the wrong MBID!
-                    let primary = self.extractPrimaryArtist(primaryArtist)
+                    let primary = extractPrimaryArtist(primaryArtist)
                     self.mbidCache.removeValue(forKey: primary)
                     self.mbidCache.removeValue(forKey: primaryArtist)
                     self.getMBIDSafe(for: primaryArtist, priority: URLSessionTask.highPriority) { [weak self] mbResult in
@@ -543,7 +543,7 @@ final class FanartManager: ObservableObject {
                 // Self-Healing MBID Recovery: Query MusicBrainz directly by artist name to resolve true artist MBID!
                 if isProvided {
                     AppLogger.shared.log("[Fanart] No backdrop on Fanart for \(artist) with provided MBID \(resolvedMBID). Attempting self-healing via MusicBrainz...")
-                    let primary = self.extractPrimaryArtist(artist)
+                    let primary = extractPrimaryArtist(artist)
                     self.mbidCache.removeValue(forKey: primary)
                     self.mbidCache.removeValue(forKey: artist)
                     self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { [weak self] mbResult in
@@ -659,7 +659,7 @@ final class FanartManager: ObservableObject {
                             }
                         } else if isEmpty {
                             if isProvided {
-                                let primary = self.extractPrimaryArtist(artist)
+                                let primary = extractPrimaryArtist(artist)
                                 self.mbidCache.removeValue(forKey: primary)
                                 self.mbidCache.removeValue(forKey: artist)
                                 self.getMBIDSafe(for: artist, priority: URLSessionTask.lowPriority) { [weak self] mbResult in

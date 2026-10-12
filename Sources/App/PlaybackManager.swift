@@ -585,9 +585,19 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.duration = 0
         self.hasScrobbledCurrentTrack = false
         self.currentLyrics = nil
-        self.currentSyncedLyrics = nil
-        self.currentPrimaryColor = .black
-        self.currentPalette = [.black, .black, .black, .black, .black]
+        // Check disk immediately for cached cover art to set vibrant colors instantly without flashing to pitch black
+        var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+        if artId.contains("getCoverArt"),
+           let artUrl = URL(string: artId),
+           let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
+           let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
+            artId = idParam
+        }
+        let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(artId).jpg")
+        if let data = try? Data(contentsOf: localCoverUrl), let img = UIImage(data: data) {
+            self.currentPrimaryColor = img.dominantColor() ?? self.currentPrimaryColor
+            self.currentPalette = img.extractPalette(count: 5)
+        }
 
         self.currentArtworkTrackId = nil
 
@@ -875,6 +885,22 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     self.downloadingArtworkTrackId = nil
                     self.artworkDownloadTask = nil
                 }
+            }
+
+            // 0. Immediate local disk cache check: load cached coverArt instantly
+            var localArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+            if localArtId.contains("getCoverArt"),
+               let artUrl = URL(string: localArtId),
+               let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
+               let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
+                localArtId = idParam
+            }
+            let cachedCoverFile = VeloraStorage.coverArt.appendingPathComponent("\(localArtId).jpg")
+            if FileManager.default.fileExists(atPath: cachedCoverFile.path),
+               let data = try? Data(contentsOf: cachedCoverFile),
+               let image = UIImage(data: data) {
+                applyArtwork(image, data)
+                return
             }
 
             // Fast path for local offline artwork: read directly from disk without URLSession
