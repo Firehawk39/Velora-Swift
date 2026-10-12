@@ -225,7 +225,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         // Re-evaluate download session topology whenever server URL changes
         NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            _ = self?.getDownloadSession()
+            Task { @MainActor in
+                _ = self?.getDownloadSession()
+            }
         }
 
         loadDownloadedTracks()
@@ -1244,7 +1246,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     // MARK: - Audio Container Magic Header Validator
 
-    private static func isValidAudioContainer(at url: URL) -> Bool {
+    private nonisolated static func isValidAudioContainer(at url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
         defer { try? handle.close() }
         guard let headerData = try? handle.read(upToCount: 32), headerData.count >= 4 else { return false }

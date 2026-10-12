@@ -93,7 +93,7 @@ final class VeloraMCPServer: ObservableObject {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] content, _, isComplete, error in
             guard let self = self else { return }
 
-            if let error = error {
+            if error != nil {
                 connection.cancel()
                 return
             }
