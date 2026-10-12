@@ -440,7 +440,7 @@ final class FanartManager: ObservableObject {
         }
 
         self.getMBIDSafe(for: primaryArtist, priority: URLSessionTask.highPriority) { [weak self] result in
-            guard self != nil else { return }
+            guard self != nil else { completion(); return }
             switch result {
             case .found(let resolvedMBID):
                 try? resolvedMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)

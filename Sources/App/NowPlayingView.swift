@@ -247,6 +247,10 @@ struct NowPlayingView: View {
         }
         .onChange(of: playback.currentTrack?.id) { _ in
             resetIdleTimer()
+            withAnimation {
+                isCyclingBackdrop = false
+                isCyclingClearLogo = false
+            }
             refreshMetadata()
         }
         .onChange(of: isScrolledDown) { scrolled in
@@ -842,8 +846,19 @@ struct NowPlayingView: View {
                 if !artists.isEmpty {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isCyclingBackdrop = true
+                    let currentTrackId = track.id
+
+                    // 15s Safety Timeout: Stop spinning if network stalls or request hangs
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
+                        if self.playback.currentTrack?.id == currentTrackId && self.isCyclingBackdrop {
+                            withAnimation { self.isCyclingBackdrop = false }
+                        }
+                    }
+
                     FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId, mbid: nil) {
-                        isCyclingBackdrop = false
+                        if self.playback.currentTrack?.id == currentTrackId {
+                            withAnimation { self.isCyclingBackdrop = false }
+                        }
                     }
                 }
             }
@@ -873,9 +888,19 @@ struct NowPlayingView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isCyclingClearLogo = true
+        let currentTrackId = track.id
+
+        // 15s Safety Timeout: Stop spinning if network stalls or request hangs
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
+            if self.playback.currentTrack?.id == currentTrackId && self.isCyclingClearLogo {
+                withAnimation { self.isCyclingClearLogo = false }
+            }
+        }
 
         FanartManager.shared.cycleClearLogo(for: artists, artistId: track.artistId, mbid: nil) {
-            isCyclingClearLogo = false
+            if self.playback.currentTrack?.id == currentTrackId {
+                withAnimation { self.isCyclingClearLogo = false }
+            }
         }
     }
 
@@ -964,6 +989,8 @@ struct NowPlayingView: View {
 
 
     private func refreshMetadata() {
+        self.isCyclingBackdrop = false
+        self.isCyclingClearLogo = false
         guard let track = playback.currentTrack else { return }
 
         let artistName = track.artist ?? "Unknown Artist"
