@@ -180,7 +180,7 @@ final class SyncManager: ObservableObject {
             var passCount = 0
             repeat {
                 passCount += 1
-                metadataStatus = passCount == 1 ? "Enriching cloud fanart & web metadata..." : "Retrying cloud items (pass \(passCount))..."
+                metadataStatus = passCount == 1 ? "Indexing visual assets & studio metadata..." : "Retrying items (pass \(passCount))..."
                 await Task.yield()
 
                 // Reset dedup guards so artists that failed due to stuck keys can be retried
@@ -241,7 +241,7 @@ final class SyncManager: ObservableObject {
                         artistsProcessedThisPass += 1
                         tasksCompleted += 1.0
                         metadataProgress = min(tasksCompleted / totalAll, 0.99)
-                        metadataStatus = "Enriching Cloud Fanart: \(artistsProcessedThisPass)/\(missingArtists.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
+                        metadataStatus = "Indexing Visual Assets & ClearLogos: \(artistsProcessedThisPass)/\(missingArtists.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
 
                         let elapsed = Date().timeIntervalSince(passStartTime)
                         let doneThisPass = tasksCompleted - alreadyDone
@@ -283,7 +283,7 @@ final class SyncManager: ObservableObject {
                         albumsProcessedThisPass += 1
                         tasksCompleted += 1.0
                         metadataProgress = min(tasksCompleted / totalAll, 0.99)
-                        metadataStatus = "Enriching Cloud Albums: \(albumsProcessedThisPass)/\(missingAlbums.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
+                        metadataStatus = "Resolving Extended Discography Telemetry: \(albumsProcessedThisPass)/\(missingAlbums.count)" + (passCount > 1 ? " (pass \(passCount))" : "")
 
                         let elapsed = Date().timeIntervalSince(passStartTime)
                         let doneThisPass = tasksCompleted - alreadyDone
