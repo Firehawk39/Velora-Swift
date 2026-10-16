@@ -82,16 +82,12 @@ struct NowPlayingView: View {
                     if isCompact && !isLandscape {
                         // PORTRAIT IPHONE: Strictly no Fanart backdrop
                         if ScreenTier.isSE {
-                            // iPhone SE (iOS 15 low-power device): LinearGradient
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color(playback.currentPrimaryColor).opacity(0.8),
-                                    Color(playback.currentPrimaryColor).opacity(0.4),
-                                    .black
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                            // iPhone SE (iOS 15 low-power device): Micro-Texture Mesh Engine
+                            if playback.currentArtworkTrackId == playback.currentTrack?.id {
+                                MicroMeshGradientView(colors: playback.currentPalette, isLandscape: false)
+                            } else {
+                                Color.black
+                            }
                         } else {
                             // Modern iPhones: Apple Music-style ambient MeshGradient / FluidGradient
                             AlbumAmbientGradientView(colors: playback.currentPalette)
@@ -99,20 +95,35 @@ struct NowPlayingView: View {
                     } else {
                         // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
                         ZStack {
-                            // 1. BASE LAYER: Always active Apple Music-style ambient gradient
-                            // Ensures the backdrop is NEVER pitch black, showing rich ambient visuals instantly
-                            AlbumAmbientGradientView(colors: playback.currentPalette)
+                            let isArtworkLoaded = playback.currentArtworkTrackId == playback.currentTrack?.id
 
-                            // 2. TOP LAYER: High-Fidelity Fanart Backdrop (smoothly overlays when available)
-                            if let backdrop = fanart.currentBackdrop {
-                                Image(uiImage: backdrop)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                                    .clipped()
-                                    .id(backdrop)
-                                    .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                    .opacity(isIdle ? 0.45 : 0.35)
+                            if isArtworkLoaded {
+                                if let backdrop = fanart.currentBackdrop {
+                                    // High-tier iOS 18+ only: ambient base layer under fanart (Apple Music look)
+                                    // Micro-Mesh Engine is strictly for fallback backdrops and never renders under fanart
+                                    if #available(iOS 18.0, *), !ScreenTier.isSE {
+                                        AnimatedMeshGradientView(colors: playback.currentPalette)
+                                    }
+
+                                    // High-Fidelity Fanart Backdrop
+                                    Image(uiImage: backdrop)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                        .clipped()
+                                        .id(backdrop)
+                                        .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                                        .opacity(ScreenTier.isSE ? 0.85 : (isIdle ? 0.45 : 0.35))
+                                } else {
+                                    // Fallback when no fanart backdrop:
+                                    if ScreenTier.isSE {
+                                        MicroMeshGradientView(colors: playback.currentPalette, isLandscape: true)
+                                    } else {
+                                        AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: isLandscape)
+                                    }
+                                }
+                            } else {
+                                Color.black
                             }
                         }
                     }
@@ -1128,9 +1139,10 @@ extension UIColor {
 }
 
 // MARK: - Album Ambient Gradient (Apple Music style)
-// Dispatches to MeshGradient on iOS 18+. Below iOS 18: ZERO GPU overload — static LinearGradient.
+// Dispatches to MeshGradient on iOS 18+. Below iOS 18: ZERO GPU overload — MicroMeshGradientView.
 struct AlbumAmbientGradientView: View {
     let colors: [UIColor]
+    var isLandscape: Bool = false
 
     private var activeColors: [UIColor] {
         let isAllBlack = colors.isEmpty || colors.allSatisfy {
@@ -1154,19 +1166,8 @@ struct AlbumAmbientGradientView: View {
         if #available(iOS 18.0, *) {
             AnimatedMeshGradientView(colors: activeColors)
         } else {
-            // Below iOS 18: Zero GPU overload — static LinearGradient
-            let cols = activeColors
-            let primary = cols.indices.contains(0) ? Color(cols[0]) : Color.black
-            let secondary = cols.indices.contains(1) ? Color(cols[1]) : Color.black
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    primary.opacity(0.8),
-                    secondary.opacity(0.4),
-                    .black
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            // Below iOS 18: Zero GPU overload — Micro-Texture Mesh Engine
+            MicroMeshGradientView(colors: activeColors, isLandscape: isLandscape)
         }
     }
 }

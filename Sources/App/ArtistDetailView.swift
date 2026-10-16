@@ -602,17 +602,9 @@ struct ArtistBackdropView: View {
     @ViewBuilder
     private var fallbackGradient: some View {
         if ScreenTier.isSE {
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
-                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
-                    isDarkMode ? .black : .white
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            MicroMeshGradientView(colors: artistPalette, isLandscape: isLandscape)
         } else {
-            AlbumAmbientGradientView(colors: artistPalette)
+            AlbumAmbientGradientView(colors: artistPalette, isLandscape: isLandscape)
         }
     }
     
