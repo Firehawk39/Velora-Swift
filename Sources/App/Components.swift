@@ -920,63 +920,60 @@ public struct SEMicroMeshLandscapeView: View {
     public var size: CGSize?
 
     @State private var phase = false
-    @State private var tex1: UIImage?
-    @State private var tex2: UIImage?
 
     public init(colors: [UIColor], size: CGSize? = nil) {
         self.colors = colors
         self.size = size
     }
 
-    private var activeColors: [UIColor] {
-        let isAllBlack = colors.isEmpty || colors.allSatisfy {
+    private var isPaletteLoaded: Bool {
+        guard !colors.isEmpty else { return false }
+        return !colors.allSatisfy {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
             $0.getRed(&r, green: &g, blue: &b, alpha: &a)
             return r < 0.05 && g < 0.05 && b < 0.05
         }
-        if isAllBlack {
-            return [
-                UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0),
-                UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0),
-                UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0),
-                UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
-                UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
-            ]
-        }
-        return colors
     }
 
-    private func renderMesh(isPhaseTwo: Bool) -> UIImage {
+    private var activeColors: [Color] {
+        return colors.map { Color($0) }
+    }
+
+    private func color(at index: Int) -> Color {
         let cols = activeColors
-        let a = cols.indices.contains(0) ? cols[0] : .black
-        let b = cols.indices.contains(1) ? cols[1] : .black
-        let c = cols.indices.contains(2) ? cols[2] : .black
-        let d = cols.indices.contains(3) ? cols[3] : .black
-        let e = cols.indices.contains(4) ? cols[4] : .black
-        let dark = UIColor(red: 0.02, green: 0.02, blue: 0.03, alpha: 1.0)
+        guard !cols.isEmpty else { return Color.black }
+        return cols[index % cols.count]
+    }
 
-        let grid = isPhaseTwo
-            ? [b, a, e, dark,
-               a, e, c, dark,
-               dark, d, b, dark]
-            : [a, b, c, dark,
-               b, a, e, dark,
-               dark, c, d, dark]
+    @ViewBuilder
+    private func meshGrid(isPhaseTwo: Bool) -> some View {
+        let c0 = color(at: 0)
+        let c1 = color(at: 1)
+        let c2 = color(at: 2)
+        let c3 = color(at: 3)
+        let c4 = color(at: 4)
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 3))
-        return renderer.image { ctx in
-            for y in 0..<3 {
-                for x in 0..<4 {
-                    grid[y * 4 + x].setFill()
-                    ctx.fill(CGRect(x: x, y: y, width: 1, height: 1))
-                }
+        // 4 Columns x 3 Rows - full landscape distribution across left, center, and right
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                isPhaseTwo ? c1 : c0
+                isPhaseTwo ? c0 : c1
+                isPhaseTwo ? c4 : c2
+                isPhaseTwo ? c2 : c3
+            }
+            HStack(spacing: 0) {
+                isPhaseTwo ? c2 : c3
+                isPhaseTwo ? c4 : c0
+                isPhaseTwo ? c1 : c4
+                isPhaseTwo ? c3 : c1
+            }
+            HStack(spacing: 0) {
+                isPhaseTwo ? c3 : c2
+                isPhaseTwo ? c1 : c3
+                isPhaseTwo ? c0 : c1
+                isPhaseTwo ? c4 : c0
             }
         }
-    }
-
-    private func update() {
-        self.tex1 = renderMesh(isPhaseTwo: false)
-        self.tex2 = renderMesh(isPhaseTwo: true)
     }
 
     public var body: some View {
@@ -985,22 +982,19 @@ public struct SEMicroMeshLandscapeView: View {
             let h = size?.height ?? geo.size.height
 
             ZStack {
-                if let t1 = tex1 {
-                    Image(uiImage: t1)
-                        .resizable()
-                        .blur(radius: 35)
-                        .frame(width: w, height: h)
-                        .clipped()
-                        .opacity(phase ? 0.0 : 1.0)
-                }
+                Color.black
 
-                if let t2 = tex2 {
-                    Image(uiImage: t2)
-                        .resizable()
-                        .blur(radius: 35)
-                        .frame(width: w, height: h)
-                        .clipped()
-                        .opacity(phase ? 1.0 : 0.0)
+                if isPaletteLoaded {
+                    ZStack {
+                        meshGrid(isPhaseTwo: false)
+                            .opacity(phase ? 0.0 : 1.0)
+
+                        meshGrid(isPhaseTwo: true)
+                            .opacity(phase ? 1.0 : 0.0)
+                    }
+                    .scaleEffect(1.2)
+                    .blur(radius: 40)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                 }
             }
             .frame(width: w, height: h)
@@ -1008,13 +1002,10 @@ public struct SEMicroMeshLandscapeView: View {
         }
         .clipped()
         .onAppear {
-            update()
             withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                 phase = true
             }
         }
-        .onChange(of: colors) { _ in
-            update()
-        }
+        .animation(.easeInOut(duration: 0.6), value: colors.map { $0.description }.joined())
     }
 }

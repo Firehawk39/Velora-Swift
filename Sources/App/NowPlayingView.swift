@@ -83,15 +83,19 @@ struct NowPlayingView: View {
                         // PORTRAIT IPHONE: Strictly no Fanart backdrop
                         if ScreenTier.isSE {
                             // iPhone SE (iOS 15 low-power device): LinearGradient
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color(playback.currentPrimaryColor).opacity(0.8),
-                                    Color(playback.currentPrimaryColor).opacity(0.4),
-                                    .black
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                            if playback.currentArtworkTrackId == playback.currentTrack?.id {
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color(playback.currentPrimaryColor).opacity(0.8),
+                                        Color(playback.currentPrimaryColor).opacity(0.4),
+                                        .black
+                                    ]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            } else {
+                                Color.black
+                            }
                         } else {
                             // Modern iPhones: Apple Music-style ambient MeshGradient / FluidGradient
                             AlbumAmbientGradientView(colors: playback.currentPalette)
@@ -99,23 +103,36 @@ struct NowPlayingView: View {
                     } else {
                         // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
                         ZStack {
-                            // 1. BASE LAYER: Always active Apple Music-style ambient gradient
-                            if ScreenTier.isSE {
-                                SEMicroMeshLandscapeView(colors: playback.currentPalette, size: proxy.size)
-                            } else {
-                                AlbumAmbientGradientView(colors: playback.currentPalette)
-                            }
+                            let isArtworkLoaded = playback.currentArtworkTrackId == playback.currentTrack?.id
 
-                            // 2. TOP LAYER: High-Fidelity Fanart Backdrop (smoothly overlays when available)
-                            if let backdrop = fanart.currentBackdrop {
-                                Image(uiImage: backdrop)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                                    .clipped()
-                                    .id(backdrop)
-                                    .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                    .opacity(isIdle ? 0.45 : 0.35)
+                            if isArtworkLoaded {
+                                if let backdrop = fanart.currentBackdrop {
+                                    // 1. BASE LAYER UNDER FANART (iPad & modern iPhones only):
+                                    // iPhone SE strictly does NOT overlay a gradient under fanart backdrops!
+                                    if !ScreenTier.isSE {
+                                        AlbumAmbientGradientView(colors: playback.currentPalette)
+                                    }
+
+                                    // 2. TOP LAYER: High-Fidelity Fanart Backdrop
+                                    Image(uiImage: backdrop)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                        .clipped()
+                                        .id(backdrop)
+                                        .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                                        .opacity(ScreenTier.isSE ? 0.85 : (isIdle ? 0.45 : 0.35))
+                                } else {
+                                    // NO FANART BACKDROP: Fallback ambient layer
+                                    if ScreenTier.isSE {
+                                        SEMicroMeshLandscapeView(colors: playback.currentPalette, size: proxy.size)
+                                    } else {
+                                        AlbumAmbientGradientView(colors: playback.currentPalette)
+                                    }
+                                }
+                            } else {
+                                // Album art not fully loaded yet: Pure black background
+                                Color.black
                             }
                         }
                     }
