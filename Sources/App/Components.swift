@@ -71,6 +71,7 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
     @ViewBuilder public let content: (Image) -> Content
     @ViewBuilder public let placeholder: () -> Placeholder
 
+    @State private var loadedImage: UIImage? = nil
     @State private var retryCount = 0
     @State private var reloadTrigger = UUID()
 
@@ -80,31 +81,48 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
         self.placeholder = placeholder
     }
 
+    private var artId: String {
+        guard let url = url else { return "" }
+        return extractArtId(from: url.absoluteString)
+    }
+
     public var body: some View {
         Group {
-            if let url = url, url.isFileURL {
+            if let image = loadedImage ?? quickCachedImage() {
+                content(Image(uiImage: image))
+            } else if let url = url, url.isFileURL {
                 if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
                     content(Image(uiImage: uiImage))
                 } else {
                     placeholder()
                 }
-            } else {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        content(image)
-                            .onAppear { retryCount = 0 } // Reset on success
-                    } else if phase.error != nil {
-                        placeholder()
-                            .onAppear {
-                                scheduleRetry()
+            } else if let url = url {
+                placeholder()
+                    .task(id: "\(url.absoluteString)-\(reloadTrigger)") {
+                        if let img = await CoverArtManager.shared.loadArtwork(url: url, artId: artId) {
+                            await MainActor.run {
+                                self.loadedImage = img
+                                self.retryCount = 0
                             }
-                    } else {
-                        placeholder() // Loading state
+                        } else {
+                            scheduleRetry()
+                        }
                     }
-                }
-                .id(reloadTrigger)
+            } else {
+                placeholder()
             }
         }
+        .onChange(of: url) { newUrl in
+            self.loadedImage = quickCachedImage(for: newUrl)
+        }
+    }
+
+    private func quickCachedImage(for targetUrl: URL? = nil) -> UIImage? {
+        let u = targetUrl ?? url
+        guard let u = u else { return nil }
+        let id = extractArtId(from: u.absoluteString)
+        guard !id.isEmpty else { return nil }
+        return CoverArtManager.shared.cachedImage(for: id)
     }
 
     private func scheduleRetry() {

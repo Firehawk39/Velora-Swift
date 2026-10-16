@@ -137,7 +137,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var timeObserver: Any?
     private var currentItemObserver: NSKeyValueObservation?
     @Published var currentArtworkTrackId: String? = nil
-    private var artworkDownloadTask: URLSessionDataTask? = nil
+    private var artworkDownloadTask: Task<Void, Never>? = nil
+    private var prefetchTask: Task<Void, Never>? = nil
     private var downloadingArtworkTrackId: String? = nil
     private var seekTimer: Timer?
 
@@ -585,21 +586,17 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.duration = 0
         self.hasScrobbledCurrentTrack = false
         self.currentLyrics = nil
-        // Check disk immediately for cached cover art to set vibrant colors instantly without flashing to pitch black
-        var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-        if artId.contains("getCoverArt"),
-           let artUrl = URL(string: artId),
-           let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
-           let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
-            artId = idParam
-        }
-        let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(artId).jpg")
-        if let data = try? Data(contentsOf: localCoverUrl), let img = UIImage(data: data) {
+        let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+        let cleanArtId = extractArtId(from: rawArtId)
+        if let img = CoverArtManager.shared.cachedImage(for: cleanArtId) {
             self.currentPrimaryColor = img.dominantColor() ?? self.currentPrimaryColor
             self.currentPalette = img.extractPalette(count: 5)
+            self.currentArtworkTrackId = track.id
+        } else {
+            self.currentPrimaryColor = .black
+            self.currentPalette = [.black, .black, .black, .black, .black]
+            self.currentArtworkTrackId = nil
         }
-
-        self.currentArtworkTrackId = nil
 
         client.fetchLyrics(
             trackId: track.id,
@@ -615,10 +612,20 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: cachedMbid)
         FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: cachedMbid)
 
+        // Queue lookahead: Pre-cache artwork thumbnails for upcoming tracks in background
+        let upcoming = Array(queue.dropFirst(queueIndex + 1))
+        CoverArtManager.shared.preloadArtwork(for: upcoming, count: 6)
+
+        prefetchTask?.cancel()
         if NetworkMonitor.shared.isConnected {
             client.scrobble(track: track, submission: false)
-            prefetchNextTracks()
-            boostCurrentContextDownloads()
+            // Prioritize active audio stream handshake & cover art: yield background prefetching for 1.5s
+            prefetchTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard !Task.isCancelled, let self = self else { return }
+                self.prefetchNextTracks()
+                self.boostCurrentContextDownloads()
+            }
         }
 
         updateNowPlayingInfo()
@@ -841,28 +848,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
 
             let artworkUrl = track.coverArtUrl
+            let rawArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
+            let cleanArtId = extractArtId(from: rawArtId)
 
-            let applyArtwork: (UIImage, Data) -> Void = { [weak self] image, data in
+            let applyArtwork: (UIImage) -> Void = { [weak self] image in
                 guard let self = self else { return }
-                var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-                if artId.contains("getCoverArt"),
-                   let artUrl = URL(string: artId),
-                   let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
-                   let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
-                    artId = idParam
-                }
-                let coverArtDir = VeloraStorage.coverArt
-                let localUrl = coverArtDir.appendingPathComponent("\(artId).jpg")
-                if !FileManager.default.fileExists(atPath: localUrl.path) {
-                    try? data.write(to: localUrl)
-                }
-                if let aid = track.albumId, !aid.isEmpty {
-                    let cleanAid = extractArtId(from: aid)
-                    let albumUrl = coverArtDir.appendingPathComponent("\(cleanAid).jpg")
-                    if !FileManager.default.fileExists(atPath: albumUrl.path) {
-                        try? data.write(to: albumUrl)
-                    }
-                }
 
                 let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
                 let extractedColor = image.dominantColor() ?? .black
@@ -888,27 +878,17 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
 
-            // 0. Immediate local disk cache check: load cached coverArt instantly
-            var localArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-            if localArtId.contains("getCoverArt"),
-               let artUrl = URL(string: localArtId),
-               let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
-               let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
-                localArtId = idParam
-            }
-            let cachedCoverFile = VeloraStorage.coverArt.appendingPathComponent("\(localArtId).jpg")
-            if FileManager.default.fileExists(atPath: cachedCoverFile.path),
-               let data = try? Data(contentsOf: cachedCoverFile),
-               let image = UIImage(data: data) {
-                applyArtwork(image, data)
+            // 0. Immediate cache check via CoverArtManager (Memory + Disk in 0ms)
+            if let cachedImage = CoverArtManager.shared.cachedImage(for: cleanArtId) {
+                applyArtwork(cachedImage)
                 return
             }
 
-            // Fast path for local offline artwork: read directly from disk without URLSession
+            // Fast path for local offline artwork: read directly from disk without network
             if let artworkUrl = artworkUrl, artworkUrl.isFileURL,
                let data = try? Data(contentsOf: artworkUrl),
                let image = UIImage(data: data) {
-                applyArtwork(image, data)
+                applyArtwork(image)
                 return
             }
 
@@ -916,7 +896,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if let embeddedUrl = extractEmbeddedArtwork(for: track.id, albumId: track.albumId, artId: track.coverArt),
                let data = try? Data(contentsOf: embeddedUrl),
                let image = UIImage(data: data) {
-                applyArtwork(image, data)
+                applyArtwork(image)
                 return
             }
 
@@ -935,37 +915,22 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             if let artworkUrl = artworkUrl {
                 downloadingArtworkTrackId = track.id
 
-                let task = URLSession.shared.dataTask(with: artworkUrl) { [weak self] data, _, error in
+                artworkDownloadTask = Task { [weak self] in
                     guard let self = self else { return }
-
-                    if error != nil || data == nil {
-                        Task { @MainActor in
+                    if let image = await CoverArtManager.shared.loadArtwork(url: artworkUrl, artId: cleanArtId, albumId: track.albumId) {
+                        applyArtwork(image)
+                    } else {
+                        await MainActor.run {
                             if self.downloadingArtworkTrackId == track.id {
                                 self.downloadingArtworkTrackId = nil
                                 self.artworkRetryCount += 1
                                 let delay = min(pow(2.0, Double(self.artworkRetryCount)), 60.0)
                                 self.nextArtworkRetryTime = Date().addingTimeInterval(delay)
                             }
+                            self.artworkDownloadTask = nil
                         }
-                        return
                     }
-
-                    guard let data = data, let image = UIImage(data: data) else {
-                        Task { @MainActor in
-                            if self.downloadingArtworkTrackId == track.id {
-                                self.downloadingArtworkTrackId = nil
-                                self.artworkRetryCount += 1
-                                let delay = min(pow(2.0, Double(self.artworkRetryCount)), 60.0)
-                                self.nextArtworkRetryTime = Date().addingTimeInterval(delay)
-                            }
-                        }
-                        return
-                    }
-
-                    applyArtwork(image, data)
                 }
-                artworkDownloadTask = task
-                task.resume()
             }
         }
     }

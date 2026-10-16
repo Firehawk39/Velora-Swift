@@ -702,8 +702,13 @@ extension NavidromeClient {
     }
 
     func downloadCoverArt(id: String, completion: (@Sendable (Bool) -> Void)? = nil) {
+        let cleanId = extractArtId(from: id)
+        guard !cleanId.isEmpty else {
+            completion?(false)
+            return
+        }
         let coverArtDir = VeloraStorage.coverArt
-        let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
+        let destinationUrl = coverArtDir.appendingPathComponent("\(cleanId).jpg")
 
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
             if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
@@ -721,22 +726,22 @@ extension NavidromeClient {
             return
         }
 
-        guard Self.registerInFlightCover(id: id, completion: completion) else {
+        guard Self.registerInFlightCover(id: cleanId, completion: completion) else {
             return
         }
 
-        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else {
-            Self.finishCoverArtCallbacks(id: id, success: false)
+        guard let url = URL(string: getCoverArtUrl(id: cleanId, size: 600)) else {
+            Self.finishCoverArtCallbacks(id: cleanId, success: false)
             return
         }
 
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             let notifyAndFinish: @Sendable (Bool) -> Void = { success in
-                Self.finishCoverArtCallbacks(id: id, success: success)
+                Self.finishCoverArtCallbacks(id: cleanId, success: success)
             }
 
             guard let data = data, error == nil else {
-                AppLogger.shared.log("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
+                AppLogger.shared.log("Failed to download cover art for \(cleanId): \(error?.localizedDescription ?? "Unknown error")")
                 notifyAndFinish(false)
                 return
             }
@@ -749,11 +754,11 @@ extension NavidromeClient {
                     try data.write(to: destinationUrl)
                     notifyAndFinish(true)
                 } else {
-                    AppLogger.shared.log("Failed to save cover art for \(id): Not a valid image.")
+                    AppLogger.shared.log("Failed to save cover art for \(cleanId): Not a valid image.")
                     notifyAndFinish(false)
                 }
             } catch {
-                AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
+                AppLogger.shared.log("Failed to save cover art for \(cleanId): \(error)")
                 notifyAndFinish(false)
             }
         }
@@ -762,8 +767,10 @@ extension NavidromeClient {
     // MARK: - Lyrics
     
     func downloadArtistPortrait(id: String) {
+        let cleanId = extractArtId(from: id)
+        guard !cleanId.isEmpty else { return }
         let portraitDir = VeloraStorage.artistPortraits
-        let destinationUrl = portraitDir.appendingPathComponent("\(id).jpg")
+        let destinationUrl = portraitDir.appendingPathComponent("\(cleanId).jpg")
 
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
             if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
@@ -775,7 +782,7 @@ extension NavidromeClient {
         }
 
         guard NetworkMonitor.shared.isConnected else { return }
-        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
+        guard let url = URL(string: getCoverArtUrl(id: cleanId, size: 600)) else { return }
 
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             guard let data = data, error == nil else { return }
@@ -1020,12 +1027,16 @@ extension NavidromeClient {
             sendScrobble(id: track.id, submission: submission)
         } else if submission {
             // Queue the submission for when we reconnect (nowPlaying pings are fire-and-forget, not worth queuing)
-            var pending = UserDefaults.standard.stringArray(forKey: pendingScrobblesKey) ?? []
-            if !pending.contains(track.id) {
-                pending.append(track.id)
-                UserDefaults.standard.set(pending, forKey: pendingScrobblesKey)
-                AppLogger.shared.log("[Scrobble] Queued offline scrobble for track \(track.id)")
-            }
+            queueOfflineScrobble(id: track.id)
+        }
+    }
+
+    private func queueOfflineScrobble(id: String) {
+        var pending = UserDefaults.standard.stringArray(forKey: pendingScrobblesKey) ?? []
+        if !pending.contains(id) {
+            pending.append(id)
+            UserDefaults.standard.set(pending, forKey: pendingScrobblesKey)
+            AppLogger.shared.log("[Scrobble] Queued offline scrobble for track \(id)")
         }
     }
 
@@ -1038,6 +1049,12 @@ extension NavidromeClient {
         ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] _, _, error in
             if let error = error {
                 AppLogger.shared.log("Scrobble error: \(error)", level: .error)
+                if submission {
+                    // Network timed out or host unreachable: queue scrobble for automatic retry on reconnect
+                    Task { @MainActor in
+                        self?.queueOfflineScrobble(id: id)
+                    }
+                }
             } else if submission {
                 Task { @MainActor in
                     guard let self = self else { return }

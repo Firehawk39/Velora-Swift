@@ -79,13 +79,15 @@ final class NavidromeClient: ObservableObject {
     }
 
     func getCoverArtUrl(id: String, size: Int = 500) -> String {
-        let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(id).jpg")
+        let cleanId = extractArtId(from: id)
+        guard !cleanId.isEmpty else { return "" }
+        let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanId).jpg")
         if FileManager.default.fileExists(atPath: localUrl.path),
            let attr = try? FileManager.default.attributesOfItem(atPath: localUrl.path),
            let fileSize = attr[.size] as? Int64, fileSize > 0 {
             return localUrl.absoluteString
         }
-        return buildUrl(method: "getCoverArt.view", params: ["id": id, "size": "\(size)"])?.absoluteString ?? ""
+        return buildUrl(method: "getCoverArt.view", params: ["id": cleanId, "size": "\(size)"])?.absoluteString ?? ""
     }
 
     private var cacheDir: URL {
