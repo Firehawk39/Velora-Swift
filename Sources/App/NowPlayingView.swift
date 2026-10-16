@@ -82,16 +82,12 @@ struct NowPlayingView: View {
                     if isCompact && !isLandscape {
                         // PORTRAIT IPHONE: Strictly no Fanart backdrop
                         if ScreenTier.isSE {
-                            // iPhone SE (iOS 15 low-power device): LinearGradient
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color(playback.currentPrimaryColor).opacity(0.8),
-                                    Color(playback.currentPrimaryColor).opacity(0.4),
-                                    .black
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                            // iPhone SE (iOS 15 low-power device): 4x3 Micro-Mesh Ambient
+                            if playback.currentArtworkTrackId == playback.currentTrack?.id {
+                                SEMicroMeshView(colors: playback.currentPalette, size: proxy.size)
+                            } else {
+                                Color.black
+                            }
                         } else {
                             // Modern iPhones: Apple Music-style ambient MeshGradient / FluidGradient
                             AlbumAmbientGradientView(colors: playback.currentPalette)
