@@ -608,19 +608,7 @@ struct ArtistBackdropView: View {
     @ViewBuilder
     private func fallbackGradient(size: CGSize? = nil) -> some View {
         if ScreenTier.isSE {
-            if isLandscape {
-                SEMicroMeshLandscapeView(colors: artistPalette, size: size)
-            } else {
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
-                        Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
-                        isDarkMode ? .black : .white
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
+            SEMicroMeshView(colors: artistPalette, size: size)
         } else {
             AlbumAmbientGradientView(colors: artistPalette)
         }
