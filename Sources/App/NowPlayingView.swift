@@ -125,31 +125,25 @@ struct NowPlayingView: View {
                 }
                 .overlay(
                     // Combined Vignette: Dark edges + Vertical fade
-                    // Only active for fallback ambient background to protect text legibility.
-                    // Fanart backdrops remain 100% clean without darkening vignette overlays!
-                    Group {
-                        if (isCompact && !isLandscape) || fanart.currentBackdrop == nil {
-                            ZStack {
-                                // Edge darkness (Radial)
-                                RadialGradient(
-                                    gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
-                                    center: .center,
-                                    startRadius: 50,
-                                    endRadius: proxy.size.width * 1.2
-                                )
+                    ZStack {
+                        // Edge darkness (Radial)
+                        RadialGradient(
+                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
+                            center: .center,
+                            startRadius: 50,
+                            endRadius: proxy.size.width * 1.2
+                        )
 
-                                // Top and Bottom protection (Linear)
-                                LinearGradient(
-                                    gradient: Gradient(colors: [
-                                        .black.opacity(isIdle ? 0.3 : 0.6),
-                                        .clear,
-                                        .black.opacity(isIdle ? 0.5 : 0.9)
-                                    ]),
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            }
-                        }
+                        // Top and Bottom protection (Linear)
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                .black.opacity(isIdle ? 0.3 : 0.6),
+                                .clear,
+                                .black.opacity(isIdle ? 0.5 : 0.9)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     }
                 )
                 .ignoresSafeArea()
