@@ -82,17 +82,9 @@ struct NowPlayingView: View {
                     if isCompact && !isLandscape {
                         // PORTRAIT IPHONE: Strictly no Fanart backdrop
                         if ScreenTier.isSE {
-                            // iPhone SE (iOS 15 low-power device): LinearGradient
+                            // iPhone SE (iOS 15 low-power device): 4x3 Micro-Mesh Ambient
                             if playback.currentArtworkTrackId == playback.currentTrack?.id {
-                                LinearGradient(
-                                    gradient: Gradient(colors: [
-                                        Color(playback.currentPrimaryColor).opacity(0.8),
-                                        Color(playback.currentPrimaryColor).opacity(0.4),
-                                        .black
-                                    ]),
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
+                                SEMicroMeshView(colors: playback.currentPalette, size: proxy.size)
                             } else {
                                 Color.black
                             }

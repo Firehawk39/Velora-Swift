@@ -914,7 +914,9 @@ private extension UIView {
     }
 }
 
-// MARK: - iPhone SE Landscape Micro-Mesh Fallback
+// MARK: - iPhone SE 4x3 Micro-Mesh Ambient View
+public typealias SEMicroMeshView = SEMicroMeshLandscapeView
+
 public struct SEMicroMeshLandscapeView: View {
     public let colors: [UIColor]
     public var size: CGSize?
@@ -935,25 +937,47 @@ public struct SEMicroMeshLandscapeView: View {
         }
     }
 
-    private var activeColors: [Color] {
-        return colors.map { Color($0) }
+    // Tonal normalization: clamp brightness to ambient background level (max 0.45)
+    // so bright pastels don't glare or create harsh color hotspots
+    private var normalizedColors: [Color] {
+        guard !colors.isEmpty else { return [.black, .black, .black, .black, .black] }
+        return colors.map { color in
+            var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            guard color.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else {
+                return Color(color)
+            }
+            let ambientB = min(b, 0.45)
+            let richS = min(1.0, s * 1.1)
+            return Color(UIColor(hue: h, saturation: richS, brightness: ambientB, alpha: 1.0))
+        }
     }
 
-    private func color(at index: Int) -> Color {
-        let cols = activeColors
+    private var darkAnchor: Color {
+        if let first = colors.first {
+            var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            if first.getHue(&h, saturation: &s, brightness: &b, alpha: &a) {
+                return Color(UIColor(hue: h, saturation: s * 0.4, brightness: 0.04, alpha: 1.0))
+            }
+        }
+        return Color(red: 0.02, green: 0.02, blue: 0.03)
+    }
+
+    private func color(at index: Int, from cols: [Color]) -> Color {
         guard !cols.isEmpty else { return Color.black }
         return cols[index % cols.count]
     }
 
     @ViewBuilder
     private func meshGrid(isPhaseTwo: Bool) -> some View {
-        let c0 = color(at: 0)
-        let c1 = color(at: 1)
-        let c2 = color(at: 2)
-        let c3 = color(at: 3)
-        let c4 = color(at: 4)
+        let cols = normalizedColors
+        let c0 = color(at: 0, from: cols)
+        let c1 = color(at: 1, from: cols)
+        let c2 = color(at: 2, from: cols)
+        let c3 = color(at: 3, from: cols)
+        let c4 = color(at: 4, from: cols)
+        let dark = darkAnchor
 
-        // 4 Columns x 3 Rows - full landscape distribution across left, center, and right
+        // 4 Columns x 3 Rows - full landscape and portrait distribution
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 isPhaseTwo ? c1 : c0
@@ -970,8 +994,8 @@ public struct SEMicroMeshLandscapeView: View {
             HStack(spacing: 0) {
                 isPhaseTwo ? c3 : c2
                 isPhaseTwo ? c1 : c3
-                isPhaseTwo ? c0 : c1
-                isPhaseTwo ? c4 : c0
+                isPhaseTwo ? dark : c1
+                isPhaseTwo ? c4 : dark
             }
         }
     }
@@ -992,8 +1016,8 @@ public struct SEMicroMeshLandscapeView: View {
                         meshGrid(isPhaseTwo: true)
                             .opacity(phase ? 1.0 : 0.0)
                     }
-                    .scaleEffect(1.2)
-                    .blur(radius: 40)
+                    .scaleEffect(1.25)
+                    .blur(radius: 45)
                     .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                 }
             }
