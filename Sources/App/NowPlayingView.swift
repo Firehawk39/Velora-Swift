@@ -480,10 +480,10 @@ struct NowPlayingView: View {
                                     .scaleEffect(isCyclingClearLogo ? 0.94 : 1.0)
                                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
                                     .contentShape(Rectangle())
-                                    .onTapGesture(count: 2) {
+                                    .onTapGesture {
                                         cycleClearLogoAction()
                                     }
-                                    .accessibilityLabel("Double tap to change Artist Clear Logo")
+                                    .accessibilityLabel("Change Artist Clear Logo")
                                     .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                             }
                         }
@@ -992,10 +992,10 @@ struct NowPlayingView: View {
                         .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 2)
                         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCyclingClearLogo)
                         .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
+                        .onTapGesture {
                             cycleClearLogoAction()
                         }
-                        .accessibilityLabel("Double tap to change Artist Clear Logo")
+                        .accessibilityLabel("Change Artist Clear Logo")
                         .transition(.opacity.animation(.easeInOut(duration: 0.5)))
                 }
             }
