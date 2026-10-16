@@ -93,19 +93,13 @@ struct NowPlayingView: View {
                             AlbumAmbientGradientView(colors: playback.currentPalette)
                         }
                     } else {
-                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
+                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop or Fallback Ambient Layer
                         ZStack {
                             let isArtworkLoaded = playback.currentArtworkTrackId == playback.currentTrack?.id
 
                             if isArtworkLoaded {
                                 if let backdrop = fanart.currentBackdrop {
-                                    // 1. BASE LAYER UNDER FANART (iPad & modern iPhones only):
-                                    // iPhone SE strictly does NOT overlay a gradient under fanart backdrops!
-                                    if !ScreenTier.isSE {
-                                        AlbumAmbientGradientView(colors: playback.currentPalette)
-                                    }
-
-                                    // 2. TOP LAYER: High-Fidelity Fanart Backdrop
+                                    // High-Fidelity Fanart Backdrop: Pure backdrop with NO fallback gradient underneath
                                     Image(uiImage: backdrop)
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
@@ -113,9 +107,9 @@ struct NowPlayingView: View {
                                         .clipped()
                                         .id(backdrop)
                                         .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                        .opacity(ScreenTier.isSE ? 0.85 : (isIdle ? 0.45 : 0.35))
+                                        .opacity(0.85)
                                 } else {
-                                    // NO FANART BACKDROP: Fallback ambient layer
+                                    // NO FANART BACKDROP: Fallback ambient layer ONLY when there is no fanart
                                     if ScreenTier.isSE {
                                         SEMicroMeshLandscapeView(colors: playback.currentPalette, size: proxy.size)
                                     } else {
