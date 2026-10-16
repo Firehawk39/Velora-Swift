@@ -100,8 +100,11 @@ struct NowPlayingView: View {
                         // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
                         ZStack {
                             // 1. BASE LAYER: Always active Apple Music-style ambient gradient
-                            // Ensures the backdrop is NEVER pitch black, showing rich ambient visuals instantly
-                            AlbumAmbientGradientView(colors: playback.currentPalette)
+                            if ScreenTier.isSE {
+                                SEMicroMeshLandscapeView(colors: playback.currentPalette, size: proxy.size)
+                            } else {
+                                AlbumAmbientGradientView(colors: playback.currentPalette)
+                            }
 
                             // 2. TOP LAYER: High-Fidelity Fanart Backdrop (smoothly overlays when available)
                             if let backdrop = fanart.currentBackdrop {

@@ -535,7 +535,7 @@ struct ArtistBackdropView: View {
                     
                 if isCompact && !isLandscape {
                     // PORTRAIT IPHONE: Strictly no Fanart backdrop
-                    fallbackGradient
+                    fallbackGradient(size: proxy.size)
                 } else {
                     // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop
                     if let backdropUrl = activeUrl {
@@ -546,13 +546,13 @@ struct ArtistBackdropView: View {
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                             } else {
-                                fallbackGradient
+                                fallbackGradient(size: proxy.size)
                             }
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .clipped()
                     } else {
-                        fallbackGradient
+                        fallbackGradient(size: proxy.size)
                     }
                 }
             }
@@ -606,17 +606,21 @@ struct ArtistBackdropView: View {
     }
     
     @ViewBuilder
-    private var fallbackGradient: some View {
+    private func fallbackGradient(size: CGSize? = nil) -> some View {
         if ScreenTier.isSE {
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
-                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
-                    isDarkMode ? .black : .white
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            if isLandscape {
+                SEMicroMeshLandscapeView(colors: artistPalette, size: size)
+            } else {
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
+                        Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
+                        isDarkMode ? .black : .white
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
         } else {
             AlbumAmbientGradientView(colors: artistPalette)
         }
