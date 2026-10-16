@@ -440,7 +440,7 @@ final class FanartManager: ObservableObject {
         }
 
         self.getMBIDSafe(for: primaryArtist, priority: URLSessionTask.highPriority) { [weak self] result in
-            guard self != nil else { completion(); return }
+            guard self != nil else { return }
             switch result {
             case .found(let resolvedMBID):
                 try? resolvedMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
@@ -511,49 +511,6 @@ final class FanartManager: ObservableObject {
         }
     }
 
-    private func tryDownloadTadb1080pBackdrop(
-        candidates: [String],
-        candidateIndex: Int,
-        fileUrl: URL,
-        primaryArtistName: String,
-        cacheKey: String,
-        mbid: String?,
-        priority: Float,
-        completion: @escaping @Sendable @MainActor (Bool) -> Void
-    ) {
-        guard candidateIndex < candidates.count else {
-            completion(false)
-            return
-        }
-        let urlString = candidates[candidateIndex]
-        self.downloadAndCache(
-            from: urlString,
-            to: fileUrl,
-            primaryArtistName: primaryArtistName,
-            cacheKey: cacheKey,
-            mbid: mbid,
-            minResolution: CGSize(width: 1920, height: 1080),
-            priority: priority
-        ) { [weak self] image in
-            guard let self = self else { completion(false); return }
-            if image != nil {
-                AppLogger.shared.log("[TheAudioDB] Found and verified strict 1080p backdrop for \(primaryArtistName)")
-                completion(true)
-            } else {
-                self.tryDownloadTadb1080pBackdrop(
-                    candidates: candidates,
-                    candidateIndex: candidateIndex + 1,
-                    fileUrl: fileUrl,
-                    primaryArtistName: primaryArtistName,
-                    cacheKey: cacheKey,
-                    mbid: mbid,
-                    priority: priority,
-                    completion: completion
-                )
-            }
-        }
-    }
-
     private func executeFanartQuery(
         resolvedMBID: String,
         isProvided: Bool,
@@ -565,47 +522,10 @@ final class FanartManager: ObservableObject {
         index: Int,
         allowNetwork: Bool
     ) {
-        let writeNegativeCacheAndProceed: @MainActor @Sendable () -> Void = { [weak self] in
-            guard let self = self else { return }
-            AppLogger.shared.log("[Fanart] No 1080p backdrop on Fanart or TheAudioDB for \(artist). Negative caching.")
-            try? Data().write(to: fileUrl)
-            let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
-            try? Data().write(to: mbidFile)
+        guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
+            AppLogger.shared.log("[Fanart] API key not configured, skipping backdrop fetch.")
             self.activeBackdropFetches.remove(key)
             self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-        }
-
-        let fetchTadbFallback: @MainActor @Sendable () -> Void = { [weak self] in
-            guard let self = self else { return }
-            self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { [weak self] result in
-                guard let self = self else { return }
-                let candidates = result.backdropUrls
-                guard !candidates.isEmpty else {
-                    writeNegativeCacheAndProceed()
-                    return
-                }
-                self.tryDownloadTadb1080pBackdrop(
-                    candidates: candidates,
-                    candidateIndex: 0,
-                    fileUrl: fileUrl,
-                    primaryArtistName: primaryArtist,
-                    cacheKey: key,
-                    mbid: resolvedMBID,
-                    priority: URLSessionTask.highPriority
-                ) { [weak self] success in
-                    guard let self = self else { return }
-                    if success {
-                        self.activeBackdropFetches.remove(key)
-                    } else {
-                        writeNegativeCacheAndProceed()
-                    }
-                }
-            }
-        }
-
-        guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
-            AppLogger.shared.log("[Fanart] API key not configured, checking TheAudioDB for strict 1080p backdrop.")
-            fetchTadbFallback()
             return
         }
 
@@ -651,13 +571,22 @@ final class FanartManager: ObservableObject {
                                 return
                             }
 
-                            // Genuine 404 on Fanart with real MBID, or MusicBrainz has no better MBID -> Fall back to TheAudioDB 1080p
-                            fetchTadbFallback()
+                            // Genuine 404 on Fanart with real MBID, or MusicBrainz has no better MBID
+                            AppLogger.shared.log("[Fanart] No backdrop on Fanart for \(artist). Negative caching (Fanart only).")
+                            try? Data().write(to: fileUrl)
+                            let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                            try? Data().write(to: mbidFile)
+                            self.activeBackdropFetches.remove(key)
+                            self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                         }
                     }
                 } else {
-                    // Fall back to TheAudioDB 1080p
-                    fetchTadbFallback()
+                    AppLogger.shared.log("[Fanart] No backdrop on Fanart for \(artist). Negative caching (Fanart only).")
+                    try? Data().write(to: fileUrl)
+                    let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                    try? Data().write(to: mbidFile)
+                    self.activeBackdropFetches.remove(key)
+                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                 }
             } else {
                 AppLogger.shared.log("[Fanart] Fetch failed/rate-limited for \(artist)")
@@ -715,47 +644,9 @@ final class FanartManager: ObservableObject {
             let success: Bool = await withCheckedContinuation { continuation in
                 let query: @MainActor @Sendable (String, Bool) -> Void = { [weak self] resolvedMBID, isProvided in
                     guard let self = self else { continuation.resume(returning: false); return }
-                    let silentNegativeCache: @MainActor @Sendable () -> Void = { [weak self] in
-                        guard let self = self else { continuation.resume(returning: false); return }
-                        try? Data().write(to: fileUrl)
-                        let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
-                        try? Data().write(to: mbidFile)
-                        Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                    guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
                         self.activeBackdropFetches.remove(key)
                         continuation.resume(returning: false)
-                    }
-
-                    let silentTadbFallback: @MainActor @Sendable () -> Void = { [weak self] in
-                        guard let self = self else { continuation.resume(returning: false); return }
-                        self.fetchFromTheAudioDB(artistName: artist, mbid: resolvedMBID, priority: URLSessionTask.lowPriority) { [weak self] tadbResult in
-                            guard let self = self else { continuation.resume(returning: false); return }
-                            let candidates = tadbResult.backdropUrls
-                            guard !candidates.isEmpty else {
-                                silentNegativeCache()
-                                return
-                            }
-                            self.tryDownloadTadb1080pBackdrop(
-                                candidates: candidates,
-                                candidateIndex: 0,
-                                fileUrl: fileUrl,
-                                primaryArtistName: primaryArtist,
-                                cacheKey: key,
-                                mbid: resolvedMBID,
-                                priority: URLSessionTask.lowPriority
-                            ) { [weak self] success in
-                                guard let self = self else { continuation.resume(returning: false); return }
-                                if success {
-                                    self.activeBackdropFetches.remove(key)
-                                    continuation.resume(returning: true)
-                                } else {
-                                    silentNegativeCache()
-                                }
-                            }
-                        }
-                    }
-
-                    guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
-                        silentTadbFallback()
                         return
                     }
                     let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
@@ -789,16 +680,31 @@ final class FanartManager: ObservableObject {
                                                         continuation.resume(returning: true)
                                                     }
                                                 } else {
-                                                    silentTadbFallback()
+                                                    try? Data().write(to: fileUrl)
+                                                    let mbidFile = self.backdropDir.appendingPathComponent("\(healedMbid).jpg")
+                                                    try? Data().write(to: mbidFile)
+                                                    Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                                    self.activeBackdropFetches.remove(key)
+                                                    continuation.resume(returning: false)
                                                 }
                                             }
                                             return
                                         }
-                                        silentTadbFallback()
+                                        try? Data().write(to: fileUrl)
+                                        let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                                        try? Data().write(to: mbidFile)
+                                        Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                        self.activeBackdropFetches.remove(key)
+                                        continuation.resume(returning: false)
                                     }
                                 }
                             } else {
-                                silentTadbFallback()
+                                try? Data().write(to: fileUrl)
+                                let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
+                                try? Data().write(to: mbidFile)
+                                Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                self.activeBackdropFetches.remove(key)
+                                continuation.resume(returning: false)
                             }
                         } else {
                             self.activeBackdropFetches.remove(key)
@@ -1458,16 +1364,7 @@ final class FanartManager: ObservableObject {
         return Int(truncatingIfNeeded: h)
     }
 
-    nonisolated private func downloadAndCache(
-        from urlString: String,
-        to localUrl: URL,
-        primaryArtistName: String,
-        cacheKey: String,
-        mbid: String? = nil,
-        minResolution: CGSize? = nil,
-        priority: Float = URLSessionTask.defaultPriority,
-        completion: @escaping @Sendable @MainActor (UIImage?) -> Void
-    ) {
+    nonisolated private func downloadAndCache(from urlString: String, to localUrl: URL, primaryArtistName: String, cacheKey: String, mbid: String? = nil, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @Sendable @MainActor (UIImage?) -> Void) {
         guard let url = URL(string: urlString) else {
             DispatchQueue.main.async { completion(nil) }
             return
@@ -1477,20 +1374,6 @@ final class FanartManager: ObservableObject {
         req.timeoutInterval = 20.0
         ThrottledNetworkManager.shared.enqueue(request: req, priority: priority) { data, _, _ in
             if let data = data, let image = UIImage(data: data) {
-                if let minRes = minResolution {
-                    let cgW = CGFloat(image.cgImage?.width ?? Int(image.size.width * image.scale))
-                    let cgH = CGFloat(image.cgImage?.height ?? Int(image.size.height * image.scale))
-                    let w = max(cgW, image.size.width)
-                    let h = max(cgH, image.size.height)
-                    if w < minRes.width || h < minRes.height {
-                        DispatchQueue.main.async {
-                            AppLogger.shared.log("[Backdrop] Rejected non-1080p backdrop for \(primaryArtistName): \(Int(w))x\(Int(h)) is below 1080p minimum (\(Int(minRes.width))x\(Int(minRes.height))).", level: .info)
-                            completion(nil)
-                        }
-                        return
-                    }
-                }
-
                 try? data.write(to: localUrl)
                 let sanitizedName = self.sanitizeFileName(primaryArtistName)
                 let altUrl = self.backdropDir.appendingPathComponent("\(sanitizedName).jpg")

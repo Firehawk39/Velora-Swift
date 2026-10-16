@@ -82,12 +82,16 @@ struct NowPlayingView: View {
                     if isCompact && !isLandscape {
                         // PORTRAIT IPHONE: Strictly no Fanart backdrop
                         if ScreenTier.isSE {
-                            // iPhone SE (iOS 15 low-power device): 4x3 Micro-Mesh Ambient
-                            if playback.currentArtworkTrackId == playback.currentTrack?.id {
-                                SEMicroMeshView(colors: playback.currentPalette, size: proxy.size)
-                            } else {
-                                Color.black
-                            }
+                            // iPhone SE (iOS 15 low-power device): LinearGradient
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(playback.currentPrimaryColor).opacity(0.8),
+                                    Color(playback.currentPrimaryColor).opacity(0.4),
+                                    .black
+                                ]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         } else {
                             // Modern iPhones: Apple Music-style ambient MeshGradient / FluidGradient
                             AlbumAmbientGradientView(colors: playback.currentPalette)
@@ -96,11 +100,8 @@ struct NowPlayingView: View {
                         // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
                         ZStack {
                             // 1. BASE LAYER: Always active Apple Music-style ambient gradient
-                            if ScreenTier.isSE {
-                                SEMicroMeshLandscapeView(colors: playback.currentPalette, size: proxy.size)
-                            } else {
-                                AlbumAmbientGradientView(colors: playback.currentPalette)
-                            }
+                            // Ensures the backdrop is NEVER pitch black, showing rich ambient visuals instantly
+                            AlbumAmbientGradientView(colors: playback.currentPalette)
 
                             // 2. TOP LAYER: High-Fidelity Fanart Backdrop (smoothly overlays when available)
                             if let backdrop = fanart.currentBackdrop {
@@ -246,10 +247,6 @@ struct NowPlayingView: View {
         }
         .onChange(of: playback.currentTrack?.id) { _ in
             resetIdleTimer()
-            withAnimation {
-                isCyclingBackdrop = false
-                isCyclingClearLogo = false
-            }
             refreshMetadata()
         }
         .onChange(of: isScrolledDown) { scrolled in
@@ -845,19 +842,8 @@ struct NowPlayingView: View {
                 if !artists.isEmpty {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isCyclingBackdrop = true
-                    let currentTrackId = track.id
-
-                    // 15s Safety Timeout: Stop spinning if network stalls or request hangs
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
-                        if self.playback.currentTrack?.id == currentTrackId && self.isCyclingBackdrop {
-                            withAnimation { self.isCyclingBackdrop = false }
-                        }
-                    }
-
                     FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId, mbid: nil) {
-                        if self.playback.currentTrack?.id == currentTrackId {
-                            withAnimation { self.isCyclingBackdrop = false }
-                        }
+                        isCyclingBackdrop = false
                     }
                 }
             }
@@ -887,19 +873,9 @@ struct NowPlayingView: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isCyclingClearLogo = true
-        let currentTrackId = track.id
-
-        // 15s Safety Timeout: Stop spinning if network stalls or request hangs
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15.0) {
-            if self.playback.currentTrack?.id == currentTrackId && self.isCyclingClearLogo {
-                withAnimation { self.isCyclingClearLogo = false }
-            }
-        }
 
         FanartManager.shared.cycleClearLogo(for: artists, artistId: track.artistId, mbid: nil) {
-            if self.playback.currentTrack?.id == currentTrackId {
-                withAnimation { self.isCyclingClearLogo = false }
-            }
+            isCyclingClearLogo = false
         }
     }
 
@@ -988,8 +964,6 @@ struct NowPlayingView: View {
 
 
     private func refreshMetadata() {
-        self.isCyclingBackdrop = false
-        self.isCyclingClearLogo = false
         guard let track = playback.currentTrack else { return }
 
         let artistName = track.artist ?? "Unknown Artist"
@@ -998,37 +972,28 @@ struct NowPlayingView: View {
         self.artistBiography = nil
         self.loadArtistPortrait(for: track)
 
-        // 1. Immediately trigger backdrop fetch with cached MBID (FanartManager will check cache instantly)
-        let cachedMbid = track.artistId.flatMap { playback.client.getCachedArtistMbid(artistId: $0) }
-        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: cachedMbid, allowNetwork: false)
+        // 1. Immediately trigger backdrop fetch (FanartManager will check cache instantly)
+        // This prevents the "waiting for Navidrome response" flicker
+        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil, allowNetwork: false)
 
         // 1b. Trigger clearlogo fetch (cache-first, non-blocking)
-        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: cachedMbid)
+        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: nil)
 
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
-            if let cachedInfo = playback.client.getCachedArtistInfo(artistId: artistId) {
-                self.artistBiography = cachedInfo.biography
-                self.isFetchingArtistInfo = false
+            isFetchingArtistInfo = true
+            playback.client.fetchArtistInfo(artistId: artistId) { info in
+                Task { @MainActor in
+                    // Check if we haven't skipped to another track in the meantime
+                    guard self.playback.currentTrack?.id == track.id else { return }
 
-                let artistMbid = (cachedInfo.musicBrainzId?.isEmpty == false ? cachedInfo.musicBrainzId : nil)
-                fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
-                fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
-            } else {
-                isFetchingArtistInfo = true
-                playback.client.fetchArtistInfo(artistId: artistId) { info in
-                    Task { @MainActor in
-                        // Check if we haven't skipped to another track in the meantime
-                        guard self.playback.currentTrack?.id == track.id else { return }
+                    self.artistBiography = info?.biography
+                    self.isFetchingArtistInfo = false
 
-                        self.artistBiography = info?.biography
-                        self.isFetchingArtistInfo = false
-
-                        // If Navidrome provides the true artist MBID, use it; otherwise nil allows FanartManager to resolve via MusicBrainz
-                        let artistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : nil)
-                        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
-                        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
-                    }
+                    // If Navidrome provides the true artist MBID, use it; otherwise nil allows FanartManager to resolve via MusicBrainz
+                    let artistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : nil)
+                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
+                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
                 }
             }
         }

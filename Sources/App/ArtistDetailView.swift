@@ -86,12 +86,6 @@ struct ArtistDetailView: View {
             }
         }
         .onAppear {
-            if self.mbid == nil {
-                self.mbid = client.getCachedArtistMbid(artistId: artistId)
-            }
-            if self.biography == nil, let cachedBio = client.getCachedArtistInfo(artistId: artistId)?.biography {
-                self.biography = cachedBio
-            }
             fetchArtistData()
         }
     }
@@ -535,7 +529,7 @@ struct ArtistBackdropView: View {
                     
                 if isCompact && !isLandscape {
                     // PORTRAIT IPHONE: Strictly no Fanart backdrop
-                    fallbackGradient(size: proxy.size)
+                    fallbackGradient
                 } else {
                     // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop
                     if let backdropUrl = activeUrl {
@@ -546,13 +540,13 @@ struct ArtistBackdropView: View {
                                     .aspectRatio(contentMode: .fill)
                                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
                             } else {
-                                fallbackGradient(size: proxy.size)
+                                fallbackGradient
                             }
                         }
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .clipped()
                     } else {
-                        fallbackGradient(size: proxy.size)
+                        fallbackGradient
                     }
                 }
             }
@@ -606,9 +600,17 @@ struct ArtistBackdropView: View {
     }
     
     @ViewBuilder
-    private func fallbackGradient(size: CGSize? = nil) -> some View {
+    private var fallbackGradient: some View {
         if ScreenTier.isSE {
-            SEMicroMeshView(colors: artistPalette, size: size)
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.8 : 0.4),
+                    Color(artistPrimaryColor).opacity(isDarkMode ? 0.4 : 0.2),
+                    isDarkMode ? .black : .white
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
         } else {
             AlbumAmbientGradientView(colors: artistPalette)
         }

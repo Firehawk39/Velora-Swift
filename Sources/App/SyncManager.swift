@@ -554,16 +554,11 @@ final class SyncManager: ObservableObject {
                 var artIdsToDownload = Set<String>()
                 for album in client.albums {
                     let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
-                    if !cleanArtId.isEmpty {
-                        artIdsToDownload.insert(cleanArtId)
-                    }
+                    artIdsToDownload.insert(cleanArtId)
                 }
                 for track in tracks {
                     if let rawArt = track.coverArt ?? track.albumId {
-                        let cleanArtId = extractArtId(from: rawArt)
-                        if !cleanArtId.isEmpty {
-                            artIdsToDownload.insert(cleanArtId)
-                        }
+                        artIdsToDownload.insert(extractArtId(from: rawArt))
                     }
                 }
                 for cleanArtId in artIdsToDownload {
@@ -575,17 +570,11 @@ final class SyncManager: ObservableObject {
 
                 var artistIdsToDownload = Set<String>()
                 for artist in client.artists {
-                    let cleanId = extractArtId(from: artist.id)
-                    if !cleanId.isEmpty {
-                        artistIdsToDownload.insert(cleanId)
-                    }
+                    artistIdsToDownload.insert(artist.id)
                 }
                 for track in tracks {
                     if let artistId = track.artistId {
-                        let cleanId = extractArtId(from: artistId)
-                        if !cleanId.isEmpty {
-                            artistIdsToDownload.insert(cleanId)
-                        }
+                        artistIdsToDownload.insert(artistId)
                     }
                 }
                 for artistId in artistIdsToDownload {
@@ -605,16 +594,11 @@ final class SyncManager: ObservableObject {
             var artIdsToDownload = Set<String>()
             for album in client.albums {
                 let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
-                if !cleanArtId.isEmpty {
-                    artIdsToDownload.insert(cleanArtId)
-                }
+                artIdsToDownload.insert(cleanArtId)
             }
             for track in tracks {
                 if let rawArt = track.coverArt ?? track.albumId {
-                    let cleanArtId = extractArtId(from: rawArt)
-                    if !cleanArtId.isEmpty {
-                        artIdsToDownload.insert(cleanArtId)
-                    }
+                    artIdsToDownload.insert(extractArtId(from: rawArt))
                 }
             }
             for cleanArtId in artIdsToDownload {
@@ -626,17 +610,11 @@ final class SyncManager: ObservableObject {
 
             var artistIdsToDownload = Set<String>()
             for artist in client.artists {
-                let cleanId = extractArtId(from: artist.id)
-                if !cleanId.isEmpty {
-                    artistIdsToDownload.insert(cleanId)
-                }
+                artistIdsToDownload.insert(artist.id)
             }
             for track in tracks {
                 if let artistId = track.artistId {
-                    let cleanId = extractArtId(from: artistId)
-                    if !cleanId.isEmpty {
-                        artistIdsToDownload.insert(cleanId)
-                    }
+                    artistIdsToDownload.insert(artistId)
                 }
             }
             for artistId in artistIdsToDownload {

@@ -3,44 +3,19 @@ import CryptoKit
 
 // MARK: - Offline Artwork Helper
 
-/// Extracts the actual cover art ID from a server URL string or local file URL/path.
+/// Extracts the actual cover art ID from a server URL string.
 /// Server URLs look like: https://server.com/rest/getCoverArt.view?id=al-123&u=user&...
-/// Local file URLs look like: file:///var/mobile/.../al-123.jpg
-/// Returns just "al-123" for local file lookups and server requests.
+/// Returns just "al-123" for local file lookups.
 func extractArtId(from serverUrlOrId: String) -> String {
-    let trimmed = serverUrlOrId.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return "" }
-
-    // 1. If it looks like a URL (contains "getCoverArt"), extract the 'id' query parameter
-    if trimmed.contains("getCoverArt"),
-       let url = URL(string: trimmed),
+    // If it looks like a URL (contains "getCoverArt"), extract the 'id' query parameter
+    if serverUrlOrId.contains("getCoverArt"),
+       let url = URL(string: serverUrlOrId),
        let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-       let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value,
-       !idParam.isEmpty {
-        return extractArtId(from: idParam)
+       let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
+        return idParam
     }
-
-    // 2. If it's a file URL or path (e.g. file:///.../al-123.jpg or /path/to/al-123.jpg)
-    if trimmed.hasPrefix("file://") || trimmed.contains("/") || trimmed.contains("\\") {
-        let lastComponent: String
-        if let url = URL(string: trimmed), url.isFileURL || trimmed.hasPrefix("file://") {
-            lastComponent = url.lastPathComponent
-        } else {
-            lastComponent = (trimmed as NSString).lastPathComponent
-        }
-        let clean = (lastComponent as NSString).deletingPathExtension
-        let decoded = clean.removingPercentEncoding ?? clean
-        return decoded
-    }
-
-    // 3. If it has an image file extension (e.g. "al-123.jpg")
-    let ext = (trimmed as NSString).pathExtension.lowercased()
-    if ["jpg", "jpeg", "png", "webp"].contains(ext) {
-        return (trimmed as NSString).deletingPathExtension
-    }
-
-    // 4. Plain ID as-is
-    return trimmed
+    // Already a plain ID, or unrecognized format — return as-is
+    return serverUrlOrId
 }
 
 import UIKit
@@ -146,27 +121,17 @@ func resolveCoverArtUrl(id: String, serverUrl: String?, albumId: String? = nil, 
         return embeddedUrl
     }
     let resolvedId = extractArtId(from: id)
-    if !resolvedId.isEmpty, let embeddedUrl = extractEmbeddedArtwork(for: resolvedId, albumId: albumId, artId: id) {
+    if let embeddedUrl = extractEmbeddedArtwork(for: resolvedId, albumId: albumId, artId: id) {
         return embeddedUrl
     }
 
-    if let sUrl = serverUrl, let url = URL(string: sUrl) {
-        if url.isFileURL {
-            if fm.fileExists(atPath: url.path) {
-                return url
-            }
-            return nil
-        }
-        return url
-    }
-    return nil
+    return serverUrl.flatMap { URL(string: $0) }
 }
 
 func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
     let fm = FileManager.default
     let portraitDir = VeloraStorage.artistPortraits
     let resolvedId = extractArtId(from: id)
-    guard !resolvedId.isEmpty else { return nil }
     
     var candidates: [String] = [resolvedId]
     if resolvedId.hasPrefix("ar-") {
@@ -176,7 +141,7 @@ func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
     }
     if let sUrl = serverUrl {
         let extractedServerId = extractArtId(from: sUrl)
-        if !extractedServerId.isEmpty && !candidates.contains(extractedServerId) {
+        if !candidates.contains(extractedServerId) {
             candidates.append(extractedServerId)
         }
     }
@@ -195,16 +160,7 @@ func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
         }
     }
 
-    if let sUrl = serverUrl, let url = URL(string: sUrl) {
-        if url.isFileURL {
-            if fm.fileExists(atPath: url.path) {
-                return url
-            }
-            return nil
-        }
-        return url
-    }
-    return nil
+    return serverUrl.flatMap { URL(string: $0) }
 }
 
 // MARK: - Models
@@ -389,23 +345,6 @@ struct Artist: Identifiable, Codable, Sendable {
     var albumCount: Int?
     var coverArt: String?
     var created: String?
-    var musicBrainzId: String?
-
-    init(
-        id: String,
-        name: String,
-        albumCount: Int? = nil,
-        coverArt: String? = nil,
-        created: String? = nil,
-        musicBrainzId: String? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.albumCount = albumCount
-        self.coverArt = coverArt
-        self.created = created
-        self.musicBrainzId = musicBrainzId
-    }
 
     // Convenience computed URL
     var coverArtUrl: URL? { resolveArtistPortraitUrl(id: id, serverUrl: coverArt) }

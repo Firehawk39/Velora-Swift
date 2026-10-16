@@ -71,7 +71,6 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
     @ViewBuilder public let content: (Image) -> Content
     @ViewBuilder public let placeholder: () -> Placeholder
 
-    @State private var loadedImage: UIImage? = nil
     @State private var retryCount = 0
     @State private var reloadTrigger = UUID()
 
@@ -81,48 +80,31 @@ public struct SelfHealingAsyncImage<Content: View, Placeholder: View>: View {
         self.placeholder = placeholder
     }
 
-    private var artId: String {
-        guard let url = url else { return "" }
-        return extractArtId(from: url.absoluteString)
-    }
-
     public var body: some View {
         Group {
-            if let image = loadedImage ?? quickCachedImage() {
-                content(Image(uiImage: image))
-            } else if let url = url, url.isFileURL {
+            if let url = url, url.isFileURL {
                 if let data = try? Data(contentsOf: url), let uiImage = UIImage(data: data) {
                     content(Image(uiImage: uiImage))
                 } else {
                     placeholder()
                 }
-            } else if let url = url {
-                placeholder()
-                    .task(id: "\(url.absoluteString)-\(reloadTrigger)") {
-                        if let img = await CoverArtManager.shared.loadArtwork(url: url, artId: artId) {
-                            await MainActor.run {
-                                self.loadedImage = img
-                                self.retryCount = 0
-                            }
-                        } else {
-                            scheduleRetry()
-                        }
-                    }
             } else {
-                placeholder()
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        content(image)
+                            .onAppear { retryCount = 0 } // Reset on success
+                    } else if phase.error != nil {
+                        placeholder()
+                            .onAppear {
+                                scheduleRetry()
+                            }
+                    } else {
+                        placeholder() // Loading state
+                    }
+                }
+                .id(reloadTrigger)
             }
         }
-        .onChange(of: url) { newUrl in
-            self.loadedImage = quickCachedImage(for: newUrl)
-        }
-    }
-
-    private func quickCachedImage(for targetUrl: URL? = nil) -> UIImage? {
-        let u = targetUrl ?? url
-        guard let u = u else { return nil }
-        let id = extractArtId(from: u.absoluteString)
-        guard !id.isEmpty else { return nil }
-        return CoverArtManager.shared.cachedImage(for: id)
     }
 
     private func scheduleRetry() {
@@ -911,103 +893,5 @@ private extension UIView {
         var v: UIView? = superview
         while let c = v { if let sv = c as? UIScrollView { return sv }; v = c.superview }
         return nil
-    }
-}
-
-// MARK: - iPhone SE 4x3 Micro-Mesh Ambient View
-public typealias SEMicroMeshView = SEMicroMeshLandscapeView
-
-public struct SEMicroMeshLandscapeView: View {
-    public let colors: [UIColor]
-    public var size: CGSize?
-
-    @State private var phase = false
-
-    public init(colors: [UIColor], size: CGSize? = nil) {
-        self.colors = colors
-        self.size = size
-    }
-
-    private var isPaletteLoaded: Bool {
-        guard !colors.isEmpty else { return false }
-        return !colors.allSatisfy {
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            $0.getRed(&r, green: &g, blue: &b, alpha: &a)
-            return r < 0.05 && g < 0.05 && b < 0.05
-        }
-    }
-
-    private var activeColors: [Color] {
-        return colors.map { Color($0) }
-    }
-
-    private func color(at index: Int) -> Color {
-        let cols = activeColors
-        guard !cols.isEmpty else { return Color.black }
-        return cols[index % cols.count]
-    }
-
-    @ViewBuilder
-    private func meshGrid(isPhaseTwo: Bool) -> some View {
-        let c0 = color(at: 0)
-        let c1 = color(at: 1)
-        let c2 = color(at: 2)
-        let c3 = color(at: 3)
-        let c4 = color(at: 4)
-
-        // 4 Columns x 3 Rows - full landscape and portrait distribution
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                isPhaseTwo ? c1 : c0
-                isPhaseTwo ? c0 : c1
-                isPhaseTwo ? c4 : c2
-                isPhaseTwo ? c2 : c3
-            }
-            HStack(spacing: 0) {
-                isPhaseTwo ? c2 : c3
-                isPhaseTwo ? c4 : c0
-                isPhaseTwo ? c1 : c4
-                isPhaseTwo ? c3 : c1
-            }
-            HStack(spacing: 0) {
-                isPhaseTwo ? c3 : c2
-                isPhaseTwo ? c1 : c3
-                isPhaseTwo ? c0 : c1
-                isPhaseTwo ? c4 : c0
-            }
-        }
-    }
-
-    public var body: some View {
-        GeometryReader { geo in
-            let w = size?.width ?? geo.size.width
-            let h = size?.height ?? geo.size.height
-
-            ZStack {
-                Color.black
-
-                if isPaletteLoaded {
-                    ZStack {
-                        meshGrid(isPhaseTwo: false)
-                            .opacity(phase ? 0.0 : 1.0)
-
-                        meshGrid(isPhaseTwo: true)
-                            .opacity(phase ? 1.0 : 0.0)
-                    }
-                    .scaleEffect(1.2)
-                    .blur(radius: 40)
-                    .transition(.opacity.animation(.easeInOut(duration: 0.5)))
-                }
-            }
-            .frame(width: w, height: h)
-            .clipped()
-        }
-        .clipped()
-        .onAppear {
-            withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
-                phase = true
-            }
-        }
-        .animation(.easeInOut(duration: 0.6), value: colors.map { $0.description }.joined())
     }
 }
