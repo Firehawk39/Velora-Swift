@@ -82,43 +82,40 @@ struct NowPlayingView: View {
                     if isCompact && !isLandscape {
                         // PORTRAIT IPHONE: Strictly no Fanart backdrop
                         if ScreenTier.isSE {
-                            // iPhone SE (iOS 15 low-power device): 4x3 Micro-Mesh Ambient
-                            if playback.currentArtworkTrackId == playback.currentTrack?.id {
-                                SEMicroMeshView(colors: playback.currentPalette, size: proxy.size)
-                            } else {
-                                Color.black
-                            }
+                            // iPhone SE (iOS 15 low-power device): LinearGradient
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(playback.currentPrimaryColor).opacity(0.8),
+                                    Color(playback.currentPrimaryColor).opacity(0.4),
+                                    .black
+                                ]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         } else {
                             // Modern iPhones: Apple Music-style ambient MeshGradient / FluidGradient
                             AlbumAmbientGradientView(colors: playback.currentPalette)
                         }
                     } else {
-                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop or Fallback Ambient Layer
+                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
                         ZStack {
-                            let isArtworkLoaded = playback.currentArtworkTrackId == playback.currentTrack?.id
-
-                            if isArtworkLoaded {
-                                if let backdrop = fanart.currentBackdrop {
-                                    // High-Fidelity Fanart Backdrop: Pure backdrop with NO fallback gradient underneath
-                                    Image(uiImage: backdrop)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                                        .clipped()
-                                        .id(backdrop)
-                                        .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                        .opacity(0.85)
-                                } else {
-                                    // NO FANART BACKDROP: Fallback ambient layer ONLY when there is no fanart
-                                    if ScreenTier.isSE {
-                                        SEMicroMeshLandscapeView(colors: playback.currentPalette, size: proxy.size)
-                                    } else {
-                                        AlbumAmbientGradientView(colors: playback.currentPalette)
-                                    }
-                                }
+                            // 1. BASE LAYER: Always active Apple Music-style ambient gradient
+                            if ScreenTier.isSE {
+                                SEMicroMeshLandscapeView(colors: playback.currentPalette, size: proxy.size)
                             } else {
-                                // Album art not fully loaded yet: Pure black background
-                                Color.black
+                                AlbumAmbientGradientView(colors: playback.currentPalette)
+                            }
+
+                            // 2. TOP LAYER: High-Fidelity Fanart Backdrop (smoothly overlays when available)
+                            if let backdrop = fanart.currentBackdrop {
+                                Image(uiImage: backdrop)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                    .clipped()
+                                    .id(backdrop)
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                                    .opacity(isIdle ? 0.45 : 0.35)
                             }
                         }
                     }
