@@ -558,17 +558,21 @@ struct ArtistBackdropView: View {
             }
             .overlay(
                 // Combined Vignette: Dark edges + Vertical fade
+                // Radial edge darkness is strictly for the fallback gradient.
+                // Fanart backdrops remain clean without radial vignette dimming!
                 ZStack {
-                    // Edge darkness (Radial)
-                    RadialGradient(
-                        gradient: Gradient(colors: [.clear, (isDarkMode ? Color.black : Color.white).opacity(0.85)]),
-                        center: .center,
-                        startRadius: 50,
-                        endRadius: proxy.size.width * 1.2
-                    )
-                    .blendMode(isDarkMode ? .multiply : .normal)
+                    if activeUrl == nil {
+                        // Edge darkness (Radial) — fallback only
+                        RadialGradient(
+                            gradient: Gradient(colors: [.clear, (isDarkMode ? Color.black : Color.white).opacity(0.85)]),
+                            center: .center,
+                            startRadius: 50,
+                            endRadius: proxy.size.width * 1.2
+                        )
+                        .blendMode(isDarkMode ? .multiply : .normal)
+                    }
 
-                    // Vertical fade (Linear) fades to pure background at the bottom
+                    // Vertical fade (Linear) fades to pure background at the bottom for smooth discography scrolling
                     LinearGradient(
                         gradient: Gradient(colors: [.clear, (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa")).opacity(1.0)]),
                         startPoint: .top,
