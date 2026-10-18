@@ -1191,21 +1191,22 @@ struct MicroMeshGradientView: View {
 
     static func generateGridColors(colors: [UIColor], isLandscape: Bool, isPhaseTwo: Bool) -> [UIColor] {
         let cols = colors
-        let a = cols.indices.contains(0) ? cols[0] : .black
-        let b = cols.indices.contains(1) ? cols[1] : .black
-        let c = cols.indices.contains(2) ? cols[2] : .black
-        let d = cols.indices.contains(3) ? cols[3] : .black
-        let e = cols.indices.contains(4) ? cols[4] : .black
+        let defaultAmbient = UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0)
+        let a = cols.indices.contains(0) ? cols[0] : defaultAmbient
+        let b = cols.indices.contains(1) ? cols[1] : a.adjust(hue: 0.06, saturation: 0.08, brightness: -0.08)
+        let c = cols.indices.contains(2) ? cols[2] : a.adjust(hue: -0.06, saturation: -0.08, brightness: 0.08)
+        let d = cols.indices.contains(3) ? cols[3] : b.adjust(hue: 0.08, brightness: -0.05)
+        let e = cols.indices.contains(4) ? cols[4] : c.adjust(hue: -0.08, brightness: 0.05)
         let dark = UIColor(red: 0.02, green: 0.02, blue: 0.03, alpha: 1.0)
 
         if isLandscape {
-            // 4x3 Widescreen Landscape Grid (12 points)
+            // 4x3 Widescreen Landscape Grid (12 points) — Full 16:9 canvas coverage without right-side black patch
             return isPhaseTwo
-                ? [b, a, e, dark,
-                   a, e, c, dark,
+                ? [b, e, a, c,
+                   c, a, dark, e,
                    dark, d, b, dark]
-                : [a, b, c, dark,
-                   b, a, e, dark,
+                : [a, b, c, d,
+                   b, dark, e, c,
                    dark, c, d, dark]
         } else {
             // 3x3 Portrait Grid (9 points)
@@ -1213,7 +1214,7 @@ struct MicroMeshGradientView: View {
                 ? [b, a, e,
                    dark, d, c,
                    dark, b, dark]
-                : [a, b, dark,
+                : [a, b, e,
                    c, e, d,
                    dark, d, dark]
         }
@@ -1229,22 +1230,30 @@ struct MicroMeshGradientView: View {
     }
 
     var body: some View {
-        ZStack {
-            if let tex1 = phase1Texture {
-                Image(uiImage: tex1)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .blur(radius: isLandscape ? 48 : 40)
-                    .opacity(phase ? 0.0 : 1.0)
-            }
+        GeometryReader { geo in
+            ZStack {
+                if let tex1 = phase1Texture {
+                    Image(uiImage: tex1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .scaleEffect(1.15)
+                        .blur(radius: isLandscape ? 48 : 40)
+                        .opacity(phase ? 0.0 : 1.0)
+                }
 
-            if let tex2 = phase2Texture {
-                Image(uiImage: tex2)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .blur(radius: isLandscape ? 48 : 40)
-                    .opacity(phase ? 1.0 : 0.0)
+                if let tex2 = phase2Texture {
+                    Image(uiImage: tex2)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .scaleEffect(1.15)
+                        .blur(radius: isLandscape ? 48 : 40)
+                        .opacity(phase ? 1.0 : 0.0)
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
         }
         .ignoresSafeArea()
         .onAppear {
