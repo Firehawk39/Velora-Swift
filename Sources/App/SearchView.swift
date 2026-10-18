@@ -250,7 +250,7 @@ private struct SearchAlbumCard: View {
             SelfHealingAsyncImage(url: album.coverArtUrl) { img in img.resizable().scaledToFill() }
             placeholder: { Rectangle().fill(isDark ? Color.white.opacity(0.08) : Color(hex: "#e5e7eb")) }
             .frame(width: 180, height: 110).clipped()
-            Color.black.opacity(0.35)
+            LinearGradient(colors: [.clear, Color.black.opacity(0.6)], startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 4) {
                 Text(album.name).font(.system(size: 16, weight: .bold)).foregroundColor(.white).lineLimit(1)
                 Text(album.artist ?? "").font(.system(size: 12)).foregroundColor(.white.opacity(0.7)).lineLimit(1)

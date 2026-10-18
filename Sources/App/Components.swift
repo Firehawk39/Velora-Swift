@@ -644,9 +644,19 @@ struct QueuePanel: View {
 
     private var backgroundView: some View {
         ZStack {
-            // Performance-optimized solid background
+            // Performance-optimized solid background with subtle gradient
             (isDarkMode ? Color(hex: "#121212") : Color(hex: "#fafafa"))
                 .ignoresSafeArea()
+
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    isDarkMode ? Color.white.opacity(0.03) : Color.black.opacity(0.02),
+                    .clear
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
             // Glass material (Thin for performance)
             if isDarkMode {

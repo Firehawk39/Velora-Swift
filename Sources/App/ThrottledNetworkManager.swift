@@ -109,6 +109,7 @@ private class DomainThrottler: @unchecked Sendable {
     let host: String
     let minInterval: TimeInterval
     let isLocal: Bool
+    private let defaultMaxConcurrency: Int
     
     private let queue = OperationQueue()
     private var lastRequestTime = Date.distantPast
@@ -122,7 +123,8 @@ private class DomainThrottler: @unchecked Sendable {
         self.host = host
         self.minInterval = minInterval
         self.isLocal = isLocal
-        self.queue.maxConcurrentOperationCount = maxConcurrency
+        self.defaultMaxConcurrency = isLocal ? 64 : 16
+        self.queue.maxConcurrentOperationCount = isLocal ? 64 : 16
     }
 
     func addOperation(_ op: Operation) {
@@ -209,12 +211,11 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
 
     private var _executing = false
     private var _finished = false
-    private let stateLock = NSLock()
 
     override var isAsynchronous: Bool { true }
     
-    override var isExecuting: Bool { stateLock.lock(); defer { stateLock.unlock() }; return _executing }
-    override var isFinished: Bool { stateLock.lock(); defer { stateLock.unlock() }; return _finished }
+    override var isExecuting: Bool { _executing }
+    override var isFinished: Bool { _finished }
 
     init(request: URLRequest, throttler: DomainThrottler, completion: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void) {
         self.request = request
@@ -227,9 +228,7 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
         guard !isCancelled else { finish(); return }
 
         willChangeValue(forKey: "isExecuting")
-        stateLock.lock()
         _executing = true
-        stateLock.unlock()
         didChangeValue(forKey: "isExecuting")
 
         // Block this background thread until we have a safe slot, or fail fast
@@ -247,7 +246,6 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             guard let self = self else { return }
             
-            var isRateLimited = false
             var isFailure = false
             
             if let error = error {
@@ -260,7 +258,6 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
             } else if let http = response as? HTTPURLResponse {
                 if http.statusCode == 429 || http.statusCode == 403 {
                     isFailure = true
-                    isRateLimited = true
                     var delay: TimeInterval? = nil
                     if let retryStr = http.value(forHTTPHeaderField: "Retry-After"), let retryInt = Double(retryStr) {
                         delay = retryInt
@@ -276,11 +273,7 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
                 self.throttler.recordSuccess()
             }
             
-            // Don't update lastRequestTime on rate-limit responses — let the circuit
-            // breaker cooldown be the sole delay, not cooldown + minInterval stacked.
-            if !isRateLimited {
-                self.throttler.recordCompletion()
-            }
+            self.throttler.recordCompletion()
             self.completion(data, response, error)
             self.finish()
         }
@@ -290,10 +283,8 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
     private func finish() {
         willChangeValue(forKey: "isExecuting")
         willChangeValue(forKey: "isFinished")
-        stateLock.lock()
         _executing = false
         _finished = true
-        stateLock.unlock()
         didChangeValue(forKey: "isExecuting")
         didChangeValue(forKey: "isFinished")
     }

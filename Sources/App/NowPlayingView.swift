@@ -109,13 +109,27 @@ struct NowPlayingView: View {
                     }
                 }
                 .overlay(
-                    // Radial Vignette: Dark edges
-                    RadialGradient(
-                        gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
-                        center: .center,
-                        startRadius: 50,
-                        endRadius: proxy.size.width * 1.2
-                    )
+                    // Combined Vignette: Dark edges + Vertical fade
+                    ZStack {
+                        // Edge darkness (Radial)
+                        RadialGradient(
+                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
+                            center: .center,
+                            startRadius: 50,
+                            endRadius: proxy.size.width * 1.2
+                        )
+
+                        // Top and Bottom protection (Linear)
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                .black.opacity(isIdle ? 0.3 : 0.6),
+                                .clear,
+                                .black.opacity(isIdle ? 0.5 : 0.9)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
                 )
                 .ignoresSafeArea()
                 // Stagger layer 2 of 3: background lightens AFTER controls exit (0.15s delay),
@@ -1107,6 +1121,7 @@ extension UIColor {
 // MARK: - Album Ambient Gradient (Apple Music style)
 // Dispatches to MeshGradient on iOS 18+ (non-SE devices).
 // On iPhone SE (all iOS versions) and below iOS 18 (iOS 15-17): ZERO continuous GPU overload — MicroMeshGradientView.
+@MainActor
 struct AlbumAmbientGradientView: View {
     let colors: [UIColor]
     var isLandscape: Bool = false
@@ -1179,24 +1194,14 @@ enum MicroMeshTextureGenerator {
 }
 
 // MARK: - Micro-Mesh Gradient View (Below iOS 18 / SE)
+@MainActor
 struct MicroMeshGradientView: View {
     let colors: [UIColor]
-    var isLandscape: Bool
+    var isLandscape: Bool = false
 
     @State private var phase = false
     @State private var phase1Texture: UIImage?
     @State private var phase2Texture: UIImage?
-
-    init(colors: [UIColor], isLandscape: Bool = false) {
-        self.colors = colors
-        self.isLandscape = isLandscape
-        let columns = isLandscape ? 4 : 3
-        let rows = 3
-        let grid1 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: false)
-        let grid2 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: true)
-        _phase1Texture = State(initialValue: MicroMeshTextureGenerator.createMeshTexture(colors: grid1, columns: columns, rows: rows))
-        _phase2Texture = State(initialValue: MicroMeshTextureGenerator.createMeshTexture(colors: grid2, columns: columns, rows: rows))
-    }
 
     static func generateGridColors(colors: [UIColor], isLandscape: Bool, isPhaseTwo: Bool) -> [UIColor] {
         let cols = colors
