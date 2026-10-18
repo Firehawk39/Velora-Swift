@@ -99,13 +99,7 @@ struct NowPlayingView: View {
 
                             if isArtworkLoaded {
                                 if let backdrop = fanart.currentBackdrop {
-                                    // High-tier iOS 18+ only: ambient base layer under fanart (Apple Music look)
-                                    // Micro-Mesh Engine is strictly for fallback backdrops and never renders under fanart
-                                    if #available(iOS 18.0, *), !ScreenTier.isSE {
-                                        AnimatedMeshGradientView(colors: playback.currentPalette)
-                                    }
-
-                                    // High-Fidelity Fanart Backdrop
+                                    // High-Fidelity Fanart Backdrop: Pure backdrop with NO gradient layer under or over it
                                     Image(uiImage: backdrop)
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
@@ -113,7 +107,7 @@ struct NowPlayingView: View {
                                         .clipped()
                                         .id(backdrop)
                                         .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                        .opacity(ScreenTier.isSE ? 0.85 : (isIdle ? 0.45 : 0.35))
+                                        .opacity(0.85)
                                 } else {
                                     // Fallback when no fanart backdrop:
                                     if ScreenTier.isSE {
