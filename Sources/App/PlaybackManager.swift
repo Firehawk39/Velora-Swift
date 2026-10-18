@@ -104,8 +104,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private var activeDownloadTasksByTrackId: [String: URLSessionDownloadTask] = [:]
     private var downloadStartTimes: [String: Date] = [:]
     /// Concurrent download slots for Navidrome tracks.
-    /// Unthrottled line-rate full power downloading (64 concurrent streams) regardless of device state.
-    private var maxConcurrentDownloads: Int = 64
+    /// Optimal pipelined concurrency (10 streams) matching Spotify & Apple Music standards.
+    private var maxConcurrentDownloads: Int = 10
     private var isDownloadingAll = false
     private var downloadTasks: [Int: String] = [:] // Task ID to Track ID
     private var downloadRetryCount: [String: Int] = [:] // trackId -> retry count
@@ -177,7 +177,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
 
         // Maximum concurrent streams to host
-        configuration.httpMaximumConnectionsPerHost = 64
+        configuration.httpMaximumConnectionsPerHost = 12
         configuration.timeoutIntervalForRequest = 45
         configuration.timeoutIntervalForResource = 3600
         configuration.allowsCellularAccess = true
@@ -186,7 +186,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         let sessionQueue = OperationQueue()
         sessionQueue.name = "com.velora.downloadSessionQueue"
-        sessionQueue.maxConcurrentOperationCount = 16
+        sessionQueue.maxConcurrentOperationCount = 12
         sessionQueue.qualityOfService = .userInitiated
 
         let newSession = URLSession(configuration: configuration, delegate: self, delegateQueue: sessionQueue)
@@ -204,10 +204,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     private func updateAdaptiveConcurrency() {
         if ProcessInfo.processInfo.isLowPowerModeEnabled {
-            maxConcurrentDownloads = 16
-            AppLogger.shared.log("🔋 [Power] iOS Low Power Mode active — scaling downloads to 16 streams", level: .info)
+            maxConcurrentDownloads = 6
+            AppLogger.shared.log("🔋 [Power] iOS Low Power Mode active — scaling downloads to 6 streams", level: .info)
         } else {
-            maxConcurrentDownloads = 64
+            maxConcurrentDownloads = 10
         }
     }
 
@@ -1479,13 +1479,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
-    /// Sets download mode. Downloads from Navidrome operate at raw full power (64 slots)
-    /// regardless of device or battery state.
+    /// Sets download mode. Uses optimal pipelined concurrency (10 streams)
+    /// exactly aligned with top-tier streaming architecture (Spotify & Apple Music).
     func setBulkDownloadMode(_ enabled: Bool) {
         self.isDownloadingAll = enabled
-        maxConcurrentDownloads = 64
+        maxConcurrentDownloads = enabled ? 10 : (ProcessInfo.processInfo.isLowPowerModeEnabled ? 6 : 10)
         AppLogger.shared.log(
-            "[Download] Mode \(enabled ? "BULK" : "NORMAL") — raw unthrottled maxConcurrent=\(maxConcurrentDownloads)",
+            "[Download] Mode \(enabled ? "BULK" : "NORMAL") — optimal pipelined maxConcurrent=\(maxConcurrentDownloads)",
             level: .info
         )
         processQueue()

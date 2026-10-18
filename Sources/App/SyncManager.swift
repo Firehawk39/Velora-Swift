@@ -587,50 +587,52 @@ final class SyncManager: ObservableObject {
                 return
             }
 
-            mediaStatus = "Queueing \(totalToDownload) tracks & local media..."
-            AppLogger.shared.log("Queueing \(totalToDownload) tracks, covers, and portraits.", level: .info)
+            mediaStatus = "Queueing \(totalToDownload) tracks..."
+            AppLogger.shared.log("Queueing \(totalToDownload) tracks with optimal pipelining.", level: .info)
 
-            // Concurrently download all missing album covers and artist portraits directly from Navidrome LAN
-            var artIdsToDownload = Set<String>()
-            for album in client.albums {
-                let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
-                artIdsToDownload.insert(cleanArtId)
-            }
-            for track in tracks {
-                if let rawArt = track.coverArt ?? track.albumId {
-                    artIdsToDownload.insert(extractArtId(from: rawArt))
-                }
-            }
-            for cleanArtId in artIdsToDownload {
-                let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                if !isValidImageFile(at: localCoverUrl) {
-                    client.downloadCoverArt(id: cleanArtId)
-                }
-            }
-
-            var artistIdsToDownload = Set<String>()
-            for artist in client.artists {
-                artistIdsToDownload.insert(artist.id)
-            }
-            for track in tracks {
-                if let artistId = track.artistId {
-                    artistIdsToDownload.insert(artistId)
-                }
-            }
-            for artistId in artistIdsToDownload {
-                let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
-                if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artistId) {
-                    client.downloadArtistPortrait(id: artistId)
-                }
-            }
-
+            // 1. Immediately queue all audio tracks so audio streams begin with zero delay
             for track in tracksToDownload {
                 if !isSyncingMedia { break }
                 playback?.downloadTrack(track)
-                // Small yield to keep UI responsive during mass queueing
                 await Task.yield()
             }
-            AppLogger.shared.log("Finished queueing. Starting monitor loop.", level: .debug)
+            AppLogger.shared.log("Finished queueing audio tracks. Starting monitor loop.", level: .debug)
+
+            // 2. Concurrently fetch missing album covers and artist portraits in background without holding up audio downloads
+            Task.detached(priority: .utility) {
+                var artIdsToDownload = Set<String>()
+                for album in client.albums {
+                    let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
+                    artIdsToDownload.insert(cleanArtId)
+                }
+                for track in tracks {
+                    if let rawArt = track.coverArt ?? track.albumId {
+                        artIdsToDownload.insert(extractArtId(from: rawArt))
+                    }
+                }
+                for cleanArtId in artIdsToDownload {
+                    let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
+                    if !isValidImageFile(at: localCoverUrl) {
+                        client.downloadCoverArt(id: cleanArtId)
+                    }
+                }
+
+                var artistIdsToDownload = Set<String>()
+                for artist in client.artists {
+                    artistIdsToDownload.insert(artist.id)
+                }
+                for track in tracks {
+                    if let artistId = track.artistId {
+                        artistIdsToDownload.insert(artistId)
+                    }
+                }
+                for artistId in artistIdsToDownload {
+                    let localPortraitUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
+                    if !isValidImageFile(at: localPortraitUrl) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artistId) {
+                        client.downloadArtistPortrait(id: artistId)
+                    }
+                }
+            }
 
             // Phase 2: Monitor progress with a timeout safety
             var lastDownloadedCount = -1
@@ -668,7 +670,7 @@ final class SyncManager: ObservableObject {
                         self.mediaEta = "\(remainingSeconds)s remaining"
                     }
                 } else {
-                    self.mediaEta = "Calculating..."
+                    self.mediaEta = "Connecting & buffering..."
                 }
 
                 if (currentlyDownloaded + currentlyFailed) >= totalToDownload {
