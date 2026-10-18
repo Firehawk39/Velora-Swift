@@ -338,6 +338,11 @@ final class FanartManager: ObservableObject {
                     } else {
                         self.currentBackdrop = cached
                     }
+                    // If the cache hit was for a secondary/featured artist rather than the primary artist,
+                    // still fetch the primary artist in the background so the main artist is prioritized!
+                    if hitArtist != primaryArtist {
+                        self.fetchBackdropRecursive(artists: artists, index: 0, artistId: artistId, providedMbid: mbid, allowNetwork: allowNetwork)
+                    }
                 } else {
                     self.currentArtistName = primaryArtist
                     self.fetchBackdropRecursive(artists: artists, index: 0, artistId: artistId, providedMbid: mbid, allowNetwork: allowNetwork)
@@ -532,12 +537,12 @@ final class FanartManager: ObservableObject {
             primaryArtistName: primaryArtistName,
             cacheKey: cacheKey,
             mbid: mbid,
-            minResolution: CGSize(width: 1920, height: 1080),
+            minResolution: CGSize(width: 1280, height: 720),
             priority: priority
         ) { [weak self] image in
             guard let self = self else { completion(false); return }
             if image != nil {
-                AppLogger.shared.log("[TheAudioDB] Found and verified strict 1080p backdrop for \(primaryArtistName)")
+                AppLogger.shared.log("[TheAudioDB] Found and verified HD backdrop for \(primaryArtistName)")
                 completion(true)
             } else {
                 self.tryDownloadTadb1080pBackdrop(
@@ -1484,7 +1489,7 @@ final class FanartManager: ObservableObject {
                     let h = max(cgH, image.size.height)
                     if w < minRes.width || h < minRes.height {
                         DispatchQueue.main.async {
-                            AppLogger.shared.log("[Backdrop] Rejected non-1080p backdrop for \(primaryArtistName): \(Int(w))x\(Int(h)) is below 1080p minimum (\(Int(minRes.width))x\(Int(minRes.height))).", level: .info)
+                            AppLogger.shared.log("[Backdrop] Rejected non-HD backdrop for \(primaryArtistName): \(Int(w))x\(Int(h)) is below minimum (\(Int(minRes.width))x\(Int(minRes.height))).", level: .info)
                             completion(nil)
                         }
                         return
