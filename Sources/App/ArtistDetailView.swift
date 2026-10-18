@@ -527,8 +527,8 @@ struct ArtistBackdropView: View {
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
                     
-                // High-Fidelity Fanart Backdrop with fallback gradient
-                if let backdropUrl = activeUrl {
+                // High-Fidelity Fanart Backdrop with fallback gradient (strictly Landscape only; portrait mode strictly uses fallback gradient on all devices)
+                if isLandscape, let backdropUrl = activeUrl {
                     AsyncImage(url: backdropUrl) { phase in
                         if let image = phase.image {
                             image

@@ -76,11 +76,12 @@ struct NowPlayingView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let isLandscapeCanvas = isLandscape && (proxy.size.width >= proxy.size.height)
             ZStack {
                 // Dynamic Ambient Background
                 ZStack {
-                    if let backdrop = fanart.currentBackdrop {
-                        // High-Fidelity Fanart Backdrop: Pure backdrop with NO gradient layer under or over it
+                    if isLandscapeCanvas, let backdrop = fanart.currentBackdrop {
+                        // High-Fidelity Fanart Backdrop: Pure backdrop with NO gradient layer under or over it (strictly Landscape only)
                         Image(uiImage: backdrop)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
@@ -90,8 +91,8 @@ struct NowPlayingView: View {
                             .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                             .opacity(0.85)
                     } else {
-                        // Fallback when no fanart backdrop: MicroMesh on SE/iOS 15-17, AnimatedMesh on iOS 18+
-                        AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: isLandscape)
+                        // Fallback when no fanart backdrop or strictly in Portrait mode on ANY device: MicroMesh on SE/iOS 15-17, AnimatedMesh on iOS 18+
+                        AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: isLandscapeCanvas)
                     }
                 }
                 .overlay(
@@ -472,7 +473,9 @@ struct NowPlayingView: View {
                         HStack {
                             Spacer()
                             HStack(spacing: 12) {
-                                cycleBackdropButton
+                                if isLandscape {
+                                    cycleBackdropButton
+                                }
                                 lyricsButton
                                 queueButton
                                 downloadButton
