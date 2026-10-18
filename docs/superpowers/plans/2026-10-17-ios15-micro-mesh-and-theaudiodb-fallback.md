@@ -46,8 +46,7 @@
   Implement `MicroMeshGradientView` with:
   - 4×3 grid in landscape (vibrant tones under album art on left, obsidian tones on right).
   - 3×3 grid in portrait matching Apple Music ambient mesh distribution.
-  - Phase 1 and Phase 2 textures crossfading opacity over 8 seconds.
-  - All-black palette fallback to deep ambient violet/plum defaults.
+  - Natural palette preservation (stays authentic to album artwork or black).
 
 - [x] **Step 2: Verification**
   Ensure clean compilation and strict actor isolation.

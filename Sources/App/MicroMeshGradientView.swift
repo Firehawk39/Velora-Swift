@@ -38,26 +38,8 @@ public struct MicroMeshGradientView: View {
         self.isLandscape = isLandscape
     }
 
-    private var resolvedColors: [UIColor] {
-        let isAllBlack = colors.isEmpty || colors.allSatisfy {
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            $0.getRed(&r, green: &g, blue: &b, alpha: &a)
-            return r < 0.05 && g < 0.05 && b < 0.05
-        }
-        if isAllBlack {
-            return [
-                UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0),
-                UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0),
-                UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0),
-                UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
-                UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
-            ]
-        }
-        return colors
-    }
-
     private func generateGridColors(isPhaseTwo: Bool) -> [UIColor] {
-        let cols = resolvedColors
+        let cols = colors
         let a = cols.indices.contains(0) ? cols[0] : .black
         let b = cols.indices.contains(1) ? cols[1] : .black
         let c = cols.indices.contains(2) ? cols[2] : .black
