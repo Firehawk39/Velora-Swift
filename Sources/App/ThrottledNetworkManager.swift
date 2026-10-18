@@ -52,6 +52,9 @@ class ThrottledNetworkManager: @unchecked Sendable {
         } else if host.contains("lrclib.net") {
             interval = 1.8 // Strict sequential pacing to avoid 429s (1 request per 1.8s)
             maxConcurrency = 1
+        } else if host.contains("assets.fanart.tv") {
+            interval = 0.0 // Static image CDN — zero delay, high throughput
+            maxConcurrency = 8
         } else if host.contains("fanart.tv") {
             interval = 1.0 // 1 request per second to avoid tarpitting during bulk sync
             maxConcurrency = 1

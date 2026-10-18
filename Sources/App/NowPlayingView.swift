@@ -78,34 +78,20 @@ struct NowPlayingView: View {
         GeometryReader { proxy in
             ZStack {
                 // Dynamic Ambient Background
-                Group {
-                    if isCompact && !isLandscape {
-                        // PORTRAIT IPHONE: Ambient micro-mesh / mesh gradient (strictly no Fanart backdrop in portrait)
-                        AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: false)
+                ZStack {
+                    if let backdrop = fanart.currentBackdrop {
+                        // High-Fidelity Fanart Backdrop: Pure backdrop with NO gradient layer under or over it
+                        Image(uiImage: backdrop)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                            .clipped()
+                            .id(backdrop)
+                            .transition(.opacity.animation(.easeInOut(duration: 0.8)))
+                            .opacity(0.85)
                     } else {
-                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop or Fallback Ambient Layer
-                        ZStack {
-                            let isArtworkLoaded = playback.currentArtworkTrackId == playback.currentTrack?.id
-
-                            if isArtworkLoaded {
-                                if let backdrop = fanart.currentBackdrop {
-                                    // High-Fidelity Fanart Backdrop: Pure backdrop with NO gradient layer under or over it
-                                    Image(uiImage: backdrop)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                                        .clipped()
-                                        .id(backdrop)
-                                        .transition(.opacity.animation(.easeInOut(duration: 0.8)))
-                                        .opacity(0.85)
-                                } else {
-                                    // Fallback when no fanart backdrop:
-                                    AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: true)
-                                }
-                            } else {
-                                Color.black
-                            }
-                        }
+                        // Fallback when no fanart backdrop: MicroMesh on SE/iOS 15-17, AnimatedMesh on iOS 18+
+                        AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: isLandscape)
                     }
                 }
                 .overlay(

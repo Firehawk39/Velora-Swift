@@ -635,17 +635,22 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         guard start < end else { return }
 
-        for i in start..<end {
-            let track = queue[i]
-            let primaryArtist = track.primaryArtist
-            guard !primaryArtist.isEmpty else { continue }
+        // Give the active track 2.5s of exclusive network priority before prefetching next tracks
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            guard let self = self else { return }
+            for i in start..<end {
+                guard i < self.queue.count else { continue }
+                let track = self.queue[i]
+                let primaryArtist = track.primaryArtist
+                guard !primaryArtist.isEmpty else { continue }
 
-            Task {
-                // 1. Prefetch Backdrop Silently
-                await FanartManager.shared.downloadBackdropSilently(for: track.allArtists, artistId: track.artistId)
+                Task(priority: .background) {
+                    // 1. Prefetch Backdrop Silently
+                    await FanartManager.shared.downloadBackdropSilently(for: track.allArtists, artistId: track.artistId)
 
-                // 2. Prefetch Metadata Silently
-                await MusicBrainzManager.shared.downloadMetadataSilently(for: primaryArtist)
+                    // 2. Prefetch Metadata Silently
+                    await MusicBrainzManager.shared.downloadMetadataSilently(for: primaryArtist)
+                }
             }
         }
     }

@@ -527,27 +527,22 @@ struct ArtistBackdropView: View {
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
                     
-                if isCompact && !isLandscape {
-                    // PORTRAIT IPHONE: Strictly no Fanart backdrop
-                    fallbackGradient
-                } else {
-                    // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop
-                    if let backdropUrl = activeUrl {
-                        AsyncImage(url: backdropUrl) { phase in
-                            if let image = phase.image {
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                            } else {
-                                fallbackGradient
-                            }
+                // High-Fidelity Fanart Backdrop with fallback gradient
+                if let backdropUrl = activeUrl {
+                    AsyncImage(url: backdropUrl) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                        } else {
+                            fallbackGradient
                         }
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
-                    } else {
-                        fallbackGradient
                     }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                } else {
+                    fallbackGradient
                 }
             }
             .overlay(
