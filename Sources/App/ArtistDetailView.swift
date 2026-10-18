@@ -491,13 +491,7 @@ struct ArtistBackdropView: View {
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass) var vSizeClass
     
-    @State private var artistPalette: [UIColor] = [
-        UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0),
-        UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0),
-        UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0),
-        UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
-        UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
-    ]
+    @State private var artistPalette: [UIColor] = [.black, .black, .black, .black, .black]
     @State private var artistPrimaryColor: UIColor = .black
     @State private var backdropUrl: URL? = nil
     
