@@ -491,7 +491,13 @@ struct ArtistBackdropView: View {
     @Environment(\.horizontalSizeClass) var hSizeClass
     @Environment(\.verticalSizeClass) var vSizeClass
     
-    @State private var artistPalette: [UIColor] = [.black, .black, .black, .black, .black]
+    @State private var artistPalette: [UIColor] = [
+        UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0),
+        UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0),
+        UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0),
+        UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
+        UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
+    ]
     @State private var artistPrimaryColor: UIColor = .black
     @State private var backdropUrl: URL? = nil
     
@@ -594,22 +600,39 @@ struct ArtistBackdropView: View {
         }
     }
     
+    private var artistPaletteKey: String {
+        artistPalette.map { c in
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return "\(Int(r*255)),\(Int(g*255)),\(Int(b*255))"
+        }.joined(separator: "-")
+    }
+
     @ViewBuilder
     private var fallbackGradient: some View {
         AlbumAmbientGradientView(colors: artistPalette, isLandscape: isLandscape)
+            .id(artistPaletteKey)
     }
     
     private func fetchColors() {
+        let cachedBackdrop = resolveBackdropUrl()
         let fallbackUrl = client.getCoverArtUrl(id: artistId, size: 600)
-        guard let url = resolveArtistPortraitUrl(id: artistId, serverUrl: fallbackUrl) else { return }
+        let portraitUrl = resolveArtistPortraitUrl(id: artistId, serverUrl: fallbackUrl)
+
         Task.detached {
-            var fetchedData: Data? = nil
-            if url.isFileURL {
-                fetchedData = try? Data(contentsOf: url)
-            } else {
-                fetchedData = try? await URLSession.shared.data(from: url).0
+            var targetImg: UIImage? = nil
+            if let backdrop = cachedBackdrop, backdrop.isFileURL,
+               let data = try? Data(contentsOf: backdrop) {
+                targetImg = UIImage(data: data)
+            } else if let url = portraitUrl {
+                if url.isFileURL, let data = try? Data(contentsOf: url) {
+                    targetImg = UIImage(data: data)
+                } else if let data = try? await URLSession.shared.data(from: url).0 {
+                    targetImg = UIImage(data: data)
+                }
             }
-            if let data = fetchedData, let img = UIImage(data: data) {
+
+            if let img = targetImg {
                 let primary = img.dominantColor() ?? .black
                 let palette = img.extractPalette(count: 5)
                 await MainActor.run {
@@ -620,4 +643,5 @@ struct ArtistBackdropView: View {
         }
     }
 }
+
 

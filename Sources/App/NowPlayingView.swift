@@ -1132,11 +1132,24 @@ struct AnimatedMeshGradientView: View {
     @State private var phase = false
 
     private func meshColors(phase: Bool) -> [Color] {
-        let a = colors.indices.contains(0) ? Color(colors[0]) : Color.black
-        let b = colors.indices.contains(1) ? Color(colors[1]) : Color.black
-        let c = colors.indices.contains(2) ? Color(colors[2]) : Color.black
-        let d = colors.indices.contains(3) ? Color(colors[3]) : Color.black
-        let e = colors.indices.contains(4) ? Color(colors[4]) : Color.black
+        let isAllBlack = colors.isEmpty || colors.allSatisfy {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            $0.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return r < 0.05 && g < 0.05 && b < 0.05
+        }
+        let cols = isAllBlack ? [
+            UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0),
+            UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0),
+            UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0),
+            UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
+            UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
+        ] : colors
+
+        let a = cols.indices.contains(0) ? Color(cols[0]) : Color.black
+        let b = cols.indices.contains(1) ? Color(cols[1]) : Color.black
+        let c = cols.indices.contains(2) ? Color(cols[2]) : Color.black
+        let d = cols.indices.contains(3) ? Color(cols[3]) : Color.black
+        let e = cols.indices.contains(4) ? Color(cols[4]) : Color.black
         let dark = Color.black
 
         return phase
@@ -1193,7 +1206,23 @@ struct MicroMeshGradientView: View {
     @State private var phase2Texture: UIImage?
 
     static func generateGridColors(colors: [UIColor], isLandscape: Bool, isPhaseTwo: Bool) -> [UIColor] {
-        let cols = colors
+        let isAllBlack = colors.isEmpty || colors.allSatisfy {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            $0.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return r < 0.05 && g < 0.05 && b < 0.05
+        }
+        let cols: [UIColor]
+        if isAllBlack {
+            cols = [
+                UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0),
+                UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0),
+                UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0),
+                UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
+                UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
+            ]
+        } else {
+            cols = colors
+        }
         let defaultAmbient = UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0)
         let a = cols.indices.contains(0) ? cols[0] : defaultAmbient
         let b = cols.indices.contains(1) ? cols[1] : a.adjust(hue: 0.06, saturation: 0.08, brightness: -0.08)
@@ -1221,6 +1250,14 @@ struct MicroMeshGradientView: View {
                    c, e, d,
                    dark, d, dark]
         }
+    }
+
+    private var colorKey: String {
+        colors.map { c in
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return "\(Int(r*255)),\(Int(g*255)),\(Int(b*255))"
+        }.joined(separator: "-")
     }
 
     private func updateTextures() {
@@ -1266,6 +1303,9 @@ struct MicroMeshGradientView: View {
             }
         }
         .onChange(of: colors) { _ in
+            updateTextures()
+        }
+        .onChange(of: colorKey) { _ in
             updateTextures()
         }
         .onChange(of: isLandscape) { _ in
