@@ -183,7 +183,7 @@ struct AppHeader: View {
 
     private var navigationPillScale: CGFloat {
         if isLandscape { return 1.10 }
-        return ScreenTier.isPhone ? (ScreenTier.isSmall ? 0.80 : 0.85) : 0.9
+        return ScreenTier.isPhone ? 0.85 : 0.9
     }
 
     private var navigationPillPadding: CGFloat {
@@ -224,7 +224,7 @@ struct AppHeader: View {
                 activeTab = "home"
             }
         }) {
-            Text(ScreenTier.isSmall && !isLandscape ? "V." : "Velora.")
+            Text("Velora.")
                 .font(.custom("Stardom", size: logoFontSize).weight(.bold))
                 .kerning(-1.2)
                 .foregroundColor(headerFG)
@@ -352,7 +352,7 @@ struct TabButton: View {
             }
         } else {
             if ScreenTier.isSmall {
-                return isActive ? 14 : 10
+                return isActive ? 16 : 12
             } else {
                 return 16
             }
