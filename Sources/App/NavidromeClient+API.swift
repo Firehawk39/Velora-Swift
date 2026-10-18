@@ -68,7 +68,7 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.albums = items.map { sub in
-                        var a = Album(
+                        let a = Album(
                             id: sub.id,
                             name: sub.name ?? sub.title ?? "Unknown",
                             artist: sub.artist ?? "Unknown Artist",
@@ -181,7 +181,7 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawSongs.map { s in
-                        var t = Track(
+                        let t = Track(
                             id: s.id,
                             title: s.title ?? "Unknown",
                             album: s.album ?? "",
@@ -252,7 +252,7 @@ extension NavidromeClient {
                     guard let self = self else { completion([], [], nil, nil); return }
 
                     let albums = albumsData.map { a -> Album in
-                        var albumModel = Album(
+                        let albumModel = Album(
                             id: a.id,
                             name: a.name ?? a.title ?? "Unknown Album",
                             artist: a.artist,
@@ -376,7 +376,7 @@ extension NavidromeClient {
                     guard let self = self else { completion([], [], []); return }
 
                     let tracks = rawSongs.map { s in
-                        var t = Track(
+                        let t = Track(
                             id: s.id,
                             title: s.title ?? "Unknown",
                             album: s.album ?? "",
@@ -398,7 +398,7 @@ extension NavidromeClient {
                         return t
                     }
                     let albums = rawAlbums.map { sub in
-                        var a = Album(
+                        let a = Album(
                             id: sub.id,
                             name: sub.name ?? sub.title ?? "Unknown",
                             artist: sub.artist ?? "Unknown Artist",
@@ -463,7 +463,7 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { completion([]); return }
                     let tracks = rawTracks.map { s in
-                        var t = Track(
+                        let t = Track(
                             id: s.id,
                             title: s.title ?? "Unknown",
                             album: s.album ?? "",
@@ -599,7 +599,7 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { completion(false); return }
                     let songs = rawSongs.map { s in
-                        var t = Track(
+                        let t = Track(
                             id: s.id,
                             title: s.title ?? "Unknown",
                             album: s.album ?? "",

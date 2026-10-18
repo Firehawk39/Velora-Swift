@@ -846,7 +846,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
             let artworkUrl = track.coverArtUrl
 
-            let applyArtwork: (UIImage, Data) -> Void = { [weak self] image, data in
+            let applyArtwork: @Sendable (UIImage, Data) -> Void = { [weak self] image, data in
                 guard let self = self else { return }
                 var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
                 if artId.contains("getCoverArt"),

@@ -136,12 +136,9 @@ final class SyncManager: ObservableObject {
 
             let fa = FanartManager.shared
             let mb = MusicBrainzManager.shared
-            let activeCores = ProcessInfo.processInfo.activeProcessorCount
-            let physicalMemoryGB = Double(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024 * 1024)
             // Optimal bounded continuous worker pool (4 parallel workers).
             // Maximizes throughput on external APIs (MusicBrainz/TheAudioDB/Fanart) without triggering rate limits or circuit breaker stalls.
             let metadataWorkerPoolSize = 4
-            let startTime = Date()
 
             // Pre-flight check: determine what cloud metadata is truly missing
             fa.checkAndInvalidateIfKeyChanged()
@@ -609,8 +606,8 @@ final class SyncManager: ObservableObject {
             }
             AppLogger.shared.log("Finished queueing audio tracks. Starting monitor loop.", level: .debug)
 
-            // 2. Concurrently fetch missing album covers and artist portraits in background without holding up audio downloads
-            Task.detached(priority: .utility) {
+            // 2. Concurrently fetch missing album covers and artist portraits without holding up audio downloads
+            Task(priority: .utility) {
                 var artIdsToDownload = Set<String>()
                 for album in client.albums {
                     let cleanArtId = extractArtId(from: album.coverArt ?? album.id)

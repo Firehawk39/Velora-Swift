@@ -425,8 +425,8 @@ struct AppSettingsView: View {
 
     private func refreshAudit() {
         isAuditingLibrary = true
-        let total = DatabaseManager.shared.getTrackCount()
         Task {
+            let total = await DatabaseManager.shared.getTrackCount()
             let stats = await IntegrityManager.shared.performLibraryAudit(totalTracks: total)
             await MainActor.run {
                 self.auditStats = stats
