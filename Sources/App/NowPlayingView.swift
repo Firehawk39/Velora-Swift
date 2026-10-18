@@ -1236,8 +1236,12 @@ struct MicroMeshGradientView: View {
         let rows = 3
         let grid1 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: false)
         let grid2 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: true)
-        self.phase1Texture = MicroMeshTextureGenerator.createMeshTexture(colors: grid1, columns: columns, rows: rows)
-        self.phase2Texture = MicroMeshTextureGenerator.createMeshTexture(colors: grid2, columns: columns, rows: rows)
+        let tex1 = MicroMeshTextureGenerator.createMeshTexture(colors: grid1, columns: columns, rows: rows)
+        let tex2 = MicroMeshTextureGenerator.createMeshTexture(colors: grid2, columns: columns, rows: rows)
+        withAnimation(.easeInOut(duration: 0.6)) {
+            self.phase1Texture = tex1
+            self.phase2Texture = tex2
+        }
     }
 
     var body: some View {

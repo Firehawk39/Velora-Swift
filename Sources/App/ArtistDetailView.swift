@@ -535,12 +535,14 @@ struct ArtistBackdropView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                                .transition(.opacity.animation(.easeInOut(duration: 0.6)))
                         } else {
                             fallbackGradient
                         }
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
+                    .transition(.opacity.animation(.easeInOut(duration: 0.6)))
                 } else {
                     fallbackGradient
                 }
@@ -606,6 +608,8 @@ struct ArtistBackdropView: View {
     private var fallbackGradient: some View {
         AlbumAmbientGradientView(colors: artistPalette, isLandscape: isLandscape)
             .id(artistPaletteKey)
+            .animation(.easeInOut(duration: 0.6), value: artistPaletteKey)
+            .transition(.opacity.animation(.easeInOut(duration: 0.6)))
     }
     
     private func fetchColors() {
@@ -630,8 +634,10 @@ struct ArtistBackdropView: View {
                 let primary = img.dominantColor() ?? .black
                 let palette = img.extractPalette(count: 5)
                 await MainActor.run {
-                    self.artistPrimaryColor = primary
-                    self.artistPalette = palette
+                    withAnimation(.easeInOut(duration: 0.6)) {
+                        self.artistPrimaryColor = primary
+                        self.artistPalette = palette
+                    }
                 }
             }
         }
