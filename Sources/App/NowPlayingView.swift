@@ -109,27 +109,13 @@ struct NowPlayingView: View {
                     }
                 }
                 .overlay(
-                    // Combined Vignette: Dark edges + Vertical fade
-                    ZStack {
-                        // Edge darkness (Radial)
-                        RadialGradient(
-                            gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
-                            center: .center,
-                            startRadius: 50,
-                            endRadius: proxy.size.width * 1.2
-                        )
-
-                        // Top and Bottom protection (Linear)
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                .black.opacity(isIdle ? 0.3 : 0.6),
-                                .clear,
-                                .black.opacity(isIdle ? 0.5 : 0.9)
-                            ]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    }
+                    // Radial Vignette: Dark edges
+                    RadialGradient(
+                        gradient: Gradient(colors: [.clear, .black.opacity(isIdle ? 0.5 : 0.85)]),
+                        center: .center,
+                        startRadius: 50,
+                        endRadius: proxy.size.width * 1.2
+                    )
                 )
                 .ignoresSafeArea()
                 // Stagger layer 2 of 3: background lightens AFTER controls exit (0.15s delay),

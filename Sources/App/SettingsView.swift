@@ -1227,7 +1227,7 @@ struct StorageInfoView: View {
                             Capsule().fill(isDark ? Color.white.opacity(0.05) : Color.black.opacity(0.05))
                             let usedRatio = 1.0 - (Double(info.available) / Double(info.total))
                             Capsule()
-                                .fill(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                                .fill(Color.accentColor)
                                 .frame(width: geo.size.width * CGFloat(usedRatio))
                         }
                     }
