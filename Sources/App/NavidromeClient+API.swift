@@ -921,7 +921,8 @@ extension NavidromeClient {
 
         if duration > 0, let getUrl = getComponents?.url {
             var req = URLRequest(url: getUrl)
-            req.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
+            req.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "User-Agent")
+            req.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "Lrclib-Client")
             req.timeoutInterval = 20.0
             let (data, response) = try await ThrottledNetworkManager.shared.enqueue(request: req, priority: priority)
             if let http = response as? HTTPURLResponse {
@@ -939,7 +940,8 @@ extension NavidromeClient {
         // 2. Search fallback — separate params give LRCLIB much better matching than a combined blob
         guard let searchUrl = searchComponents?.url else { return nil }
         var searchReq = URLRequest(url: searchUrl)
-        searchReq.setValue("VeloraApp/1.0 ( https://github.com/Firehawk39/Velora-Swift )", forHTTPHeaderField: "User-Agent")
+        searchReq.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "User-Agent")
+        searchReq.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "Lrclib-Client")
         searchReq.timeoutInterval = 20.0
 
         let (searchData, searchResp) = try await ThrottledNetworkManager.shared.enqueue(request: searchReq, priority: priority)

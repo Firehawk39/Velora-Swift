@@ -363,8 +363,8 @@ final class SyncManager: ObservableObject {
             }
 
             let lyricsDir = VeloraStorage.lyrics
-            // Unthrottled lyrics concurrency pool (24). LRCLIB rate limits are governed by CircuitBreaker.
-            let maxConcurrent = 24
+            // Managed lyrics concurrency pool (6). Requests are serialized safely by ThrottledNetworkManager at 2.2s.
+            let maxConcurrent = 6
             let totalTasks = Double(tracks.count)
             let startTime = Date()
 
@@ -971,8 +971,8 @@ final class SyncManager: ObservableObject {
                 var lyricsFixed = 0
                 lyricsFailed = 0
 
-                // Concurrency: 25 with 0ms stagger — zero artificial battery throttling
-                let lyricsBatchSize = 25
+                // Bounded batch size (10) to pipeline smoothly through ThrottledNetworkManager
+                let lyricsBatchSize = 10
                 let lyricsStaggerNs: UInt64 = 0
 
                 while !pendingLyrics.isEmpty && isRepairing && lyricPassCount < 5 {

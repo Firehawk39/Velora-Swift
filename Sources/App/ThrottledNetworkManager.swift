@@ -50,7 +50,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
             interval = 1.25 // Strict pacing: MusicBrainz requires <= 1 req/sec; 1.25s provides safe overhead margin
             maxConcurrency = 1
         } else if host.contains("lrclib.net") {
-            interval = 1.8 // Strict sequential pacing to avoid 429s (1 request per 1.8s)
+            interval = 2.2 // Paced at ~27 req/min to stay strictly under Cloudflare's 30 req/min limit
             maxConcurrency = 1
         } else if host.contains("assets.fanart.tv") {
             interval = 0.0 // Static image CDN — zero delay, high throughput
@@ -185,9 +185,11 @@ private class DomainThrottler: @unchecked Sendable {
         
         if isRateLimit || consecutiveFailures >= 3 {
             isCircuitOpen = true
-            // Short circuit breaker for content APIs; max 30s default for external services
-            let isContentAPI = host.contains("lrclib.net") || host.contains("fanart.tv") || host.contains("theaudiodb.com")
-            let seconds = retryAfter ?? (isContentAPI ? 15.0 : 30.0)
+            // Circuit breaker cooldown: 25s for LRCLIB (allows Cloudflare token bucket to replenish), 15s for fanart/audiodb, 30s default
+            let isLrclib = host.contains("lrclib.net")
+            let isContentAPI = host.contains("fanart.tv") || host.contains("theaudiodb.com")
+            let defaultCooldown: TimeInterval = isLrclib ? 25.0 : (isContentAPI ? 15.0 : 30.0)
+            let seconds = retryAfter ?? defaultCooldown
             let targetResumeTime = Date().addingTimeInterval(seconds)
             if targetResumeTime > circuitResumeTime {
                 circuitResumeTime = targetResumeTime
