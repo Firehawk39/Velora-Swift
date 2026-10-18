@@ -601,11 +601,7 @@ struct ArtistBackdropView: View {
     
     @ViewBuilder
     private var fallbackGradient: some View {
-        if ScreenTier.isSE {
-            MicroMeshGradientView(colors: artistPalette, isLandscape: isLandscape)
-        } else {
-            AlbumAmbientGradientView(colors: artistPalette, isLandscape: isLandscape)
-        }
+        AlbumAmbientGradientView(colors: artistPalette, isLandscape: isLandscape)
     }
     
     private func fetchColors() {

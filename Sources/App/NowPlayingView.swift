@@ -80,20 +80,10 @@ struct NowPlayingView: View {
                 // Dynamic Ambient Background
                 Group {
                     if isCompact && !isLandscape {
-                        // PORTRAIT IPHONE: Strictly no Fanart backdrop
-                        if ScreenTier.isSE {
-                            // iPhone SE (iOS 15 low-power device): Micro-Texture Mesh Engine
-                            if playback.currentArtworkTrackId == playback.currentTrack?.id {
-                                MicroMeshGradientView(colors: playback.currentPalette, isLandscape: false)
-                            } else {
-                                Color.black
-                            }
-                        } else {
-                            // Modern iPhones: Apple Music-style ambient MeshGradient / FluidGradient
-                            AlbumAmbientGradientView(colors: playback.currentPalette)
-                        }
+                        // PORTRAIT IPHONE: Ambient micro-mesh / mesh gradient (strictly no Fanart backdrop in portrait)
+                        AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: false)
                     } else {
-                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop over Ambient Gradient
+                        // LANDSCAPE OR IPAD: High-Fidelity Fanart Backdrop or Fallback Ambient Layer
                         ZStack {
                             let isArtworkLoaded = playback.currentArtworkTrackId == playback.currentTrack?.id
 
@@ -110,11 +100,7 @@ struct NowPlayingView: View {
                                         .opacity(0.85)
                                 } else {
                                     // Fallback when no fanart backdrop:
-                                    if ScreenTier.isSE {
-                                        MicroMeshGradientView(colors: playback.currentPalette, isLandscape: true)
-                                    } else {
-                                        AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: isLandscape)
-                                    }
+                                    AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: true)
                                 }
                             } else {
                                 Color.black
@@ -1133,16 +1119,17 @@ extension UIColor {
 }
 
 // MARK: - Album Ambient Gradient (Apple Music style)
-// Dispatches to MeshGradient on iOS 18+. Below iOS 18: ZERO GPU overload — MicroMeshGradientView.
+// Dispatches to MeshGradient on iOS 18+ (non-SE devices).
+// On iPhone SE (all iOS versions) and below iOS 18 (iOS 15-17): ZERO continuous GPU overload — MicroMeshGradientView.
 struct AlbumAmbientGradientView: View {
     let colors: [UIColor]
     var isLandscape: Bool = false
 
     var body: some View {
-        if #available(iOS 18.0, *) {
+        if #available(iOS 18.0, *), !ScreenTier.isSE {
             AnimatedMeshGradientView(colors: colors)
         } else {
-            // Below iOS 18: Zero GPU overload — Micro-Texture Mesh Engine
+            // Below iOS 18 OR iPhone SE: Micro-Texture Mesh Engine in both portrait and landscape
             MicroMeshGradientView(colors: colors, isLandscape: isLandscape)
         }
     }
@@ -1208,13 +1195,24 @@ enum MicroMeshTextureGenerator {
 // MARK: - Micro-Mesh Gradient View (Below iOS 18 / SE)
 struct MicroMeshGradientView: View {
     let colors: [UIColor]
-    var isLandscape: Bool = false
+    var isLandscape: Bool
 
     @State private var phase = false
     @State private var phase1Texture: UIImage?
     @State private var phase2Texture: UIImage?
 
-    private func generateGridColors(isPhaseTwo: Bool) -> [UIColor] {
+    init(colors: [UIColor], isLandscape: Bool = false) {
+        self.colors = colors
+        self.isLandscape = isLandscape
+        let columns = isLandscape ? 4 : 3
+        let rows = 3
+        let grid1 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: false)
+        let grid2 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: true)
+        _phase1Texture = State(initialValue: MicroMeshTextureGenerator.createMeshTexture(colors: grid1, columns: columns, rows: rows))
+        _phase2Texture = State(initialValue: MicroMeshTextureGenerator.createMeshTexture(colors: grid2, columns: columns, rows: rows))
+    }
+
+    static func generateGridColors(colors: [UIColor], isLandscape: Bool, isPhaseTwo: Bool) -> [UIColor] {
         let cols = colors
         let a = cols.indices.contains(0) ? cols[0] : .black
         let b = cols.indices.contains(1) ? cols[1] : .black
@@ -1247,8 +1245,8 @@ struct MicroMeshGradientView: View {
     private func updateTextures() {
         let columns = isLandscape ? 4 : 3
         let rows = 3
-        let grid1 = generateGridColors(isPhaseTwo: false)
-        let grid2 = generateGridColors(isPhaseTwo: true)
+        let grid1 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: false)
+        let grid2 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: true)
         self.phase1Texture = MicroMeshTextureGenerator.createMeshTexture(colors: grid1, columns: columns, rows: rows)
         self.phase2Texture = MicroMeshTextureGenerator.createMeshTexture(colors: grid2, columns: columns, rows: rows)
     }
