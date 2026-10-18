@@ -551,14 +551,24 @@ struct ArtistBackdropView: View {
                 }
             }
             .overlay(
-                // Edge darkness (Radial)
-                RadialGradient(
-                    gradient: Gradient(colors: [.clear, (isDarkMode ? Color.black : Color.white).opacity(0.85)]),
-                    center: .center,
-                    startRadius: 50,
-                    endRadius: proxy.size.width * 1.2
-                )
-                .blendMode(isDarkMode ? .multiply : .normal)
+                // Combined Vignette: Dark edges + Vertical fade
+                ZStack {
+                    // Edge darkness (Radial)
+                    RadialGradient(
+                        gradient: Gradient(colors: [.clear, (isDarkMode ? Color.black : Color.white).opacity(0.85)]),
+                        center: .center,
+                        startRadius: 50,
+                        endRadius: proxy.size.width * 1.2
+                    )
+                    .blendMode(isDarkMode ? .multiply : .normal)
+
+                    // Vertical fade (Linear) fades to pure background at the bottom
+                    LinearGradient(
+                        gradient: Gradient(colors: [.clear, (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa")).opacity(1.0)]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
             )
         }
         .onAppear {
