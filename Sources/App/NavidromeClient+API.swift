@@ -663,8 +663,13 @@ extension NavidromeClient {
     }
 
     func downloadCoverArt(id: String, completion: (@Sendable (Bool) -> Void)? = nil) {
+        let cleanId = extractArtId(from: id)
+        guard !cleanId.isEmpty else {
+            completion?(false)
+            return
+        }
         let coverArtDir = VeloraStorage.coverArt
-        let destinationUrl = coverArtDir.appendingPathComponent("\(id).jpg")
+        let destinationUrl = coverArtDir.appendingPathComponent("\(cleanId).jpg")
 
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
             if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
@@ -672,7 +677,7 @@ extension NavidromeClient {
                 completion?(true)
                 return // Valid cache exists
             } else {
-                // Delete 0-byte corrupted marker
+                // Delete corrupted / 0-byte marker
                 try? FileManager.default.removeItem(at: destinationUrl)
             }
         }
@@ -682,22 +687,22 @@ extension NavidromeClient {
             return
         }
 
-        guard Self.registerInFlightCover(id: id, completion: completion) else {
+        guard Self.registerInFlightCover(id: cleanId, completion: completion) else {
             return
         }
 
-        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else {
-            Self.finishCoverArtCallbacks(id: id, success: false)
+        guard let url = buildUrl(method: "getCoverArt.view", params: ["id": cleanId, "size": "600"]) else {
+            Self.finishCoverArtCallbacks(id: cleanId, success: false)
             return
         }
 
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             let notifyAndFinish: @Sendable (Bool) -> Void = { success in
-                Self.finishCoverArtCallbacks(id: id, success: success)
+                Self.finishCoverArtCallbacks(id: cleanId, success: success)
             }
 
             guard let data = data, error == nil else {
-                AppLogger.shared.log("Failed to download cover art for \(id): \(error?.localizedDescription ?? "Unknown error")")
+                AppLogger.shared.log("Failed to download cover art for \(cleanId): \(error?.localizedDescription ?? "Unknown error")")
                 notifyAndFinish(false)
                 return
             }
@@ -710,11 +715,12 @@ extension NavidromeClient {
                     try data.write(to: destinationUrl)
                     notifyAndFinish(true)
                 } else {
-                    AppLogger.shared.log("Failed to save cover art for \(id): Not a valid image.")
+                    let preview = String(data: data.prefix(120), encoding: .utf8) ?? "binary data (\(data.count) bytes)"
+                    AppLogger.shared.log("Failed to save cover art for \(cleanId): Not a valid image (\(preview.trimmingCharacters(in: .whitespacesAndNewlines)))")
                     notifyAndFinish(false)
                 }
             } catch {
-                AppLogger.shared.log("Failed to save cover art for \(id): \(error)")
+                AppLogger.shared.log("Failed to save cover art for \(cleanId): \(error)")
                 notifyAndFinish(false)
             }
         }
@@ -723,12 +729,14 @@ extension NavidromeClient {
     // MARK: - Lyrics
     
     func downloadArtistPortrait(id: String) {
+        let cleanId = extractArtId(from: id)
+        guard !cleanId.isEmpty else { return }
         let portraitDir = VeloraStorage.artistPortraits
-        let destinationUrl = portraitDir.appendingPathComponent("\(id).jpg")
+        let destinationUrl = portraitDir.appendingPathComponent("\(cleanId).jpg")
 
         if FileManager.default.fileExists(atPath: destinationUrl.path) {
             if let attr = try? FileManager.default.attributesOfItem(atPath: destinationUrl.path),
-               let size = attr[.size] as? Int64, size > 0 {
+               let size = attr[.size] as? Int64, size > 100 {
                 return // Valid cache exists
             } else {
                 try? FileManager.default.removeItem(at: destinationUrl)
@@ -736,7 +744,7 @@ extension NavidromeClient {
         }
 
         guard NetworkMonitor.shared.isConnected else { return }
-        guard let url = URL(string: getCoverArtUrl(id: id, size: 600)) else { return }
+        guard let url = buildUrl(method: "getCoverArt.view", params: ["id": cleanId, "size": "600"]) else { return }
 
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
             guard let data = data, error == nil else { return }
@@ -1050,20 +1058,21 @@ extension NavidromeClient {
             Task { @MainActor in completion(false) }
             return
         }
-        let urlStr = getCoverArtUrl(id: id)
-        guard let url = URL(string: urlStr) else {
+        let cleanId = extractArtId(from: id)
+        guard !cleanId.isEmpty else {
+            Task { @MainActor in completion(false) }
+            return
+        }
+        guard let url = buildUrl(method: "getCoverArt.view", params: ["id": cleanId, "size": "\(size)"]) else {
             Task { @MainActor in completion(false) }
             return
         }
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
-            let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(extractArtId(from: id)).jpg")
+            let localUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanId).jpg")
             guard error == nil, let data = data, !data.isEmpty,
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
                   UIImage(data: data) != nil else {
-                // Write a 0-byte poison marker so SyncManager stops endlessly re-fetching this missing asset.
-                // 'Repair Sync' will still detect it, delete it, and correctly re-attempt downloading it.
-                try? FileManager.default.createDirectory(at: localUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? Data().write(to: localUrl)
+                AssetRegistry.shared.markCoverArtUnavailable(id: cleanId)
                 Task { @MainActor in completion(false) }
                 return
             }
@@ -1082,19 +1091,20 @@ extension NavidromeClient {
             Task { @MainActor in completion(false) }
             return
         }
-        let urlStr = getCoverArtUrl(id: id)
-        guard let url = URL(string: urlStr) else {
+        let cleanId = extractArtId(from: id)
+        guard !cleanId.isEmpty else {
+            Task { @MainActor in completion(false) }
+            return
+        }
+        guard let url = buildUrl(method: "getCoverArt.view", params: ["id": cleanId, "size": "600"]) else {
             Task { @MainActor in completion(false) }
             return
         }
         ThrottledNetworkManager.shared.enqueue(url: url) { data, response, error in
-            let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(id).jpg")
+            let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(cleanId).jpg")
             guard error == nil, let data = data, !data.isEmpty,
                   let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                // Write a 0-byte poison marker so SyncManager stops endlessly re-fetching this missing asset.
-                // 'Repair Sync' will still detect it, delete it, and correctly re-attempt downloading it.
-                try? FileManager.default.createDirectory(at: localUrl.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? Data().write(to: localUrl)
+                AssetRegistry.shared.markPortraitUnavailable(artistId: cleanId)
                 Task { @MainActor in completion(false) }
                 return
             }

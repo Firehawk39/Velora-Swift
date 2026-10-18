@@ -3,13 +3,34 @@ import XCTest
 final class ModelTests: XCTestCase {
 
     func extractArtId(from serverUrlOrId: String) -> String {
-        if serverUrlOrId.contains("getCoverArt"),
-           let url = URL(string: serverUrlOrId),
+        var raw = serverUrlOrId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return "" }
+
+        if raw.contains("getCoverArt"),
+           let url = URL(string: raw),
            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
-            return idParam
+           let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value,
+           !idParam.isEmpty {
+            raw = idParam
         }
-        return serverUrlOrId
+
+        if raw.hasPrefix("file://") || raw.contains("/") {
+            if let url = URL(string: raw), !url.lastPathComponent.isEmpty {
+                raw = url.deletingPathExtension().lastPathComponent
+            } else {
+                let last = (raw as NSString).lastPathComponent
+                raw = (last as NSString).deletingPathExtension
+            }
+        }
+
+        for ext in [".jpg", ".jpeg", ".png", ".webp"] {
+            if raw.lowercased().hasSuffix(ext) {
+                raw = String(raw.dropLast(ext.count))
+                break
+            }
+        }
+
+        return raw
     }
 
     func formatDuration(_ duration: Int?) -> String {
@@ -38,6 +59,21 @@ final class ModelTests: XCTestCase {
     func testExtractArtIdFromServerUrl() {
         let urlString = "https://navidrome.example.com/rest/getCoverArt.view?id=al-4821&u=test&t=abc&s=123&size=500"
         XCTAssertEqual(extractArtId(from: urlString), "al-4821")
+    }
+
+    func testExtractArtIdFromFileUrl() {
+        let fileUrl = "file:///var/mobile/Containers/Data/Application/B64AF2DC-B1F9-4A2F-B415-C5C14DE8BDA8/Library/Application%20Support/VeloraData/CoverArt/mf-0S7Pg3z8r64aQhgeKq7O6O_29d25ff4da8b5dab.jpg"
+        XCTAssertEqual(extractArtId(from: fileUrl), "mf-0S7Pg3z8r64aQhgeKq7O6O_29d25ff4da8b5dab")
+    }
+
+    func testExtractArtIdFromPath() {
+        let path = "/var/mobile/Containers/Data/CoverArt/al-2H7kgjkef3xPzYsS7mQ8Be_c66090521bf3abd3.jpg"
+        XCTAssertEqual(extractArtId(from: path), "al-2H7kgjkef3xPzYsS7mQ8Be_c66090521bf3abd3")
+    }
+
+    func testExtractArtIdFromIdWithExtension() {
+        let withExt = "mf-6l6JVtljigoEz6fWc6q8aq_93559de42cbe2362.jpg"
+        XCTAssertEqual(extractArtId(from: withExt), "mf-6l6JVtljigoEz6fWc6q8aq_93559de42cbe2362")
     }
 
     func testDurationFormatting() {

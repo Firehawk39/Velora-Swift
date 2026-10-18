@@ -47,7 +47,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
             interval = 0.0 // Zero artificial delay for Navidrome server — raw unthrottled power
             maxConcurrency = 64 // Full unbothered line-rate throughput
         } else if host.contains("musicbrainz.org") {
-            interval = 1.0 // Strict 1 request per second
+            interval = 1.25 // Strict pacing: MusicBrainz requires <= 1 req/sec; 1.25s provides safe overhead margin
             maxConcurrency = 1
         } else if host.contains("lrclib.net") {
             interval = 1.8 // Strict sequential pacing to avoid 429s (1 request per 1.8s)
@@ -126,8 +126,9 @@ private class DomainThrottler: @unchecked Sendable {
         self.host = host
         self.minInterval = minInterval
         self.isLocal = isLocal
-        self.defaultMaxConcurrency = isLocal ? 64 : 16
-        self.queue.maxConcurrentOperationCount = isLocal ? 64 : 16
+        let resolved = isLocal ? 64 : maxConcurrency
+        self.defaultMaxConcurrency = resolved
+        self.queue.maxConcurrentOperationCount = resolved
     }
 
     func addOperation(_ op: Operation) {
@@ -200,7 +201,9 @@ private class DomainThrottler: @unchecked Sendable {
 
         lock.lock()
         defer { lock.unlock() }
-        if consecutiveFailures > 0 {
+        if isCircuitOpen || consecutiveFailures > 0 {
+            isCircuitOpen = false
+            circuitResumeTime = Date.distantPast
             consecutiveFailures = 0
             AppLogger.shared.log("🟢 Circuit Breaker fully reset for \(host).", level: .info)
         }

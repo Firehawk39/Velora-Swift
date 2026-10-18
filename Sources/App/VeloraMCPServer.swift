@@ -18,6 +18,8 @@ final class VeloraMCPServer: ObservableObject {
     @Published var lastActionSummary: String = "Server initialized"
 
     private var listener: NWListener?
+    private var retryTask: Task<Void, Never>?
+    private var isStoppedManually = false
     nonisolated private let queue = DispatchQueue(label: "com.velora.mcp.server", qos: .userInitiated)
 
     private init() {}
@@ -26,6 +28,9 @@ final class VeloraMCPServer: ObservableObject {
 
     func start(port: UInt16 = 8765) {
         guard !isRunning else { return }
+        self.isStoppedManually = false
+        self.retryTask?.cancel()
+        self.retryTask = nil
         self.serverPort = port
 
         do {
@@ -50,10 +55,13 @@ final class VeloraMCPServer: ObservableObject {
                     switch state {
                     case .ready:
                         self.isRunning = true
+                        self.retryTask?.cancel()
+                        self.retryTask = nil
                         AppLogger.shared.log("[MCP Powerhouse] 🚀 Listening on port \(port)", level: .info)
                     case .failed(let error):
                         self.isRunning = false
                         AppLogger.shared.log("[MCP Powerhouse] ❌ Failed to start: \(error.localizedDescription)", level: .error)
+                        self.scheduleRetry(delay: 3.0)
                     case .cancelled:
                         self.isRunning = false
                         AppLogger.shared.log("[MCP Powerhouse] Stopped.", level: .info)
@@ -71,10 +79,27 @@ final class VeloraMCPServer: ObservableObject {
             newListener.start(queue: queue)
         } catch {
             AppLogger.shared.log("[MCP Powerhouse] Initialization error: \(error.localizedDescription)", level: .error)
+            scheduleRetry(delay: 3.0)
+        }
+    }
+
+    private func scheduleRetry(delay: TimeInterval = 3.0) {
+        guard !isStoppedManually else { return }
+        retryTask?.cancel()
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self = self, !self.isRunning, !self.isStoppedManually else { return }
+            AppLogger.shared.log("[MCP Powerhouse] 🔄 Retrying listener start on port \(self.serverPort)...", level: .info)
+            self.listener?.cancel()
+            self.listener = nil
+            self.start(port: self.serverPort)
         }
     }
 
     func stop() {
+        isStoppedManually = true
+        retryTask?.cancel()
+        retryTask = nil
         listener?.cancel()
         listener = nil
         isRunning = false

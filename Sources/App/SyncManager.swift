@@ -554,27 +554,38 @@ final class SyncManager: ObservableObject {
                 var artIdsToDownload = Set<String>()
                 for album in client.albums {
                     let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
-                    artIdsToDownload.insert(cleanArtId)
+                    if !cleanArtId.isEmpty {
+                        artIdsToDownload.insert(cleanArtId)
+                    }
                 }
                 for track in tracks {
                     if let rawArt = track.coverArt ?? track.albumId {
-                        artIdsToDownload.insert(extractArtId(from: rawArt))
+                        let cleanArtId = extractArtId(from: rawArt)
+                        if !cleanArtId.isEmpty {
+                            artIdsToDownload.insert(cleanArtId)
+                        }
                     }
                 }
                 for cleanArtId in artIdsToDownload {
                     let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                    if !isValidImageFile(at: localCoverUrl) {
+                    if !isValidImageFile(at: localCoverUrl) && !AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId) {
                         client.downloadCoverArt(id: cleanArtId)
                     }
                 }
 
                 var artistIdsToDownload = Set<String>()
                 for artist in client.artists {
-                    artistIdsToDownload.insert(artist.id)
+                    let cleanArtistId = extractArtId(from: artist.id)
+                    if !cleanArtistId.isEmpty {
+                        artistIdsToDownload.insert(cleanArtistId)
+                    }
                 }
                 for track in tracks {
                     if let artistId = track.artistId {
-                        artistIdsToDownload.insert(artistId)
+                        let cleanArtistId = extractArtId(from: artistId)
+                        if !cleanArtistId.isEmpty {
+                            artistIdsToDownload.insert(cleanArtistId)
+                        }
                     }
                 }
                 for artistId in artistIdsToDownload {
@@ -603,27 +614,38 @@ final class SyncManager: ObservableObject {
                 var artIdsToDownload = Set<String>()
                 for album in client.albums {
                     let cleanArtId = extractArtId(from: album.coverArt ?? album.id)
-                    artIdsToDownload.insert(cleanArtId)
+                    if !cleanArtId.isEmpty {
+                        artIdsToDownload.insert(cleanArtId)
+                    }
                 }
                 for track in tracks {
                     if let rawArt = track.coverArt ?? track.albumId {
-                        artIdsToDownload.insert(extractArtId(from: rawArt))
+                        let cleanArtId = extractArtId(from: rawArt)
+                        if !cleanArtId.isEmpty {
+                            artIdsToDownload.insert(cleanArtId)
+                        }
                     }
                 }
                 for cleanArtId in artIdsToDownload {
                     let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(cleanArtId).jpg")
-                    if !isValidImageFile(at: localCoverUrl) {
+                    if !isValidImageFile(at: localCoverUrl) && !AssetRegistry.shared.isCoverArtUnavailable(id: cleanArtId) {
                         client.downloadCoverArt(id: cleanArtId)
                     }
                 }
 
                 var artistIdsToDownload = Set<String>()
                 for artist in client.artists {
-                    artistIdsToDownload.insert(artist.id)
+                    let cleanArtistId = extractArtId(from: artist.id)
+                    if !cleanArtistId.isEmpty {
+                        artistIdsToDownload.insert(cleanArtistId)
+                    }
                 }
                 for track in tracks {
                     if let artistId = track.artistId {
-                        artistIdsToDownload.insert(artistId)
+                        let cleanArtistId = extractArtId(from: artistId)
+                        if !cleanArtistId.isEmpty {
+                            artistIdsToDownload.insert(cleanArtistId)
+                        }
                     }
                 }
                 for artistId in artistIdsToDownload {
@@ -807,7 +829,8 @@ final class SyncManager: ObservableObject {
                 }
 
                 // 2. Check Artist Portrait
-                let artistId = track.artistId ?? track.primaryArtist
+                let rawArtistId = track.artistId ?? track.primaryArtist
+                let artistId = extractArtId(from: rawArtistId)
                 let portraitFile = VeloraStorage.artistPortraits.appendingPathComponent("\(artistId).jpg")
                 if !isValidImageFile(at: portraitFile) && !AssetRegistry.shared.isPortraitUnavailable(artistId: artistId) {
                     try? fileManager.removeItem(at: portraitFile)

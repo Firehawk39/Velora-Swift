@@ -7,15 +7,37 @@ import CryptoKit
 /// Server URLs look like: https://server.com/rest/getCoverArt.view?id=al-123&u=user&...
 /// Returns just "al-123" for local file lookups.
 func extractArtId(from serverUrlOrId: String) -> String {
-    // If it looks like a URL (contains "getCoverArt"), extract the 'id' query parameter
-    if serverUrlOrId.contains("getCoverArt"),
-       let url = URL(string: serverUrlOrId),
+    var raw = serverUrlOrId.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !raw.isEmpty else { return "" }
+
+    // 1. If it's a Navidrome getCoverArt URL, extract the 'id' query parameter
+    if raw.contains("getCoverArt"),
+       let url = URL(string: raw),
        let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-       let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value {
-        return idParam
+       let idParam = components.queryItems?.first(where: { $0.name == "id" })?.value,
+       !idParam.isEmpty {
+        raw = idParam
     }
-    // Already a plain ID, or unrecognized format — return as-is
-    return serverUrlOrId
+
+    // 2. If it's a local file URL or file path (e.g. file:///.../CoverArt/al-123.jpg or /path/to/al-123.jpg)
+    if raw.hasPrefix("file://") || raw.contains("/") {
+        if let url = URL(string: raw), !url.lastPathComponent.isEmpty {
+            raw = url.deletingPathExtension().lastPathComponent
+        } else {
+            let last = (raw as NSString).lastPathComponent
+            raw = (last as NSString).deletingPathExtension
+        }
+    }
+
+    // 3. If it still ends with an image extension (.jpg, .png, etc.), strip it
+    for ext in [".jpg", ".jpeg", ".png", ".webp"] {
+        if raw.lowercased().hasSuffix(ext) {
+            raw = String(raw.dropLast(ext.count))
+            break
+        }
+    }
+
+    return raw
 }
 
 import UIKit
