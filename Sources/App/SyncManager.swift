@@ -169,7 +169,7 @@ final class SyncManager: ObservableObject {
 
             if initialMissingArtists.isEmpty && initialMissingAlbums.isEmpty {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                finalizeMetadataSync("Cloud metadata & fanart cached • Up to date")
+                finalizeMetadataSync("All metadata & fanart complete • Up to date")
                 return
             }
 
