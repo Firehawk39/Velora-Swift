@@ -132,7 +132,7 @@ struct NowPlayingView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         VStack(spacing: 0) {
-                            if isCompact && !isLandscape {
+                            if !isLandscapeCanvas && (ScreenTier.isPhone || isCompact || proxy.size.width < 600) {
                                 portraitLayout(proxy: proxy)
                             } else {
                                 tabletLayout(proxy: proxy)
@@ -141,7 +141,7 @@ struct NowPlayingView: View {
                         .frame(minHeight: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
 
                         metadataCards
-                            .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
+                            .padding(.horizontal, (!isLandscapeCanvas && (ScreenTier.isPhone || isCompact || proxy.size.width < 600)) ? 24 : (isLargeCanvas ? 120 : 40))
                             .padding(.top, 40)
                             .padding(.bottom, 20)
                             .opacity(isIdle ? 0.0 : 1.0)
@@ -279,31 +279,31 @@ struct NowPlayingView: View {
     private func portraitLayout(proxy: GeometryProxy) -> some View {
         VStack(spacing: 0) {
             if !playback.isLyricsMode {
-                Spacer()
+                Spacer(minLength: 8)
             }
 
-            VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 32)) {
+            VStack(spacing: isShortCanvas ? 16 : 24) {
                 if playback.isLyricsMode {
                     inlineLyricsView
                         .frame(maxWidth: .infinity)
-                        .frame(height: proxy.size.height - headerHeight - (isSE ? 100 : 120))
+                        .frame(height: proxy.size.height - headerHeight - (isShortCanvas ? 100 : 120))
                         .padding(.horizontal, 24)
                 } else {
-                    // Album Art
-                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isSE ? 0.42 : (isSmallDevice ? 0.55 : 0.7)), 280) : tabletArtworkSize)
-                        .padding(.bottom, isSE ? 0 : (isSmallDevice ? 6 : 12))
+                    // Album Art: Generous, premium size fitting all portrait phones beautifully
+                    artworkSection(size: ScreenTier.isPhone ? min(proxy.size.width * (isShortCanvas ? 0.65 : 0.72), isShortCanvas ? 250 : 280) : tabletArtworkSize)
+                        .padding(.bottom, isShortCanvas ? 4 : 8)
 
-                    // Centered Metadata
-                    VStack(alignment: .center, spacing: isSE ? 2 : 6) {
+                    // Centered Metadata: Crisp, clear, and spacious typography
+                    VStack(alignment: .center, spacing: 5) {
                         Text(playback.currentTrack?.title ?? "Not Playing")
-                            .font(.system(size: isSE ? 17 : (isSmallDevice ? 20 : 26), weight: .black))
+                            .font(.system(size: isShortCanvas ? 21 : 26, weight: .black))
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
 
-                        HStack(alignment: .center, spacing: 4) {
+                        HStack(alignment: .center, spacing: 6) {
                             Text(playback.currentTrack?.artist ?? "Unknown Artist")
-                                .font(.system(size: isSE ? 12 : (isSmallDevice ? 14 : 16), weight: .bold))
+                                .font(.system(size: isShortCanvas ? 14 : 16, weight: .bold))
                                 .foregroundColor(.white.opacity(0.6))
                                 .lineLimit(1)
                                 
@@ -329,23 +329,23 @@ struct NowPlayingView: View {
                     .padding(.horizontal, 24)
 
                 if !isIdle && !playback.isLyricsMode {
-                    // Controls Section for Portrait
-                    VStack(spacing: isSE ? 8 : (isSmallDevice ? 16 : 24)) {
-                        HStack(spacing: isSE ? 20 : (isSmallDevice ? 28 : 36)) {
+                    // Controls Section for Portrait: Comfortable touch targets and spacious layout
+                    VStack(spacing: isShortCanvas ? 14 : 20) {
+                        HStack(spacing: isShortCanvas ? 24 : 32) {
                             playbackControls
                         }
-                        .padding(.horizontal, isSE ? 16 : (isSmallDevice ? 24 : 32))
-                        .padding(.vertical, isSE ? 8 : (isSmallDevice ? 12 : 16))
+                        .padding(.horizontal, isShortCanvas ? 24 : 30)
+                        .padding(.vertical, isShortCanvas ? 12 : 15)
                         .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
                         .overlay(Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1))
 
-                        HStack(spacing: 12) {
+                        HStack(spacing: 14) {
                             lyricsButton
                             queueButton
                             downloadButton
                         }
-                        .scaleEffect(isSE ? 0.75 : (isSmallDevice ? 0.85 : 0.9))
+                        .scaleEffect(isShortCanvas ? 0.88 : 0.95)
                     }
                     // Stagger layer 1 of 3: controls exit FIRST (no delay) and are the LAST
                     // to reappear on wake (0.2s delay) — mirrors Apple Music's cinematic mode.
@@ -357,7 +357,7 @@ struct NowPlayingView: View {
                     ))
                 }
             }
-            .padding(.bottom, isSE ? 12 : (isIdle ? 60 : 32))
+            .padding(.bottom, isIdle ? 60 : (isShortCanvas ? 20 : 32))
         }
         // isLyricsMode still gets its own local animation — it's a separate interaction,
         // not part of the idle transition context.
