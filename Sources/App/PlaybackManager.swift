@@ -37,6 +37,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     @Published var isLyricsMode: Bool = false
     @Published var currentPrimaryColor: UIColor = .black
     @Published var currentPalette: [UIColor] = [.black, .black, .black, .black, .black]
+    public var paletteKey: String {
+        currentPalette.map { c in
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return "\(Int(r*255)),\(Int(g*255)),\(Int(b*255))"
+        }.joined(separator: "-")
+    }
     // Queue support
     @Published var queue: [Track] = []
     @Published var queueIndex: Int = 0
@@ -586,6 +593,16 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.hasScrobbledCurrentTrack = false
         self.currentLyrics = nil
 
+        // Cancel any lingering background artwork download from previous track
+        self.artworkDownloadTask?.cancel()
+        self.artworkDownloadTask = nil
+        self.downloadingArtworkTrackId = nil
+        self.currentArtworkTrackId = nil
+
+        // STRICT FANART ISOLATION: Instantly clear backdrop if artist changed
+        let primaryArtist = track.allArtists.first
+        FanartManager.shared.prepareForTrackChange(to: primaryArtist)
+
         AppLogger.shared.audio(
             "Track playback initiated: '\(track.title)' by \(track.artist ?? "Unknown")",
             level: .info,
@@ -597,13 +614,15 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             ]
         )
 
-        // Check disk immediately for cached cover art to set vibrant colors instantly without flashing to pitch black
+        // STRICT PALETTE RESOLUTION:
+        // Check disk immediately for cached cover art to set vibrant colors instantly.
+        // If not immediately available on disk, reset to pure black — NEVER leak previous track's colors!
         if let localCoverUrl = track.coverArtUrl ?? resolveCoverArtUrl(id: track.coverArt ?? "", serverUrl: track.coverArt, albumId: track.albumId, trackId: track.id),
            localCoverUrl.isFileURL,
            let data = try? Data(contentsOf: localCoverUrl),
            let img = UIImage(data: data) {
             let start = CFAbsoluteTimeGetCurrent()
-            let dominant = img.dominantColor() ?? self.currentPrimaryColor
+            let dominant = img.dominantColor() ?? .black
             self.currentPrimaryColor = dominant
             let palette = img.extractPalette(count: 5)
             self.currentPalette = palette
@@ -625,9 +644,11 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     "extractionMs": String(format: "%.1f", duration)
                 ]
             )
+        } else {
+            // STRICT TRACK ISOLATION: Reset to pitch black immediately. Never bleed old track colors!
+            self.currentPrimaryColor = .black
+            self.currentPalette = [.black, .black, .black, .black, .black]
         }
-
-        self.currentArtworkTrackId = nil
 
         client.fetchLyrics(
             trackId: track.id,

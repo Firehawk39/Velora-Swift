@@ -141,6 +141,22 @@ final class FanartManager: ObservableObject {
         self.currentClearLogo = nil
     }
 
+    /// Strict backdrop isolation on track change: If the artist changed, immediately drop the old backdrop and logo!
+    func prepareForTrackChange(to primaryArtist: String?) {
+        guard let newArtist = primaryArtist, !newArtist.isEmpty else {
+            resetActivePlaybackDisplay()
+            return
+        }
+        if self.currentArtistName != newArtist {
+            self.currentArtistName = newArtist
+            self.currentClearLogoArtist = newArtist
+            withAnimation(.easeInOut(duration: 0.3)) {
+                self.currentBackdrop = nil
+                self.currentClearLogo = nil
+            }
+        }
+    }
+
     // MARK: - Backdrops
 
     private var activeBackdropFetches = Set<String>()

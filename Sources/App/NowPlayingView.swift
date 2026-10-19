@@ -91,8 +91,10 @@ struct NowPlayingView: View {
                             .transition(.opacity.animation(.easeInOut(duration: 0.8)))
                             .opacity(0.85)
                     } else {
-                        // Fallback when no fanart backdrop or strictly in Portrait mode on ANY device: MicroMesh on SE/iOS 15-17, AnimatedMesh on iOS 18+
+                        // Fallback when no fanart backdrop or strictly in Portrait mode on ANY device: MicroMesh
                         AlbumAmbientGradientView(colors: playback.currentPalette, isLandscape: isLandscapeCanvas)
+                            .id((playback.currentTrack?.id ?? "none") + "-" + playback.paletteKey)
+                            .transition(.opacity.animation(.easeInOut(duration: 0.6)))
                     }
                 }
                 .overlay(
@@ -961,6 +963,10 @@ struct NowPlayingView: View {
             ]
         )
 
+        // Strict Fanart isolation on track change
+        let primaryArtist = track.allArtists.first
+        fanart.prepareForTrackChange(to: primaryArtist)
+
         // 0. Pre-populate biography and MBID immediately from disk cache (0ms instant display, offline-safe)
         let immediateMbid = track.musicBrainzId ?? mb.getCachedMBID(for: artistName)
         if let cachedBio = mb.getArtistBiography(for: artistName), !cachedBio.isEmpty {
@@ -1172,28 +1178,21 @@ struct MicroMeshGradientView: View {
     @State private var phase1Texture: UIImage?
     @State private var phase2Texture: UIImage?
 
-    static func generateGridColors(colors: [UIColor], isLandscape: Bool, isPhaseTwo: Bool) -> [UIColor] {
-        let isAllBlack = colors.isEmpty || colors.allSatisfy {
+    private var isAllBlack: Bool {
+        colors.isEmpty || colors.allSatisfy {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
             $0.getRed(&r, green: &g, blue: &b, alpha: &a)
             return r < 0.05 && g < 0.05 && b < 0.05
         }
-        let cols: [UIColor]
-        if isAllBlack {
-            cols = [
-                UIColor(red: 0.14, green: 0.10, blue: 0.24, alpha: 1.0),
-                UIColor(red: 0.18, green: 0.08, blue: 0.22, alpha: 1.0),
-                UIColor(red: 0.08, green: 0.14, blue: 0.24, alpha: 1.0),
-                UIColor(red: 0.10, green: 0.08, blue: 0.16, alpha: 1.0),
-                UIColor(red: 0.05, green: 0.05, blue: 0.08, alpha: 1.0)
-            ]
-        } else {
-            cols = colors
+    }
+
+    static func generateGridColors(colors: [UIColor], isLandscape: Bool, isPhaseTwo: Bool) -> [UIColor] {
+        guard !colors.isEmpty else {
+            return Array(repeating: UIColor.black, count: 12)
         }
 
         func color(at index: Int) -> UIColor {
-            guard !cols.isEmpty else { return UIColor.black }
-            return cols[index % cols.count]
+            return colors[index % colors.count]
         }
 
         let c0 = color(at: 0)
@@ -1221,6 +1220,13 @@ struct MicroMeshGradientView: View {
     }
 
     private func updateTextures() {
+        if isAllBlack {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                self.phase1Texture = nil
+                self.phase2Texture = nil
+            }
+            return
+        }
         let columns = 4
         let rows = 3
         let grid1 = Self.generateGridColors(colors: colors, isLandscape: isLandscape, isPhaseTwo: false)
@@ -1234,40 +1240,56 @@ struct MicroMeshGradientView: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                if let tex1 = phase1Texture {
-                    Image(uiImage: tex1)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .scaleEffect(1.25)
-                        .blur(radius: isLandscape ? 45 : 40)
-                        .opacity(phase ? 0.0 : 1.0)
-                }
+        ZStack {
+            // Pitch Black Base Layer: Absolutely zero purple gradient when fallback is not loaded
+            Color.black
+                .ignoresSafeArea()
 
-                if let tex2 = phase2Texture {
-                    Image(uiImage: tex2)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .scaleEffect(1.25)
-                        .blur(radius: isLandscape ? 45 : 40)
-                        .opacity(phase ? 1.0 : 0.0)
+            if !isAllBlack {
+                GeometryReader { geo in
+                    ZStack {
+                        if let tex1 = phase1Texture {
+                            Image(uiImage: tex1)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .scaleEffect(1.25)
+                                .blur(radius: isLandscape ? 45 : 40)
+                                .opacity(phase ? 0.0 : 1.0)
+                        }
+
+                        if let tex2 = phase2Texture {
+                            Image(uiImage: tex2)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .scaleEffect(1.25)
+                                .blur(radius: isLandscape ? 45 : 40)
+                                .opacity(phase ? 1.0 : 0.0)
+                        }
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
                 }
+                .ignoresSafeArea()
+                .transition(.opacity.animation(.easeInOut(duration: 0.6)))
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .clipped()
         }
-        .ignoresSafeArea()
         .onAppear {
             updateTextures()
-            withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
-                phase = true
+            if !isAllBlack {
+                withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+                    phase = true
+                }
             }
         }
         .onChange(of: colorKey) { _ in
             updateTextures()
+            if !isAllBlack && !phase {
+                withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+                    phase = true
+                }
+            }
         }
         .onChange(of: isLandscape) { _ in
             updateTextures()
