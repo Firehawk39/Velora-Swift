@@ -157,7 +157,7 @@ private class DomainThrottler: @unchecked Sendable {
             }
             // Half-open state: allow this request through to test the waters
             isCircuitOpen = false
-            AppLogger.shared.log("🟢 Circuit Breaker half-open for \(host). Testing connection.", level: .info)
+            AppLogger.shared.network("Circuit Breaker half-open for \(host). Testing connection.", level: .info, metadata: ["host": host, "state": "half-open"])
         }
 
         let timeSinceLast = Date().timeIntervalSince(lastRequestTime)
@@ -193,7 +193,7 @@ private class DomainThrottler: @unchecked Sendable {
             let targetResumeTime = Date().addingTimeInterval(seconds)
             if targetResumeTime > circuitResumeTime {
                 circuitResumeTime = targetResumeTime
-                AppLogger.shared.log("🛑 Circuit Breaker Tripped for \(host)! Failing fast for \(seconds) seconds.", level: .warning)
+                AppLogger.shared.network("Circuit Breaker Tripped for \(host)! Failing fast for \(Int(seconds))s.", level: .warning, metadata: ["host": host, "failures": "\(consecutiveFailures)", "cooldownSec": "\(Int(seconds))"])
             }
         }
     }
@@ -207,7 +207,7 @@ private class DomainThrottler: @unchecked Sendable {
             isCircuitOpen = false
             circuitResumeTime = Date.distantPast
             consecutiveFailures = 0
-            AppLogger.shared.log("🟢 Circuit Breaker fully reset for \(host).", level: .info)
+            AppLogger.shared.network("Circuit Breaker fully reset for \(host).", level: .info, metadata: ["host": host, "state": "closed"])
         }
     }
 }
@@ -263,6 +263,11 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
                     isFailure = true
                     self.throttler.recordFailure()
                 }
+                AppLogger.shared.network(
+                    "Network task failed for \(self.throttler.host)",
+                    level: .error,
+                    metadata: ["error": nsError.localizedDescription, "code": "\(nsError.code)"]
+                )
             } else if let http = response as? HTTPURLResponse {
                 if http.statusCode == 429 || http.statusCode == 403 {
                     isFailure = true
@@ -271,9 +276,19 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
                         delay = retryInt
                     }
                     self.throttler.recordFailure(isRateLimit: true, retryAfter: delay)
+                    AppLogger.shared.network(
+                        "Rate limited (HTTP \(http.statusCode)) by \(self.throttler.host)",
+                        level: .warning,
+                        metadata: ["status": "\(http.statusCode)", "retryAfter": "\(delay ?? 0)s"]
+                    )
                 } else if http.statusCode >= 500 {
                     isFailure = true
                     self.throttler.recordFailure()
+                    AppLogger.shared.network(
+                        "Server error (HTTP \(http.statusCode)) from \(self.throttler.host)",
+                        level: .error,
+                        metadata: ["status": "\(http.statusCode)", "bytes": "\(data?.count ?? 0)"]
+                    )
                 }
             }
             

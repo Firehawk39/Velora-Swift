@@ -68,6 +68,11 @@ extension NavidromeClient {
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.albums = items.map { sub in
+                        if let albumMbid = sub.musicBrainzId, !albumMbid.isEmpty {
+                            let aName = sub.name ?? sub.title ?? "Unknown"
+                            let artName = sub.artist ?? "Unknown Artist"
+                            MusicBrainzManager.shared.saveAlbumMetadata(albumName: aName, artistName: artName, mbid: albumMbid, year: sub.year, genre: sub.genre)
+                        }
                         let a = Album(
                             id: sub.id,
                             name: sub.name ?? sub.title ?? "Unknown",
@@ -284,9 +289,17 @@ extension NavidromeClient {
                     }
 
                     group.enter()
-                    self.fetchArtistInfo(artistId: artistId) { info in
+                    self.fetchArtistInfo(artistId: artistId, artistName: artistName) { info in
                         bio = info?.biography
                         mbid = info?.musicBrainzId
+                        let resolvedName = artistName ?? (self.artists.first(where: { $0.id == artistId })?.name ?? "")
+                        if !resolvedName.isEmpty {
+                            if let validMbid = mbid, !validMbid.isEmpty {
+                                MusicBrainzManager.shared.saveArtistMetadata(artistName: resolvedName, mbid: validMbid, biography: bio)
+                            } else if let validBio = bio, !validBio.isEmpty, let cachedMbid = MusicBrainzManager.shared.getCachedMBID(for: resolvedName) {
+                                MusicBrainzManager.shared.saveArtistMetadata(artistName: resolvedName, mbid: cachedMbid, biography: validBio)
+                            }
+                        }
                         group.leave()
                     }
 
@@ -301,10 +314,10 @@ extension NavidromeClient {
         }
     }
 
-    func fetchArtistInfo(artistId: String, completion: @escaping @MainActor @Sendable (SubsonicArtistInfo?) -> Void) {
+    func fetchArtistInfo(artistId: String, artistName: String? = nil, completion: @escaping @MainActor @Sendable (SubsonicArtistInfo?) -> Void) {
         guard NetworkMonitor.shared.isConnected else { completion(nil); return }
         guard let url = buildUrl(method: "getArtistInfo.view", params: ["id": artistId]) else { completion(nil); return }
-        ThrottledNetworkManager.shared.enqueue(url: url) { data, _, error in
+        ThrottledNetworkManager.shared.enqueue(url: url) { [weak self] data, _, error in
             guard error == nil, let data = data else {
                 Task { @MainActor in completion(nil) }
                 return
@@ -312,7 +325,19 @@ extension NavidromeClient {
             do {
                 let decoded = try JSONDecoder().decode(SubsonicResponse.self, from: data)
                 let info = decoded.subsonicResponse?.artistInfo ?? decoded.subsonicResponse?.artistInfo2
-                Task { @MainActor in completion(info) }
+                Task { @MainActor [weak self] in
+                    if let info = info {
+                        let name = artistName ?? (self?.artists.first(where: { $0.id == artistId })?.name)
+                        if let resolvedName = name, !resolvedName.isEmpty {
+                            if let mbid = info.musicBrainzId, !mbid.isEmpty {
+                                MusicBrainzManager.shared.saveArtistMetadata(artistName: resolvedName, mbid: mbid, biography: info.biography)
+                            } else if let bio = info.biography, !bio.isEmpty, let cachedMbid = MusicBrainzManager.shared.getCachedMBID(for: resolvedName) {
+                                MusicBrainzManager.shared.saveArtistMetadata(artistName: resolvedName, mbid: cachedMbid, biography: bio)
+                            }
+                        }
+                    }
+                    completion(info)
+                }
             } catch {
                 Task { @MainActor in completion(nil) }
             }

@@ -146,26 +146,75 @@ final class FanartManager: ObservableObject {
     private var activeBackdropFetches = Set<String>()
     private var currentArtistName: String?
 
-    /// Synchronously checks if a backdrop exists in cache and returns it
+    /// Synchronously checks if a backdrop exists in cache and returns it with comprehensive sidecar & alias fallback
     nonisolated func getCachedBackdrop(for artist: String, artistId: String? = nil, mbid: String? = nil) -> UIImage? {
         let primary = extractPrimaryArtist(artist)
-        let keys = [mbid, artistId, sanitizeFileName(artist), sanitizeFileName(primary)].compactMap { $0 }.filter { !$0.isEmpty }
-        for key in keys {
+        var candidateKeys: [String] = []
+        if let m = mbid, !m.isEmpty { candidateKeys.append(m) }
+        if let aid = artistId, !aid.isEmpty { candidateKeys.append(aid) }
+        let sArtist = sanitizeFileName(artist)
+        if !candidateKeys.contains(sArtist) { candidateKeys.append(sArtist) }
+        let sPrimary = sanitizeFileName(primary)
+        if !candidateKeys.contains(sPrimary) { candidateKeys.append(sPrimary) }
+
+        // Discover MBID from on-disk sidecars if not explicitly provided
+        let sidecarKeys = [artistId, sArtist, sPrimary].compactMap { $0 }.filter { !$0.isEmpty }
+        for sk in sidecarKeys {
+            let sidecarUrl = self.backdropDir.appendingPathComponent("\(sk).mbid")
+            if let data = try? Data(contentsOf: sidecarUrl),
+               let diskMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !diskMbid.isEmpty, !candidateKeys.contains(diskMbid) {
+                candidateKeys.append(diskMbid)
+            }
+            let logoSidecar = self.clearLogoDir.appendingPathComponent("logo_\(sk).mbid")
+            if let data = try? Data(contentsOf: logoSidecar),
+               let diskMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !diskMbid.isEmpty, !candidateKeys.contains(diskMbid) {
+                candidateKeys.append(diskMbid)
+            }
+        }
+
+        // Check memory cache first
+        for key in candidateKeys {
             if let memoryCached = imageCache.object(forKey: key as NSString) {
                 return memoryCached
             }
+        }
 
-            let fileName = key + ".jpg"
-            let fileUrl = self.backdropDir.appendingPathComponent(fileName)
-
-            if FileManager.default.fileExists(atPath: fileUrl.path),
-               let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
-               let size = attr[.size] as? Int64, size > 100,
-               let data = try? Data(contentsOf: fileUrl),
-               let image = UIImage(data: data) {
-                self.imageCache.setObject(image, forKey: key as NSString)
-                return image
+        // Check disk for all candidate names across supported extensions
+        for key in candidateKeys {
+            for ext in ["jpg", "jpeg", "png"] {
+                let fileUrl = self.backdropDir.appendingPathComponent("\(key).\(ext)")
+                if FileManager.default.fileExists(atPath: fileUrl.path),
+                   let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
+                   let size = attr[.size] as? Int64, size > 100,
+                   let data = try? Data(contentsOf: fileUrl),
+                   let image = UIImage(data: data) {
+                    for k in candidateKeys {
+                        self.imageCache.setObject(image, forKey: k as NSString)
+                    }
+                    AppLogger.shared.fanart(
+                        "Resolved cached backdrop from disk for \(artist)",
+                        level: .debug,
+                        correlationId: artist,
+                        metadata: [
+                            "matchedKey": key,
+                            "file": "\(key).\(ext)",
+                            "fileSize": "\(size)B",
+                            "dimensions": "\(Int(image.size.width))x\(Int(image.size.height))"
+                        ]
+                    )
+                    return image
+                }
             }
+        }
+        if !candidateKeys.isEmpty {
+            AppLogger.shared.fanart(
+                "No cached backdrop on disk for \(artist)",
+                level: .debug,
+                correlationId: artist,
+                metadata: ["testedCandidates": candidateKeys.joined(separator: ", ")]
+            )
         }
         return nil
     }
@@ -184,6 +233,19 @@ final class FanartManager: ObservableObject {
             if !keys.contains(s1) { keys.append(s1) }
             let s2 = "logo_" + sanitizeFileName(artist)
             if !keys.contains(s2) { keys.append(s2) }
+
+            // Discover MBID from sidecar when offline / mbid is nil
+            if mbid == nil || mbid!.isEmpty {
+                for sk in [sanitizeFileName(primary), sanitizeFileName(artist)] {
+                    let sidecar = clearLogoDir.appendingPathComponent("logo_\(sk).mbid")
+                    if let data = try? Data(contentsOf: sidecar),
+                       let sidecarMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !sidecarMbid.isEmpty {
+                        let mKey = "logo_" + sidecarMbid
+                        if !keys.contains(mKey) { keys.append(mKey) }
+                    }
+                }
+            }
         }
         return keys
     }
@@ -208,16 +270,7 @@ final class FanartManager: ObservableObject {
     }
 
     func hasBackdrop(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
-        let primary = extractPrimaryArtist(artist)
-        let keys = [mbid, artistId, sanitizeFileName(artist), sanitizeFileName(primary)].compactMap { $0 }.filter { !$0.isEmpty }
-        for key in keys {
-            let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
-            if FileManager.default.fileExists(atPath: fileUrl.path) {
-                let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
-                if size > 100 { return true }
-            }
-        }
-        return false
+        return getCachedBackdrop(for: artist, artistId: artistId, mbid: mbid) != nil
     }
 
     /// Returns true if a valid backdrop exists OR it was verified unavailable
@@ -331,7 +384,12 @@ final class FanartManager: ObservableObject {
 
             await MainActor.run {
                 if let cached = hitImage {
-                    AppLogger.shared.log("[Fanart] Cache hit for \(hitArtist)")
+                    AppLogger.shared.fanart(
+                        "Backdrop loaded into UI state for \(primaryArtist)",
+                        level: .info,
+                        correlationId: primaryArtist,
+                        metadata: ["sourceArtist": hitArtist, "isNewArtist": "\(isNewArtist)"]
+                    )
                     self.currentArtistName = primaryArtist
                     if isNewArtist {
                         withAnimation(.easeInOut(duration: 0.6)) { self.currentBackdrop = cached }
@@ -339,6 +397,12 @@ final class FanartManager: ObservableObject {
                         self.currentBackdrop = cached
                     }
                 } else {
+                    AppLogger.shared.fanart(
+                        "Initiating recursive backdrop resolution for \(primaryArtist)",
+                        level: .debug,
+                        correlationId: primaryArtist,
+                        metadata: ["allowNetwork": "\(allowNetwork)", "isConnected": "\(NetworkMonitor.shared.isConnected)"]
+                    )
                     self.currentArtistName = primaryArtist
                     self.fetchBackdropRecursive(artists: artists, index: 0, artistId: artistId, providedMbid: mbid, allowNetwork: allowNetwork)
                 }
@@ -1603,6 +1667,11 @@ final class FanartManager: ObservableObject {
         Task { @MainActor in
             if let cached = FanartManager.shared.mbidCache[primary] {
                 completion(.found(cached))
+                return
+            }
+            if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: primary) {
+                FanartManager.shared.mbidCache[primary] = mbCached
+                completion(.found(mbCached))
                 return
             }
             

@@ -246,9 +246,25 @@ final class MusicBrainzManager: ObservableObject {
         }
     }
 
+    func getCachedMBID(for artist: String) -> String? {
+        let trimmed = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let cached = nameToMBIDCache[trimmed], cached != "NOT_FOUND" {
+            return cached
+        }
+        let primary = extractPrimaryArtist(trimmed)
+        if let cached = nameToMBIDCache[primary], cached != "NOT_FOUND" {
+            return cached
+        }
+        return nil
+    }
+
     func getArtistBiography(for artistName: String) -> String? {
-        let mbid = nameToMBIDCache[artistName]
-        guard let validMbid = mbid else { return nil }
+        let trimmed = artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let resolvedMbid = nameToMBIDCache[trimmed] ?? nameToMBIDCache[extractPrimaryArtist(trimmed)]
+        guard let validMbid = resolvedMbid, validMbid != "NOT_FOUND" else { return nil }
 
         let fileName = "artist_" + (validMbid) + ".json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
@@ -256,9 +272,9 @@ final class MusicBrainzManager: ObservableObject {
         if fileManager.fileExists(atPath: fileUrl.path),
            let data = try? Data(contentsOf: fileUrl),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            return (json["annotation"] as? String)
+            return (json["biography"] as? String)
+                ?? (json["annotation"] as? String)
                 ?? ((json["annotation"] as? [String: Any])?["text"] as? String)
-                ?? (json["biography"] as? String)
         }
         return nil
     }

@@ -585,18 +585,46 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.duration = 0
         self.hasScrobbledCurrentTrack = false
         self.currentLyrics = nil
+
+        AppLogger.shared.audio(
+            "Track playback initiated: '\(track.title)' by \(track.artist ?? "Unknown")",
+            level: .info,
+            correlationId: track.id,
+            metadata: [
+                "album": track.album ?? "Unknown",
+                "suffix": track.suffix ?? "unknown",
+                "hasCoverArt": "\(track.coverArt != nil)"
+            ]
+        )
+
         // Check disk immediately for cached cover art to set vibrant colors instantly without flashing to pitch black
-        var artId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-        if artId.contains("getCoverArt"),
-           let artUrl = URL(string: artId),
-           let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
-           let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
-            artId = idParam
-        }
-        let localCoverUrl = VeloraStorage.coverArt.appendingPathComponent("\(artId).jpg")
-        if let data = try? Data(contentsOf: localCoverUrl), let img = UIImage(data: data) {
-            self.currentPrimaryColor = img.dominantColor() ?? self.currentPrimaryColor
-            self.currentPalette = img.extractPalette(count: 5)
+        if let localCoverUrl = track.coverArtUrl ?? resolveCoverArtUrl(id: track.coverArt ?? "", serverUrl: track.coverArt, albumId: track.albumId, trackId: track.id),
+           localCoverUrl.isFileURL,
+           let data = try? Data(contentsOf: localCoverUrl),
+           let img = UIImage(data: data) {
+            let start = CFAbsoluteTimeGetCurrent()
+            let dominant = img.dominantColor() ?? self.currentPrimaryColor
+            self.currentPrimaryColor = dominant
+            let palette = img.extractPalette(count: 5)
+            self.currentPalette = palette
+            let duration = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            dominant.getRed(&r, green: &g, blue: &b, alpha: &a)
+            let hex = String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
+
+            AppLogger.shared.mesh(
+                "Extracted ambient palette for '\(track.title)'",
+                level: .debug,
+                correlationId: track.id,
+                metadata: [
+                    "coverBytes": "\(data.count)",
+                    "coverPath": localCoverUrl.lastPathComponent,
+                    "dominantHex": hex,
+                    "paletteCount": "\(palette.count)",
+                    "extractionMs": String(format: "%.1f", duration)
+                ]
+            )
         }
 
         self.currentArtworkTrackId = nil
@@ -611,8 +639,9 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self?.applyLyrics(lyrics, for: track) }
         }
 
-        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: nil)
-        FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: nil)
+        let resolvedMbid = track.musicBrainzId ?? MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "")
+        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
+        FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
 
         if NetworkMonitor.shared.isConnected {
             client.scrobble(track: track, submission: false)
@@ -892,17 +921,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
             }
 
-            // 0. Immediate local disk cache check: load cached coverArt instantly
-            var localArtId = track.coverArt ?? track.albumId ?? track.id.components(separatedBy: ".").first ?? track.id
-            if localArtId.contains("getCoverArt"),
-               let artUrl = URL(string: localArtId),
-               let artComponents = URLComponents(url: artUrl, resolvingAgainstBaseURL: false),
-               let idParam = artComponents.queryItems?.first(where: { $0.name == "id" })?.value {
-                localArtId = idParam
-            }
-            let cachedCoverFile = VeloraStorage.coverArt.appendingPathComponent("\(localArtId).jpg")
-            if FileManager.default.fileExists(atPath: cachedCoverFile.path),
-               let data = try? Data(contentsOf: cachedCoverFile),
+            // 0. Immediate local disk cache check: load cached coverArt instantly using complete candidate resolution
+            if let resolvedUrl = track.coverArtUrl ?? resolveCoverArtUrl(id: track.coverArt ?? "", serverUrl: track.coverArt, albumId: track.albumId, trackId: track.id),
+               resolvedUrl.isFileURL,
+               let data = try? Data(contentsOf: resolvedUrl),
                let image = UIImage(data: data) {
                 applyArtwork(image, data)
                 return
@@ -1681,6 +1703,13 @@ extension UIImage {
         }
 
         var distinctColors: [UIColor] = []
+        if let dom = dominantColor() {
+            var b: CGFloat = 0
+            dom.getHue(nil, saturation: nil, brightness: &b, alpha: nil)
+            if b >= 0.05 && b <= 0.98 {
+                distinctColors.append(dom)
+            }
+        }
         for color in frequentColors {
             var brightness: CGFloat = 0
             color.getHue(nil, saturation: nil, brightness: &brightness, alpha: nil)

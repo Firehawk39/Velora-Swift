@@ -38,13 +38,16 @@ enum VeloraStorage {
     /// Artist clearlogos (transparent PNG) from Fanart.tv hdmusiclogo
     static var clearLogos: URL { root.appendingPathComponent("ClearLogos", isDirectory: true) }
 
+    /// Persistent diagnostic logs and rotating JSONL journals
+    static var logs: URL { root.appendingPathComponent("Logs", isDirectory: true) }
+
     /// Centralized SQLite database path
     static var database: URL { root.appendingPathComponent("velora.sqlite") }
 
     /// Ensure all subdirectories exist. Call once at app launch.
     static func ensureDirectories() {
         let fm = FileManager.default
-        for dir in [tracks, coverArt, lyrics, backdrops, artistPortraits, metadata, clearLogos] {
+        for dir in [tracks, coverArt, lyrics, backdrops, artistPortraits, metadata, clearLogos, logs] {
             if !fm.fileExists(atPath: dir.path) {
                 try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             }

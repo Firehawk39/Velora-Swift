@@ -203,12 +203,44 @@ final class VeloraMCPServer: ObservableObject {
             return
         }
 
-        // Live Log Stream: GET /logs
-        if method == "GET" && path == "/logs" {
-            let entries = AppLogger.shared.logs.suffix(100).map { "\($0.timestamp.ISO8601Format()) [\($0.level)] \($0.message)" }.joined(separator: "\n")
-            var headers = corsHeaders()
-            headers["Content-Type"] = "text/plain; charset=utf-8"
-            sendHTTPResponse(status: 200, statusText: "OK", headers: headers, body: Data(entries.utf8), connection: connection)
+        // Live Diagnostic Log Stream: GET /logs
+        if method == "GET" && path.hasPrefix("/logs") {
+            let urlComponents = URLComponents(string: "http://localhost" + path)
+            let queryItems = urlComponents?.queryItems ?? []
+            let subParam = queryItems.first(where: { $0.name == "subsystem" })?.value
+            let lvlParam = queryItems.first(where: { $0.name == "level" })?.value
+            let cidParam = queryItems.first(where: { $0.name == "correlationId" })?.value
+            let formatParam = queryItems.first(where: { $0.name == "format" })?.value ?? "text"
+            let diskParam = queryItems.first(where: { $0.name == "disk" })?.value == "true"
+            let limitParam = min(Int(queryItems.first(where: { $0.name == "limit" })?.value ?? "100") ?? 100, 500)
+
+            let targetSubsystem = subParam.flatMap { s in LogSubsystem.allCases.first(where: { $0.rawValue.lowercased() == s.lowercased() }) }
+            let targetLevel = lvlParam.flatMap { l in LogEntry.LogLevel.allCases.first(where: { $0.rawValue.lowercased() == l.lowercased() }) }
+
+            Task {
+                let entries: [LogEntry]
+                if diskParam {
+                    entries = await DiagnosticJournal.shared.readHistoricalLogs(limit: limitParam, subsystem: targetSubsystem, minLevel: targetLevel, correlationId: cidParam)
+                } else {
+                    entries = await MainActor.run {
+                        AppLogger.shared.getRecentLogs(limit: limitParam, subsystem: targetSubsystem, minLevel: targetLevel, correlationId: cidParam)
+                    }
+                }
+
+                var headers = self.corsHeaders()
+                let responseData: Data
+                if formatParam.lowercased() == "json" {
+                    headers["Content-Type"] = "application/json; charset=utf-8"
+                    let dicts = entries.map { $0.jsonDictionary }
+                    responseData = (try? JSONSerialization.data(withJSONObject: dicts, options: .prettyPrinted)) ?? Data("[]".utf8)
+                } else {
+                    headers["Content-Type"] = "text/plain; charset=utf-8"
+                    let text = entries.map { $0.formattedString }.joined(separator: "\n")
+                    responseData = Data(text.utf8)
+                }
+
+                self.sendHTTPResponse(status: 200, statusText: "OK", headers: headers, body: responseData, connection: connection)
+            }
             return
         }
 
@@ -415,11 +447,16 @@ final class VeloraMCPServer: ObservableObject {
             ],
             [
                 "name": "velora_get_live_logs",
-                "description": "Fetch the most recent in-app debug/info/error logs from AppLogger.",
+                "description": "Fetch structured diagnostic telemetry from AppLogger and disk journal. Supports filtering by subsystem, severity level, correlationId, and JSON export.",
                 "inputSchema": [
                     "type": "object",
                     "properties": [
-                        "limit": ["type": "integer", "description": "Number of logs to retrieve (default: 50, max: 200)"]
+                        "subsystem": ["type": "string", "description": "Filter by subsystem: Audio, Fanart, MeshGradient, Sync, Network, Storage, UI, MCP, General"],
+                        "level": ["type": "string", "description": "Filter minimum severity: DEBUG, INFO, WARN, ERROR, FAULT"],
+                        "correlationId": ["type": "string", "description": "Filter by track ID, artist name, or sync pass ID"],
+                        "includeDiskJournal": ["type": "boolean", "description": "If true, loads persistent logs across app restarts/crashes from velora_diagnostics.jsonl"],
+                        "format": ["type": "string", "description": "'formatted' (default) or 'json'"],
+                        "limit": ["type": "integer", "description": "Number of logs to retrieve (default: 100, max: 500)"]
                     ]
                 ]
             ],
@@ -564,11 +601,36 @@ final class VeloraMCPServer: ObservableObject {
             }
 
         case "velora_get_live_logs":
-            let limit = min(arguments["limit"] as? Int ?? 50, 200)
-            let logs = AppLogger.shared.logs.suffix(limit).map {
-                "\($0.timestamp.formatted(date: .omitted, time: .standard)) [\($0.level)] \($0.message)"
+            let limit = min(arguments["limit"] as? Int ?? 100, 500)
+            let subArg = arguments["subsystem"] as? String
+            let lvlArg = arguments["level"] as? String
+            let cidArg = arguments["correlationId"] as? String
+            let diskArg = arguments["includeDiskJournal"] as? Bool ?? false
+            let format = (arguments["format"] as? String)?.lowercased() ?? "formatted"
+
+            let targetSubsystem = subArg.flatMap { s in LogSubsystem.allCases.first(where: { $0.rawValue.lowercased() == s.lowercased() }) }
+            let targetLevel = lvlArg.flatMap { l in LogEntry.LogLevel.allCases.first(where: { $0.rawValue.lowercased() == l.lowercased() }) }
+
+            let entries: [LogEntry]
+            if diskArg {
+                entries = await DiagnosticJournal.shared.readHistoricalLogs(limit: limit, subsystem: targetSubsystem, minLevel: targetLevel, correlationId: cidArg)
+            } else {
+                entries = AppLogger.shared.getRecentLogs(limit: limit, subsystem: targetSubsystem, minLevel: targetLevel, correlationId: cidArg)
             }
-            return logs.joined(separator: "\n")
+
+            if format == "json" {
+                let dicts = entries.map { $0.jsonDictionary }
+                if let data = try? JSONSerialization.data(withJSONObject: dicts, options: .prettyPrinted),
+                   let jsonStr = String(data: data, encoding: .utf8) {
+                    return jsonStr
+                }
+            }
+
+            if entries.isEmpty {
+                return "No diagnostic log entries matched filters (subsystem: \(subArg ?? "all"), level: \(lvlArg ?? "all"), correlation: \(cidArg ?? "none"), source: \(diskArg ? "disk" : "RAM"))"
+            }
+
+            return entries.map { $0.formattedString }.joined(separator: "\n")
 
         case "velora_audit_storage":
             let fm = FileManager.default

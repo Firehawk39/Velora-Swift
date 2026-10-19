@@ -493,6 +493,7 @@ struct ArtistBackdropView: View {
     
     @State private var artistPalette: [UIColor] = [.black, .black, .black, .black, .black]
     @State private var artistPrimaryColor: UIColor = .black
+    @State private var backdropImage: UIImage? = nil
     @State private var backdropUrl: URL? = nil
     
     var isCompact: Bool { hSizeClass == .compact }
@@ -500,49 +501,66 @@ struct ArtistBackdropView: View {
         UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
 
-    private func resolveBackdropUrl() -> URL? {
-        let key = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
-        let mbidFile = mbid.map { VeloraStorage.backdrops.appendingPathComponent("\($0).jpg") }
-        let keyFile = VeloraStorage.backdrops.appendingPathComponent(key + ".jpg")
-        
-        if let mf = mbidFile, FileManager.default.fileExists(atPath: mf.path),
-           let attr = try? FileManager.default.attributesOfItem(atPath: mf.path),
-           (attr[.size] as? Int64 ?? 0) > 100 {
-            return mf
+    private func resolveBackdropImage() -> UIImage? {
+        let resolvedMbid = mbid ?? MusicBrainzManager.shared.getCachedMBID(for: artistName)
+        if let img = FanartManager.shared.getCachedBackdrop(for: artistName, artistId: artistId, mbid: resolvedMbid) {
+            return img
         }
-        if FileManager.default.fileExists(atPath: keyFile.path),
-           let attr = try? FileManager.default.attributesOfItem(atPath: keyFile.path),
-           (attr[.size] as? Int64 ?? 0) > 100 {
-            return keyFile
+        let primary = extractPrimaryArtist(artistName)
+        if primary != artistName, let img = FanartManager.shared.getCachedBackdrop(for: primary, artistId: artistId, mbid: resolvedMbid) {
+            return img
+        }
+        return nil
+    }
+
+    private func resolveBackdropUrl() -> URL? {
+        let primary = extractPrimaryArtist(artistName)
+        let resolvedMbid = mbid ?? MusicBrainzManager.shared.getCachedMBID(for: artistName)
+        var candidates: [String] = []
+        if let m = resolvedMbid, !m.isEmpty { candidates.append(m) }
+        if !artistId.isEmpty { candidates.append(artistId) }
+        let k1 = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
+        if !candidates.contains(k1) { candidates.append(k1) }
+        let s1 = sanitizeFileName(artistName)
+        if !candidates.contains(s1) { candidates.append(s1) }
+        let s2 = sanitizeFileName(primary)
+        if !candidates.contains(s2) { candidates.append(s2) }
+        
+        let sidecarUrl = VeloraStorage.backdrops.appendingPathComponent(k1 + ".mbid")
+        if let data = try? Data(contentsOf: sidecarUrl),
+           let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !cachedMbid.isEmpty, !candidates.contains(cachedMbid) {
+            candidates.append(cachedMbid)
+        }
+
+        for c in candidates {
+            let file = VeloraStorage.backdrops.appendingPathComponent("\(c).jpg")
+            if FileManager.default.fileExists(atPath: file.path),
+               let attr = try? FileManager.default.attributesOfItem(atPath: file.path),
+               (attr[.size] as? Int64 ?? 0) > 100 {
+                return file
+            }
         }
         return nil
     }
 
     var body: some View {
         GeometryReader { proxy in
-            let activeUrl = backdropUrl ?? resolveBackdropUrl()
+            let activeImage = backdropImage ?? (resolveBackdropImage() ?? (backdropUrl ?? resolveBackdropUrl()).flatMap { (try? Data(contentsOf: $0)).flatMap { UIImage(data: $0) } })
             
             ZStack {
                 // Plain background color fallback
                 (isDarkMode ? Color(hex: "#000000") : Color(hex: "#fafafa"))
                     .ignoresSafeArea()
                     
-                // High-Fidelity Fanart Backdrop with fallback gradient (strictly Landscape only; portrait mode strictly uses fallback gradient on all devices)
-                if isLandscape, let backdropUrl = activeUrl {
-                    AsyncImage(url: backdropUrl) { phase in
-                        if let image = phase.image {
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
-                                .transition(.opacity.animation(.easeInOut(duration: 0.6)))
-                        } else {
-                            fallbackGradient
-                        }
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                    .transition(.opacity.animation(.easeInOut(duration: 0.6)))
+                // High-Fidelity Fanart Backdrop with fallback gradient (portrait & landscape)
+                if let image = activeImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                        .clipped()
+                        .transition(.opacity.animation(.easeInOut(duration: 0.6)))
                 } else {
                     fallbackGradient
                 }
@@ -569,27 +587,31 @@ struct ArtistBackdropView: View {
             )
         }
         .onAppear {
+            self.backdropImage = resolveBackdropImage()
             self.backdropUrl = resolveBackdropUrl()
             fetchColors()
             triggerBackdropFetch()
         }
         .onChange(of: mbid) { _ in
+            self.backdropImage = resolveBackdropImage()
             self.backdropUrl = resolveBackdropUrl()
             triggerBackdropFetch()
         }
     }
     
     private func triggerBackdropFetch() {
-        if let current = resolveBackdropUrl() {
-            self.backdropUrl = current
+        if let current = resolveBackdropImage() {
+            self.backdropImage = current
+            self.backdropUrl = resolveBackdropUrl()
             return
         }
         Task {
             await FanartManager.shared.downloadBackdropSilently(for: [artistName], artistId: artistId, mbid: mbid)
             await MainActor.run {
-                if let resolved = resolveBackdropUrl() {
+                if let resolved = resolveBackdropImage() {
                     withAnimation(.easeInOut(duration: 0.6)) {
-                        self.backdropUrl = resolved
+                        self.backdropImage = resolved
+                        self.backdropUrl = resolveBackdropUrl()
                     }
                 }
             }
@@ -613,16 +635,17 @@ struct ArtistBackdropView: View {
     }
     
     private func fetchColors() {
-        let cachedBackdrop = resolveBackdropUrl()
+        let cachedBackdropImg = resolveBackdropImage()
+        let cachedBackdropUrl = resolveBackdropUrl()
         let fallbackUrl = client.getCoverArtUrl(id: artistId, size: 600)
         let portraitUrl = resolveArtistPortraitUrl(id: artistId, serverUrl: fallbackUrl)
 
         Task.detached {
-            var targetImg: UIImage? = nil
-            if let backdrop = cachedBackdrop, backdrop.isFileURL,
+            var targetImg: UIImage? = cachedBackdropImg
+            if targetImg == nil, let backdrop = cachedBackdropUrl, backdrop.isFileURL,
                let data = try? Data(contentsOf: backdrop) {
                 targetImg = UIImage(data: data)
-            } else if let url = portraitUrl {
+            } else if targetImg == nil, let url = portraitUrl {
                 if url.isFileURL, let data = try? Data(contentsOf: url) {
                     targetImg = UIImage(data: data)
                 } else if let data = try? await URLSession.shared.data(from: url).0 {
