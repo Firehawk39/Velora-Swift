@@ -380,6 +380,14 @@ struct Artist: Identifiable, Codable, Sendable {
     }
 }
 
+/// Sanitizes a string (such as an artist or album name) for safe filesystem cache keys and file paths.
+func sanitizeFileName(_ name: String) -> String {
+    return name.components(separatedBy: .punctuationCharacters).joined(separator: "_")
+        .components(separatedBy: .whitespaces).joined(separator: "_")
+        .lowercased()
+}
+
+
 struct Album: Identifiable, Codable, Sendable {
     let id: String
     let name: String

@@ -521,9 +521,9 @@ struct ArtistBackdropView: View {
         if !artistId.isEmpty { candidates.append(artistId) }
         let k1 = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
         if !candidates.contains(k1) { candidates.append(k1) }
-        let s1 = sanitizeFileName(artistName)
+        let s1 = FanartManager.shared.sanitizeFileName(artistName)
         if !candidates.contains(s1) { candidates.append(s1) }
-        let s2 = sanitizeFileName(primary)
+        let s2 = FanartManager.shared.sanitizeFileName(primary)
         if !candidates.contains(s2) { candidates.append(s2) }
         
         let sidecarUrl = VeloraStorage.backdrops.appendingPathComponent(k1 + ".mbid")

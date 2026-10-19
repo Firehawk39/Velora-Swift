@@ -60,7 +60,7 @@ struct LogsView: View {
 
     // MARK: Helpers
 
-    private func formattedLine(_ entry: AppLogger.LogEntry) -> String {
+    private func formattedLine(_ entry: LogEntry) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
         let ts = formatter.string(from: entry.timestamp)
@@ -70,6 +70,7 @@ struct LogsView: View {
         case .info:    prefix = "[INFO] "
         case .warning: prefix = "[WARN] "
         case .error:   prefix = "[ERROR]"
+        case .fault:   prefix = "[FAULT]"
         }
         return "\(ts) \(prefix) \(entry.message)"
     }
@@ -167,7 +168,7 @@ struct LogsView: View {
                         }
 
                         Button("Clear") {
-                            logger.logs.removeAll()
+                            logger.clear()
                         }
                         .foregroundColor(.red)
                     }

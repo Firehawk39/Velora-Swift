@@ -158,10 +158,10 @@ public actor DiagnosticJournal {
     }
 
     private init() {
-        startPeriodicFlush()
     }
 
-    private func startPeriodicFlush() {
+    private func ensurePeriodicFlushStarted() {
+        guard flushTask == nil else { return }
         flushTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
@@ -171,6 +171,7 @@ public actor DiagnosticJournal {
     }
 
     public func append(_ entry: LogEntry) {
+        ensurePeriodicFlushStarted()
         if let data = try? JSONSerialization.data(withJSONObject: entry.jsonDictionary, options: []),
            let jsonStr = String(data: data, encoding: .utf8) {
             writeBuffer.append(jsonStr)
@@ -248,10 +249,16 @@ public actor DiagnosticJournal {
 public final class AppLogger: @unchecked Sendable, ObservableObject {
     public static let shared = AppLogger()
 
+    public typealias LogEntry = Velora.LogEntry
     public typealias LogLevel = LogEntry.LogLevel
 
     @MainActor @Published public private(set) var logs: [LogEntry] = []
     private let maxMemoryEntries = 2000
+
+    @MainActor
+    public func clear() {
+        logs.removeAll()
+    }
 
     private let osLoggers: [LogSubsystem: Logger] = {
         var dict: [LogSubsystem: Logger] = [:]
