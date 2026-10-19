@@ -577,7 +577,7 @@ final class FanartManager: ObservableObject {
 
         if let validMBID = candidateMbid, !validMBID.isEmpty {
             try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-            self.executeFanartQuery(resolvedMBID: validMBID, isProvided: isProvidedMbid, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+            self.executeFanartQuery(resolvedMBID: validMBID, isProvided: isProvidedMbid, artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
         } else {
             self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { [weak self] result in
                 guard let self = self else { return }
@@ -586,7 +586,7 @@ final class FanartManager: ObservableObject {
                     let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
                     try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
                     Task { @MainActor in
-                        self.executeFanartQuery(resolvedMBID: resolved, isProvided: false, artist: artist, primaryArtist: primaryArtist, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+                        self.executeFanartQuery(resolvedMBID: resolved, isProvided: false, artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
                     }
                 case .notFound:
                     // MusicBrainz doesn't have an MBID match — backdrops are strictly Fanart.tv only!
@@ -654,6 +654,7 @@ final class FanartManager: ObservableObject {
         isProvided: Bool,
         artist: String,
         primaryArtist: String,
+        artistId: String? = nil,
         key: String,
         fileUrl: URL,
         artists: [String],
@@ -749,6 +750,7 @@ final class FanartManager: ObservableObject {
                                     isProvided: false,
                                     artist: artist,
                                     primaryArtist: primaryArtist,
+                                    artistId: artistId,
                                     key: key,
                                     fileUrl: fileUrl,
                                     artists: artists,
