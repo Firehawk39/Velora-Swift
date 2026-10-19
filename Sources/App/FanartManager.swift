@@ -22,6 +22,7 @@ final class FanartManager: ObservableObject {
 
     @Published var currentBackdrop: UIImage? = nil
     @Published var currentClearLogo: UIImage? = nil
+    @Published var activeArtworkArtist: String? = nil
     private let imageCache = SendableImageCache()
     private let logoCache  = SendableImageCache()
 
@@ -135,6 +136,7 @@ final class FanartManager: ObservableObject {
 
     /// Resets playback artwork and artist tracking when changing tracks
     func resetActivePlaybackDisplay() {
+        self.activeArtworkArtist = nil
         self.currentArtistName = nil
         self.currentClearLogoArtist = nil
         self.currentBackdrop = nil
@@ -147,7 +149,8 @@ final class FanartManager: ObservableObject {
             resetActivePlaybackDisplay()
             return
         }
-        if self.currentArtistName != newArtist {
+        if self.currentArtistName != newArtist || self.activeArtworkArtist != newArtist {
+            self.activeArtworkArtist = newArtist
             self.currentArtistName = newArtist
             self.currentClearLogoArtist = newArtist
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -406,12 +409,16 @@ final class FanartManager: ObservableObject {
                         correlationId: primaryArtist,
                         metadata: ["sourceArtist": hitArtist, "isNewArtist": "\(isNewArtist)"]
                     )
-                    self.currentArtistName = primaryArtist
+                    self.currentArtistName = hitArtist
+                    self.activeArtworkArtist = hitArtist
+                    self.currentClearLogoArtist = hitArtist
                     if isNewArtist {
                         withAnimation(.easeInOut(duration: 0.6)) { self.currentBackdrop = cached }
                     } else {
                         self.currentBackdrop = cached
                     }
+                    // STRICT ARTIST LINKING: Automatically fetch clear logo for the EXACT same artist as the backdrop!
+                    self.fetchClearLogo(for: [hitArtist], artistId: (hitArtist == primaryArtist ? artistId : nil), mbid: (hitArtist == primaryArtist ? mbid : nil))
                 } else {
                     AppLogger.shared.fanart(
                         "Initiating recursive backdrop resolution for \(primaryArtist)",
@@ -431,7 +438,7 @@ final class FanartManager: ObservableObject {
             completion()
             return
         }
-        let primaryArtist = artists[0]
+        let primaryArtist = activeArtworkArtist ?? extractPrimaryArtist(artists[0])
         let key = getCacheKey(artistName: primaryArtist, artistId: artistId)
         let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
         let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
@@ -455,8 +462,12 @@ final class FanartManager: ObservableObject {
                 if let url = url {
                     AppLogger.shared.log("[Fanart] Cycling backdrop to URL for \(primaryArtist)")
                     self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { image in
-                        if let img = image, self.currentArtistName == primaryArtist {
+                        if let img = image, (self.currentArtistName == primaryArtist || self.activeArtworkArtist == primaryArtist) {
+                            self.currentArtistName = primaryArtist
+                            self.activeArtworkArtist = primaryArtist
+                            self.currentClearLogoArtist = primaryArtist
                             withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
+                            self.fetchClearLogo(for: [primaryArtist], artistId: artistId, mbid: resolvedMBID)
                         }
                         completion()
                     }
@@ -478,8 +489,12 @@ final class FanartManager: ObservableObject {
                                     guard let self = self else { completion(); return }
                                     if let rUrl = retryUrl {
                                         self.downloadAndCache(from: rUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: healedMbid, priority: URLSessionTask.highPriority) { image in
-                                            if let img = image, self.currentArtistName == primaryArtist {
+                                            if let img = image, (self.currentArtistName == primaryArtist || self.activeArtworkArtist == primaryArtist) {
+                                                self.currentArtistName = primaryArtist
+                                                self.activeArtworkArtist = primaryArtist
+                                                self.currentClearLogoArtist = primaryArtist
                                                 withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
+                                                self.fetchClearLogo(for: [primaryArtist], artistId: artistId, mbid: healedMbid)
                                             }
                                             completion()
                                         }
@@ -668,7 +683,7 @@ final class FanartManager: ObservableObject {
                     candidates: candidates,
                     candidateIndex: 0,
                     fileUrl: fileUrl,
-                    primaryArtistName: primaryArtist,
+                    primaryArtistName: artist,
                     cacheKey: key,
                     mbid: resolvedMBID,
                     priority: URLSessionTask.highPriority
@@ -676,6 +691,10 @@ final class FanartManager: ObservableObject {
                     guard let self = self else { return }
                     if success {
                         self.activeBackdropFetches.remove(key)
+                        self.currentArtistName = artist
+                        self.activeArtworkArtist = artist
+                        self.currentClearLogoArtist = artist
+                        self.fetchClearLogo(for: [artist], artistId: (artist == primaryArtist ? artistId : nil), mbid: (artist == primaryArtist ? resolvedMBID : nil))
                     } else {
                         writeNegativeCacheAndProceed()
                     }
@@ -695,8 +714,16 @@ final class FanartManager: ObservableObject {
             guard let self = self else { return }
             if let url = url {
                 AppLogger.shared.log("[Fanart] Found backdrop URL for \(artist)")
-                self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { image in
+                self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: artist, cacheKey: key, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { [weak self] image in
+                    guard let self = self else { return }
                     self.activeBackdropFetches.remove(key)
+                    if let img = image {
+                        self.currentArtistName = artist
+                        self.activeArtworkArtist = artist
+                        self.currentClearLogoArtist = artist
+                        withAnimation(.easeInOut(duration: 0.6)) { self.currentBackdrop = img }
+                        self.fetchClearLogo(for: [artist], artistId: (artist == primaryArtist ? artistId : nil), mbid: (artist == primaryArtist ? resolvedMBID : nil))
+                    }
                 }
             } else if isEmpty {
                 // If the MBID was provided (or was loaded from an unverified sidecar), it might be wrong (e.g. recording MBID).
@@ -949,7 +976,8 @@ final class FanartManager: ObservableObject {
     /// Checks in-memory cache and disk cache across all candidate keys (mbid, artistId, primaryArtist, full artist name).
     func fetchClearLogo(for artists: [String], artistId: String? = nil, mbid: String? = nil) {
         guard !artists.isEmpty else { return }
-        let primary = extractPrimaryArtist(artists[0])
+        // STRICT ARTIST LINKING: Prioritize active backdrop artist to guarantee logo matches backdrop
+        let primary = activeArtworkArtist ?? extractPrimaryArtist(artists[0])
         let isNewArtist = self.currentClearLogoArtist != primary
 
         if isNewArtist {
@@ -957,8 +985,12 @@ final class FanartManager: ObservableObject {
             withAnimation(.easeOut(duration: 0.2)) { self.currentClearLogo = nil }
         }
 
+        let targetArtists = (activeArtworkArtist != nil) ? [primary] : artists
+        let effectiveArtistId = (primary == artists[0] ? artistId : nil)
+        let effectiveMbid = (primary == artists[0] ? mbid : nil)
+
         // 1. Unified cache check across all candidate keys
-        if let cached = getCachedClearLogo(for: artists, artistId: artistId, mbid: mbid) {
+        if let cached = getCachedClearLogo(for: targetArtists, artistId: effectiveArtistId, mbid: effectiveMbid) {
             if self.currentClearLogoArtist == primary {
                 if self.currentClearLogo == nil {
                     withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = cached }
@@ -970,7 +1002,7 @@ final class FanartManager: ObservableObject {
         }
 
         // 2. Check for negative cache markers (<= 100 bytes)
-        let candidateKeys = getClearLogoKeys(for: artists, artistId: artistId, mbid: mbid)
+        let candidateKeys = getClearLogoKeys(for: targetArtists, artistId: effectiveArtistId, mbid: effectiveMbid)
         var allNegativeCached = true
         for k in candidateKeys {
             let fileUrl = clearLogoDir.appendingPathComponent(k + ".png")
@@ -993,13 +1025,13 @@ final class FanartManager: ObservableObject {
         let primaryKey = "logo_" + sanitizeFileName(primary)
         guard !activeClearLogoFetches.contains(primaryKey) else { return }
         activeClearLogoFetches.insert(primaryKey)
-        if let aid = artistId, !aid.isEmpty { activeClearLogoFetches.insert("logo_" + aid) }
-        if let mk = mbid, !mk.isEmpty { activeClearLogoFetches.insert("logo_" + mk) }
+        if let aid = effectiveArtistId, !aid.isEmpty { activeClearLogoFetches.insert("logo_" + aid) }
+        if let mk = effectiveMbid, !mk.isEmpty { activeClearLogoFetches.insert("logo_" + mk) }
 
         guard NetworkMonitor.shared.isConnected else {
             activeClearLogoFetches.remove(primaryKey)
-            if let aid = artistId, !aid.isEmpty { activeClearLogoFetches.remove("logo_" + aid) }
-            if let mk = mbid, !mk.isEmpty { activeClearLogoFetches.remove("logo_" + mk) }
+            if let aid = effectiveArtistId, !aid.isEmpty { activeClearLogoFetches.remove("logo_" + aid) }
+            if let mk = effectiveMbid, !mk.isEmpty { activeClearLogoFetches.remove("logo_" + mk) }
             return
         }
 
@@ -1023,11 +1055,11 @@ final class FanartManager: ObservableObject {
                         self.clearLogoUrlsByArtist[primary] = pool
                     }
                     AppLogger.shared.log("[TheAudioDB] Fetched clearlogo for \(primary)")
-                    self.downloadClearLogoFile(from: tadbUrl, to: destFileUrl, artist: primary, cacheKey: primaryKey, artistId: artistId, usedMbid: resolvedMbid)
+                    self.downloadClearLogoFile(from: tadbUrl, to: destFileUrl, artist: primary, cacheKey: primaryKey, artistId: effectiveArtistId, usedMbid: resolvedMbid)
                 } else if result.isTrueNotFound {
                     AppLogger.shared.log("[TheAudioDB] No clearlogo found for \(primary). Negative caching.")
                     try? Data().write(to: destFileUrl)
-                    if let aid = artistId, !aid.isEmpty {
+                    if let aid = effectiveArtistId, !aid.isEmpty {
                         let aidFileUrl = self.clearLogoDir.appendingPathComponent("logo_\(aid).png")
                         try? Data().write(to: aidFileUrl)
                     }
@@ -1036,18 +1068,18 @@ final class FanartManager: ObservableObject {
                         try? Data().write(to: mbidFileUrl)
                     }
                     self.activeClearLogoFetches.remove(primaryKey)
-                    if let aid = artistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
-                    if let mk = mbid, !mk.isEmpty { self.activeClearLogoFetches.remove("logo_" + mk) }
+                    if let aid = effectiveArtistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
+                    if let mk = effectiveMbid, !mk.isEmpty { self.activeClearLogoFetches.remove("logo_" + mk) }
                 } else {
                     // Network error or rate limit: do NOT write negative cache, allow subsequent retries
                     self.activeClearLogoFetches.remove(primaryKey)
-                    if let aid = artistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
-                    if let mk = mbid, !mk.isEmpty { self.activeClearLogoFetches.remove("logo_" + mk) }
+                    if let aid = effectiveArtistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
+                    if let mk = effectiveMbid, !mk.isEmpty { self.activeClearLogoFetches.remove("logo_" + mk) }
                 }
             }
         }
 
-        self.resolveOrFetchMBID(for: primary, providedMbid: mbid, priority: URLSessionTask.highPriority) { [weak self] resolvedMbid in
+        self.resolveOrFetchMBID(for: primary, providedMbid: effectiveMbid, priority: URLSessionTask.highPriority) { [weak self] resolvedMbid in
             guard let self = self else { return }
             if let apiKey = self.fanartApiKey, !apiKey.isEmpty, let validMbid = resolvedMbid, !validMbid.isEmpty {
                 let urlString = "https://webservice.fanart.tv/v3/music/\(validMbid)?api_key=\(apiKey)"
@@ -1055,7 +1087,7 @@ final class FanartManager: ObservableObject {
                     guard let self = self else { return }
                     if let url = url {
                         AppLogger.shared.log("[Fanart] Fetched clearlogo for \(primary) via MBID \(validMbid)")
-                        self.downloadClearLogoFile(from: url, to: destFileUrl, artist: primary, cacheKey: primaryKey, artistId: artistId, usedMbid: validMbid)
+                        self.downloadClearLogoFile(from: url, to: destFileUrl, artist: primary, cacheKey: primaryKey, artistId: effectiveArtistId, usedMbid: validMbid)
                     } else {
                         fetchTadbLogo(validMbid)
                     }
@@ -1072,7 +1104,8 @@ final class FanartManager: ObservableObject {
             completion()
             return
         }
-        let primaryArtist = extractPrimaryArtist(artists[0])
+        // STRICT ARTIST LINKING: Cycle logo for the same artist whose backdrop is active
+        let primaryArtist = activeArtworkArtist ?? extractPrimaryArtist(artists[0])
         let primaryKey = "logo_" + sanitizeFileName(primaryArtist)
         let destFileUrl = clearLogoDir.appendingPathComponent(primaryKey + ".png")
 
@@ -1298,7 +1331,10 @@ final class FanartManager: ObservableObject {
                         try? mbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
                     }
                     self.logoCache.setObject(img, forKey: cacheKey as NSString)
-                    if self.currentClearLogoArtist == artist {
+                    let matchesActiveArtwork = (self.activeArtworkArtist == nil || self.activeArtworkArtist == artist)
+                    let matchesLogoArtist = (self.currentClearLogoArtist == artist || self.activeArtworkArtist == artist)
+                    if matchesActiveArtwork && matchesLogoArtist {
+                        self.currentClearLogoArtist = artist
                         withAnimation(.easeInOut(duration: 0.6)) { self.currentClearLogo = img }
                     }
                 } else if error != nil {
@@ -1593,7 +1629,7 @@ final class FanartManager: ObservableObject {
                     if let validMbid = mbid, !validMbid.isEmpty {
                         self.imageCache.setObject(image, forKey: validMbid as NSString)
                     }
-                    if self.currentArtistName == primaryArtistName {
+                    if self.currentArtistName == primaryArtistName || self.activeArtworkArtist == primaryArtistName {
                         withAnimation(.easeInOut(duration: 0.8)) {
                             self.currentBackdrop = image
                         }

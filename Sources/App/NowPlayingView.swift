@@ -819,12 +819,14 @@ struct NowPlayingView: View {
         Button {
             resetIdleTimer()
             if let track = playback.currentTrack, !isCyclingBackdrop {
-                let artists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
+                let targetArtist = fanart.activeArtworkArtist ?? track.primaryArtist
+                let allTrackArtists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
+                let artists = [targetArtist] + allTrackArtists.filter { $0 != targetArtist }
                 if !artists.isEmpty {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isCyclingBackdrop = true
-                    let resolvedMbid = track.musicBrainzId ?? mb.getCachedMBID(for: artists[0])
-                    FanartManager.shared.cycleBackdrop(for: artists, artistId: track.artistId, mbid: resolvedMbid) {
+                    let resolvedMbid = track.musicBrainzId ?? mb.getCachedMBID(for: targetArtist)
+                    FanartManager.shared.cycleBackdrop(for: artists, artistId: (targetArtist == track.primaryArtist ? track.artistId : nil), mbid: resolvedMbid) {
                         isCyclingBackdrop = false
                     }
                 }
@@ -850,13 +852,15 @@ struct NowPlayingView: View {
     private func cycleClearLogoAction() {
         resetIdleTimer()
         guard let track = playback.currentTrack, !isCyclingClearLogo else { return }
-        let artists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
+        let targetArtist = fanart.activeArtworkArtist ?? track.primaryArtist
+        let allTrackArtists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
+        let artists = [targetArtist] + allTrackArtists.filter { $0 != targetArtist }
         guard !artists.isEmpty else { return }
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         isCyclingClearLogo = true
 
-        FanartManager.shared.cycleClearLogo(for: artists, artistId: track.artistId, mbid: nil) {
+        FanartManager.shared.cycleClearLogo(for: artists, artistId: (targetArtist == track.primaryArtist ? track.artistId : nil), mbid: nil) {
             isCyclingClearLogo = false
         }
     }
