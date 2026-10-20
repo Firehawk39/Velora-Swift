@@ -5,7 +5,7 @@
 * **Target Ecosystem:** Velora iOS App + Umbrel Local Server Stack (`velora-ai-engine`)
 * **Hardware Target:** UmbrelOS 2.0 (AMD Ryzen 5 3600 6-Core, 50.4GB RAM, Host: `192.168.1.13`)
 * **Dual GPU Architecture (24 GB Total VRAM):**
-  * **GPU 0 (PCIe Slot 1):** NVIDIA GeForce RTX 3080 Ti (12 GB VRAM) — Dedicated exclusively to Ollama LLM conversational inference (`velora-dj` / `qwen2.5:14b` / `qwen2.5:7b`).
+  * **GPU 0 (PCIe Slot 1):** NVIDIA GeForce RTX 3080 Ti (12 GB VRAM) — Dedicated exclusively to Ollama LLM conversational inference (`qwen3.5:9b` out-of-the-box auto-provisioned, or custom Unsloth fine-tuned `velora-dj:9b`).
   * **GPU 1 (PCIe Slot 2):** NVIDIA GeForce RTX 3060 (12 GB VRAM) — Dedicated exclusively to CLAP audio waveform embeddings, Essentia acoustic feature extraction, and background library indexing with zero contention.
 
 ---
@@ -113,7 +113,7 @@ graph TD
    - Computes text-audio joint embeddings via CLAP.
    - Stores 512-dim vectors and acoustic metadata in embedded `sqlite-vec` linked to Navidrome `trackId`.
 3. **Conversational LLM:**
-   - Connects to existing Umbrel Ollama instance. Recommended model: `qwen2.5:7b-instruct` or `gemma2:9b` (fits comfortably in CPU/RAM or GPU).
+   - Connects to existing Umbrel Ollama instance on GPU 0. Default model: `qwen3.5:9b` (auto-provisioned via Ollama REST API), with optional switch to custom Unsloth fine-tuned `velora-dj:9b`.
 
 ### B. Velora iOS App Additions
 1. **Navigation Pill "V" Tab:**

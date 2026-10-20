@@ -6,7 +6,7 @@
 
 **Architecture:** A lightweight Docker Compose stack on Umbrel runs FastAPI, `sqlite-vec`, and Essentia/CLAP on GPU 1 (RTX 3060) while communicating with Ollama on GPU 0 (RTX 3080 Ti) and Navidrome via the Subsonic API. The Velora iOS app streams playback events asynchronously to the backend on detached background actors (0ms main-thread guarantee) and renders the "V" tab with custom *Stardom* typography, providing interactive chat with inline Navidrome playback actions and telemetry analytics.
 
-**Tech Stack:** Python 3.11, FastAPI, `sqlite-vec`, Essentia, PyTorch / CLAP (`laion/larger_clap_music`), Docker Compose, Ollama (`qwen2.5:7b-instruct` / `qwen2.5:3b-instruct`), Swift 6 / SwiftUI, Navidrome Subsonic API.
+**Tech Stack:** Python 3.11, FastAPI, `sqlite-vec`, Essentia, PyTorch / CLAP (`laion/larger_clap_music`), Docker Compose, Ollama (`qwen3.5:9b` out-of-the-box / Unsloth fine-tuned `velora-dj:9b`), Swift 6 / SwiftUI, Navidrome Subsonic API.
 
 **Spec:** [docs/superpowers/specs/2026-10-21-velora-ai-layer-design.md](file:///c:/Users/Harsh/Desktop/Velora%20AI%20Studio%20+%20Antigravity/docs/superpowers/specs/2026-10-21-velora-ai-layer-design.md)
 
@@ -101,7 +101,7 @@ from services.ollama_service import OllamaService
 
 @pytest.mark.asyncio
 async def test_check_model_status_missing():
-    service = OllamaService(base_url="http://mock-ollama:11434", model_name="qwen2.5:7b-instruct")
+    service = OllamaService(base_url="http://mock-ollama:11434", model_name="qwen3.5:9b")
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_get.return_value.status_code = 200
         mock_get.return_value.json.return_value = {"models": [{"name": "other-model:latest"}]}
@@ -517,7 +517,60 @@ git push origin master
 
 ---
 
-### Task 10: End-to-End Integration & System Verification
+### Task 10: Unsloth Fine-Tuning Pipeline & GGUF Export (`velora-dj:9b`)
+
+**Files:**
+- Create: `velora-ai-engine/training/dataset_generator.py`
+- Create: `velora-ai-engine/training/train_unsloth.py`
+- Create: `velora-ai-engine/training/Modelfile`
+- Test: `velora-ai-engine/tests/test_dataset_generator.py`
+
+**Interfaces:**
+- Produces: Synthetic RAG DJ training dataset, Unsloth QLoRA training script targeting GPU 0 (RTX 3080 Ti 12GB), and automated export to `velora-dj:9b-q4_k_m.gguf` registered into Ollama.
+
+- [ ] **Step 1: Write failing test for dataset schema formatting**
+
+```python
+# velora-ai-engine/tests/test_dataset_generator.py
+import pytest
+from training.dataset_generator import format_dj_sample
+
+def test_format_dj_sample_structure():
+    query = "Give me something energetic for running"
+    candidates = [
+        {"trackId": "1001", "title": "Run", "artist": "Foals", "bpm": 135, "key": "9A"}
+    ]
+    formatted = format_dj_sample(query, candidates, action_type="PLAY", chosen_id="1001")
+    assert "<|im_start|>user" in formatted
+    assert "[PLAY: 1001]" in formatted
+    assert "<|im_end|>" in formatted
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pytest velora-ai-engine/tests/test_dataset_generator.py`  
+Expected: FAIL
+
+- [ ] **Step 3: Implement `dataset_generator.py` and `train_unsloth.py`**
+
+Implement training script using `FastLanguageModel.from_pretrained("Qwen/Qwen3.5-9B-Instruct")` with 4-bit quantization, LoRA rank 16, target modules (`q_proj`, `k_proj`, `v_proj`, `o_proj`), and GGUF export `model.save_pretrained_gguf("velora-dj", tokenizer, quantization_method="q4_k_m")`.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pytest velora-ai-engine/tests/test_dataset_generator.py`  
+Expected: PASS
+
+- [ ] **Step 5: Commit & push**
+
+```bash
+git add velora-ai-engine/training/ velora-ai-engine/tests/test_dataset_generator.py
+git commit -m "feat(ai-engine): add unsloth fine-tuning pipeline and GGUF export for velora-dj:9b"
+git push origin master
+```
+
+---
+
+### Task 11: End-to-End Integration & System Verification
 
 **Files:**
 - Create: `Tests/E2EIntegrationTests.swift`
@@ -543,3 +596,4 @@ git add .
 git commit -m "chore(ai-engine): verify complete end-to-end AI layer integration and tests"
 git push origin master
 ```
+
