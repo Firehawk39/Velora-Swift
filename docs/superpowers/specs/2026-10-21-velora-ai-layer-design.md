@@ -3,7 +3,10 @@
 * **Date:** 2026-10-21
 * **Status:** In Review / Ready for Plan
 * **Target Ecosystem:** Velora iOS App + Umbrel Local Server Stack (`velora-ai-engine`)
-* **Hardware Target:** UmbrelOS 2.0 (AMD Ryzen 5 3600 6-Core, 50GB RAM, Host: `192.168.1.13`)
+* **Hardware Target:** UmbrelOS 2.0 (AMD Ryzen 5 3600 6-Core, 50.4GB RAM, Host: `192.168.1.13`)
+* **Dual GPU Architecture (24 GB Total VRAM):**
+  * **GPU 0 (PCIe Slot 1):** NVIDIA GeForce RTX 3080 Ti (12 GB VRAM) — Dedicated exclusively to Ollama LLM conversational inference (`velora-dj` / `qwen2.5:14b` / `qwen2.5:7b`).
+  * **GPU 1 (PCIe Slot 2):** NVIDIA GeForce RTX 3060 (12 GB VRAM) — Dedicated exclusively to CLAP audio waveform embeddings, Essentia acoustic feature extraction, and background library indexing with zero contention.
 
 ---
 
