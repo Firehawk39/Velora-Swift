@@ -8,3 +8,4 @@ Every solution, bugfix, and implementation in this codebase must be **world-clas
 - **Unified Single Source of Truth**: No duplicated candidate loops or asset resolution logic across views.
 - **Universal Compatibility**: Support iOS 15.0 through the latest iPadOS (Split View, Stage Manager, ProMotion 120Hz).
 - **Swift 6 Concurrency**: Full strict concurrency safety (`Sendable`, `@MainActor`, zero data races).
+- **Commit Protocol**: "Commit" always means commit and immediately push to GitHub (`git push origin <branch>`) so CI/CD (Codemagic, Bitrise) triggers instantly.
