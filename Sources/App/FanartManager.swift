@@ -59,39 +59,9 @@ final class FanartManager: ObservableObject {
 
     // MARK: - API Key Lifecycle & Cache Invalidation
 
-    /// Wipes 0-byte negative cache markers from disk. Preserves valid 36-byte .mbid sidecars.
+    /// Wipes 0-byte negative cache markers and corrupted assets from disk. Preserves valid 36-byte .mbid sidecars.
     func wipeNegativeFanartCaches() {
-        let fm = FileManager.default
-        if let files = try? fm.contentsOfDirectory(at: backdropDir, includingPropertiesForKeys: [.fileSizeKey]) {
-            for file in files {
-                if file.lastPathComponent.contains("_var") {
-                    try? fm.removeItem(at: file)
-                    continue
-                }
-                let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
-                let ext = file.pathExtension.lowercased()
-                if (ext == "jpg" || ext == "jpeg" || ext == "png") && size <= 100 {
-                    try? fm.removeItem(at: file)
-                } else if ext == "mbid" && size == 0 {
-                    try? fm.removeItem(at: file)
-                }
-            }
-        }
-        if let files = try? fm.contentsOfDirectory(at: clearLogoDir, includingPropertiesForKeys: [.fileSizeKey]) {
-            for file in files {
-                if file.lastPathComponent.contains("_var") {
-                    try? fm.removeItem(at: file)
-                    continue
-                }
-                let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
-                let ext = file.pathExtension.lowercased()
-                if (ext == "png" || ext == "jpg") && size <= 100 {
-                    try? fm.removeItem(at: file)
-                } else if ext == "mbid" && size == 0 {
-                    try? fm.removeItem(at: file)
-                }
-            }
-        }
+        VeloraStorage.autoCleanupCorruptedAssets()
         AppLogger.shared.log("[Fanart] Negative cache markers purged.", level: .info)
     }
 
@@ -591,7 +561,7 @@ final class FanartManager: ObservableObject {
                 case .notFound:
                     // MusicBrainz doesn't have an MBID match — backdrops are strictly Fanart.tv only!
                     Task { @MainActor in
-                        try? Data().write(to: fileUrl)
+                        AssetRegistry.shared.markBackdropUnavailable(key: key)
                         self.activeBackdropFetches.remove(key)
                         self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                     }
@@ -663,10 +633,9 @@ final class FanartManager: ObservableObject {
     ) {
         let writeNegativeCacheAndProceed: @MainActor @Sendable () -> Void = { [weak self] in
             guard let self = self else { return }
-            AppLogger.shared.log("[Fanart] No 1080p backdrop on Fanart or TheAudioDB for \(artist). Negative caching.")
-            try? Data().write(to: fileUrl)
-            let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
-            try? Data().write(to: mbidFile)
+            AppLogger.shared.log("[Fanart] No 1080p backdrop on Fanart or TheAudioDB for \(artist). Negative caching in registry.")
+            AssetRegistry.shared.markBackdropUnavailable(key: key)
+            AssetRegistry.shared.markBackdropUnavailable(key: resolvedMBID)
             self.activeBackdropFetches.remove(key)
             self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
         }
@@ -826,10 +795,10 @@ final class FanartManager: ObservableObject {
                     guard let self = self else { continuation.resume(returning: false); return }
                     let silentNegativeCache: @MainActor @Sendable () -> Void = { [weak self] in
                         guard let self = self else { continuation.resume(returning: false); return }
-                        try? Data().write(to: fileUrl)
-                        let mbidFile = self.backdropDir.appendingPathComponent("\(resolvedMBID).jpg")
-                        try? Data().write(to: mbidFile)
-                        Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                        Task { @MainActor in
+                            AssetRegistry.shared.markBackdropUnavailable(key: key)
+                            AssetRegistry.shared.markBackdropUnavailable(key: resolvedMBID)
+                        }
                         self.activeBackdropFetches.remove(key)
                         continuation.resume(returning: false)
                     }
@@ -938,8 +907,7 @@ final class FanartManager: ObservableObject {
                             Task { @MainActor in query(resolved, false) }
                         case .notFound:
                             Task { @MainActor in
-                                try? Data().write(to: fileUrl)
-                                Task { @MainActor in AssetRegistry.shared.markBackdropUnavailable(key: key) }
+                                AssetRegistry.shared.markBackdropUnavailable(key: key)
                                 self.activeBackdropFetches.remove(key)
                                 continuation.resume(returning: false)
                             }
@@ -1059,16 +1027,10 @@ final class FanartManager: ObservableObject {
                     AppLogger.shared.log("[TheAudioDB] Fetched clearlogo for \(primary)")
                     self.downloadClearLogoFile(from: tadbUrl, to: destFileUrl, artist: primary, cacheKey: primaryKey, artistId: effectiveArtistId, usedMbid: resolvedMbid)
                 } else if result.isTrueNotFound {
-                    AppLogger.shared.log("[TheAudioDB] No clearlogo found for \(primary). Negative caching.")
-                    try? Data().write(to: destFileUrl)
-                    if let aid = effectiveArtistId, !aid.isEmpty {
-                        let aidFileUrl = self.clearLogoDir.appendingPathComponent("logo_\(aid).png")
-                        try? Data().write(to: aidFileUrl)
-                    }
-                    if let rm = resolvedMbid, !rm.isEmpty {
-                        let mbidFileUrl = self.clearLogoDir.appendingPathComponent("logo_\(rm).png")
-                        try? Data().write(to: mbidFileUrl)
-                    }
+                    AppLogger.shared.log("[TheAudioDB] No clearlogo found for \(primary). Negative caching in registry.")
+                    AssetRegistry.shared.markLogoUnavailable(key: primaryKey)
+                    if let aid = effectiveArtistId, !aid.isEmpty { AssetRegistry.shared.markLogoUnavailable(key: "logo_" + aid) }
+                    if let rm = resolvedMbid, !rm.isEmpty { AssetRegistry.shared.markLogoUnavailable(key: "logo_" + rm) }
                     self.activeClearLogoFetches.remove(primaryKey)
                     if let aid = effectiveArtistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
                     if let mk = effectiveMbid, !mk.isEmpty { self.activeClearLogoFetches.remove("logo_" + mk) }
@@ -1249,16 +1211,9 @@ final class FanartManager: ObservableObject {
                             continuation.resume()
                         }
                     } else if result.isTrueNotFound {
-                        try? Data().write(to: destFileUrl)
-                        if let aid = artistId, !aid.isEmpty {
-                            let aidFileUrl = self.clearLogoDir.appendingPathComponent("logo_\(aid).png")
-                            try? Data().write(to: aidFileUrl)
-                        }
-                        if let rm = resolvedMbid, !rm.isEmpty {
-                            let mbidFileUrl = self.clearLogoDir.appendingPathComponent("logo_\(rm).png")
-                            try? Data().write(to: mbidFileUrl)
-                        }
                         AssetRegistry.shared.markLogoUnavailable(key: primaryKey)
+                        if let aid = artistId, !aid.isEmpty { AssetRegistry.shared.markLogoUnavailable(key: "logo_" + aid) }
+                        if let rm = resolvedMbid, !rm.isEmpty { AssetRegistry.shared.markLogoUnavailable(key: "logo_" + rm) }
                         self.activeClearLogoFetches.remove(primaryKey)
                         if let aid = artistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
                         if let mk = mbid, !mk.isEmpty { self.activeClearLogoFetches.remove("logo_" + mk) }

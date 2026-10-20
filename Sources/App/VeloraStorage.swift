@@ -52,6 +52,38 @@ enum VeloraStorage {
                 try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             }
         }
+        autoCleanupCorruptedAssets()
+    }
+
+    /// Automatically sweeps cache directories (Backdrops, ClearLogos, CoverArt, ArtistPortraits)
+    /// and purges any 0-byte or corrupted assets (<= 100 bytes), self-healing storage.
+    @discardableResult
+    static func autoCleanupCorruptedAssets() -> Int {
+        let fm = FileManager.default
+        let targetDirs = [backdrops, clearLogos, coverArt, artistPortraits]
+        var purgedCount = 0
+
+        for dir in targetDirs {
+            guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { continue }
+            for file in files {
+                let ext = file.pathExtension.lowercased()
+                let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
+                // Purge corrupted/zero-byte image files and empty sidecars
+                if (ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp") && size <= 100 {
+                    try? fm.removeItem(at: file)
+                    purgedCount += 1
+                } else if ext == "mbid" && size == 0 {
+                    try? fm.removeItem(at: file)
+                    purgedCount += 1
+                }
+            }
+        }
+        if purgedCount > 0 {
+            Task { @MainActor in
+                AppLogger.shared.log("[Storage] 🧹 Auto-cleaned \(purgedCount) corrupted/0-byte cache assets.", level: .info)
+            }
+        }
+        return purgedCount
     }
 
     /// One-time migration from Documents/ to Application Support/VeloraData/.

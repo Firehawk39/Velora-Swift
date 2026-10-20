@@ -498,7 +498,13 @@ struct ArtistBackdropView: View {
     
     var isCompact: Bool { hSizeClass == .compact }
     var isLandscape: Bool {
-        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+            return windowScene.coordinateSpace.bounds.width > windowScene.coordinateSpace.bounds.height
+        }
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        }
+        return vSizeClass == .compact
     }
 
     private func resolveBackdropImage() -> UIImage? {

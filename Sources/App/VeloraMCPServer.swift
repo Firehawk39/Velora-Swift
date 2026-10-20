@@ -638,10 +638,17 @@ final class VeloraMCPServer: ObservableObject {
                 guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { return (0, 0) }
                 var total = 0
                 var zero = 0
+                let imageExts: Set<String> = ["jpg", "jpeg", "png", "webp"]
                 for file in files {
-                    total += 1
-                    let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
-                    if size <= 100 { zero += 1 }
+                    let ext = file.pathExtension.lowercased()
+                    if imageExts.contains(ext) {
+                        total += 1
+                        let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
+                        if size <= 100 { zero += 1 }
+                    } else if ext == "mbid" {
+                        let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
+                        if size == 0 { zero += 1 }
+                    }
                 }
                 return (total, zero)
             }
@@ -663,9 +670,10 @@ final class VeloraMCPServer: ObservableObject {
             return toJSONString(audit)
 
         case "velora_purge_negative_cache":
+            let purged = VeloraStorage.autoCleanupCorruptedAssets()
             FanartManager.shared.wipeNegativeFanartCaches()
             AssetRegistry.shared.resetFanartUnavailableRecords()
-            return "Successfully purged all 0-byte negative markers and cleared false negative asset locks."
+            return "Successfully purged \(purged) 0-byte negative markers/corrupted assets and cleared false negative asset locks."
 
         case "velora_trigger_repair_sync":
             SyncManager.shared.startRepairSync()

@@ -40,12 +40,34 @@ struct NowPlayingView: View {
 
     var isCompact:     Bool { hSizeClass == .compact }
     var isLandscape: Bool {
-        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+            return windowScene.coordinateSpace.bounds.width > windowScene.coordinateSpace.bounds.height
+        }
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        }
+        return vSizeClass == .compact
     }
     var isLargeCanvas: Bool { UIScreen.main.bounds.width >= 1000 }
     var isShortCanvas: Bool { UIScreen.main.bounds.height < 800 }
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 }
     var isSE:          Bool { ScreenTier.isSE }
+
+    /// Resolves backdrop with instant local disk & memory fallback matching ArtistDetailView
+    private var activeBackdropImage: UIImage? {
+        if let current = fanart.currentBackdrop {
+            return current
+        }
+        guard let track = playback.currentTrack else { return nil }
+        let immediateMbid = track.musicBrainzId ?? mb.getCachedMBID(for: track.artist ?? "")
+        for artist in track.allArtists {
+            let mbid = (artist == track.allArtists.first) ? immediateMbid : mb.getCachedMBID(for: artist)
+            if let cached = fanart.getCachedBackdrop(for: artist, artistId: track.artistId, mbid: mbid) {
+                return cached
+            }
+        }
+        return nil
+    }
 
     // Layout Constants
     private var tabletArtworkSize: CGFloat {
@@ -76,11 +98,11 @@ struct NowPlayingView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isLandscapeCanvas = isLandscape && (proxy.size.width >= proxy.size.height)
+            let isLandscapeCanvas = (proxy.size.width > proxy.size.height) || isLandscape
             ZStack {
                 // Dynamic Ambient Background
                 ZStack {
-                    if isLandscapeCanvas, let backdrop = fanart.currentBackdrop {
+                    if isLandscapeCanvas, let backdrop = activeBackdropImage {
                         // High-Fidelity Fanart Backdrop: Pure backdrop with NO gradient layer under or over it (strictly Landscape only)
                         Image(uiImage: backdrop)
                             .resizable()
@@ -134,7 +156,7 @@ struct NowPlayingView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         VStack(spacing: 0) {
-                            if isCompact && !isLandscape {
+                            if isCompact && !isLandscapeCanvas {
                                 portraitLayout(proxy: proxy)
                             } else {
                                 tabletLayout(proxy: proxy)
@@ -143,7 +165,7 @@ struct NowPlayingView: View {
                         .frame(minHeight: proxy.size.height - (isIdle ? 0 : (headerHeight + 20)))
 
                         metadataCards
-                            .padding(.horizontal, isCompact && !isLandscape ? 24 : (isLargeCanvas ? 120 : 40))
+                            .padding(.horizontal, isCompact && !isLandscapeCanvas ? 24 : (isLargeCanvas ? 120 : 40))
                             .padding(.top, 40)
                             .padding(.bottom, 20)
                             .opacity(isIdle ? 0.0 : 1.0)

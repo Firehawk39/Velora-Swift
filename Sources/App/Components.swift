@@ -320,7 +320,10 @@ struct TabButton: View {
 
     var isActive: Bool { activeTab == id }
     var isLandscape: Bool {
-        UIScreen.main.bounds.width > UIScreen.main.bounds.height
+        if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+            return windowScene.coordinateSpace.bounds.width > windowScene.coordinateSpace.bounds.height
+        }
+        return UIScreen.main.bounds.width > UIScreen.main.bounds.height
     }
 
     private var fontSize: CGFloat {
