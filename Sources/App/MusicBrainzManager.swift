@@ -257,6 +257,10 @@ final class MusicBrainzManager: ObservableObject {
         if let cached = nameToMBIDCache[primary], cached != "NOT_FOUND" {
             return cached
         }
+        if let canonical = FanartManager.shared.canonicalIndex.get(trimmed) ?? FanartManager.shared.canonicalIndex.get(primary), !canonical.isEmpty {
+            self.nameToMBIDCache[trimmed] = canonical
+            return canonical
+        }
         if hasAnyArtistFile(named: trimmed), let cached = nameToMBIDCache[trimmed], cached != "NOT_FOUND" {
             return cached
         }

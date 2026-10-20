@@ -146,6 +146,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     @Published var currentArtworkTrackId: String? = nil
     private var artworkDownloadTask: URLSessionDataTask? = nil
     private var downloadingArtworkTrackId: String? = nil
+    private var currentPrefetchTask: Task<Void, Never>? = nil
     private var seekTimer: Timer?
 
     var client: NavidromeClient
@@ -598,6 +599,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.artworkDownloadTask = nil
         self.downloadingArtworkTrackId = nil
         self.currentArtworkTrackId = nil
+        self.currentPrefetchTask?.cancel()
+        self.currentPrefetchTask = nil
 
         // STRICT FANART ISOLATION: Instantly clear backdrop if artist changed
         let primaryArtist = track.allArtists.first
@@ -660,9 +663,26 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self?.applyLyrics(lyrics, for: track) }
         }
 
-        let resolvedMbid = MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "") ?? MusicBrainzManager.shared.getCachedMBID(for: primaryArtist ?? "")
+        let resolvedMbid = MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "")
+            ?? MusicBrainzManager.shared.getCachedMBID(for: primaryArtist ?? "")
+            ?? FanartManager.shared.canonicalIndex.get(track.artist ?? "")
+            ?? FanartManager.shared.canonicalIndex.get(primaryArtist ?? "")
         FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
         FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
+
+        // Pillar 1: Navidrome-First 0ms LAN MBID resolution if not yet in RAM/disk cache
+        if resolvedMbid == nil, let aid = track.artistId, !aid.isEmpty, NetworkMonitor.shared.isConnected {
+            let primary = primaryArtist ?? (track.artist ?? "")
+            client.fetchArtistInfo(artistId: aid, artistName: primary) { [weak self] info in
+                guard self != nil else { return }
+                if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
+                    FanartManager.shared.updateCanonicalMBID(navMbid, for: primary)
+                    MusicBrainzManager.shared.saveArtistMetadata(artistName: primary, mbid: navMbid, biography: info?.biography)
+                    FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: navMbid)
+                    FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: navMbid)
+                }
+            }
+        }
 
         if NetworkMonitor.shared.isConnected {
             client.scrobble(track: track, submission: false)
@@ -679,29 +699,29 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     private func prefetchNextTracks() {
-        let prefetchCount = 3
-        let start = queueIndex + 1
-        let end = min(start + prefetchCount, queue.count)
+        currentPrefetchTask?.cancel()
+        currentPrefetchTask = nil
 
-        guard start < end else { return }
+        let nextIndex = queueIndex + 1
+        guard nextIndex < queue.count else { return }
+        let nextTrack = queue[nextIndex]
+        let primaryArtist = nextTrack.primaryArtist
+        guard !primaryArtist.isEmpty else { return }
 
-        // Give the active track 2.5s of exclusive network priority before prefetching next tracks
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-            guard let self = self else { return }
-            for i in start..<end {
-                guard i < self.queue.count else { continue }
-                let track = self.queue[i]
-                let primaryArtist = track.primaryArtist
-                guard !primaryArtist.isEmpty else { continue }
+        // Pillar 3: Single-Track (N+1) Prefetch with Cooperative Cancellation.
+        // Gives active track 3.0s of exclusive network priority before prefetching next track.
+        // If user skips or switches tracks during the 3.0s, the task is cancelled immediately (0 network calls emitted).
+        currentPrefetchTask = Task(priority: .background) { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, let self = self else { return }
 
-                Task(priority: .background) {
-                    // 1. Prefetch Backdrop Silently
-                    await FanartManager.shared.downloadBackdropSilently(for: track.allArtists, artistId: track.artistId)
+            // 1. Prefetch Backdrop for Track N+1 Silently
+            await FanartManager.shared.downloadBackdropSilently(for: nextTrack.allArtists, artistId: nextTrack.artistId)
 
-                    // 2. Prefetch Metadata Silently
-                    await MusicBrainzManager.shared.downloadMetadataSilently(for: primaryArtist)
-                }
-            }
+            guard !Task.isCancelled else { return }
+
+            // 2. Prefetch Metadata for Track N+1 Silently
+            await MusicBrainzManager.shared.downloadMetadataSilently(for: primaryArtist)
         }
     }
 

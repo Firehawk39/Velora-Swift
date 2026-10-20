@@ -670,16 +670,24 @@ final class FanartManager: ObservableObject {
 
         activeBackdropFetches.insert(key)
 
-        // 3. Resolve MBID and Fetch (prefer provided MBID from Navidrome or on-disk sidecar)
+        // 3. Resolve MBID and Fetch (prefer in-memory canonicalIndex, Navidrome LAN, or on-disk sidecar)
         let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
         var candidateMbid = (index == 0) ? providedMbid : nil
         var isProvidedMbid = (candidateMbid != nil && !candidateMbid!.isEmpty)
 
         if candidateMbid == nil || candidateMbid!.isEmpty {
-            if let data = try? Data(contentsOf: sidecarUrl),
+            if let indexed = canonicalIndex.get(artist) ?? canonicalIndex.get(primaryArtist), !indexed.isEmpty {
+                candidateMbid = indexed
+                isProvidedMbid = true
+            } else if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: artist) ?? MusicBrainzManager.shared.getCachedMBID(for: primaryArtist), !mbCached.isEmpty {
+                candidateMbid = mbCached
+                canonicalIndex.set(mbCached, for: artist)
+                isProvidedMbid = true
+            } else if let data = try? Data(contentsOf: sidecarUrl),
                let cached = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                !cached.isEmpty {
                 candidateMbid = cached
+                canonicalIndex.set(cached, for: artist)
                 isProvidedMbid = true // Treat cached sidecar as provided so it can self-heal if invalid!
             }
         }
@@ -687,29 +695,49 @@ final class FanartManager: ObservableObject {
         if let validMBID = candidateMbid, !validMBID.isEmpty {
             try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
             self.executeFanartQuery(resolvedMBID: validMBID, isProvided: isProvidedMbid, artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
-        } else {
-            self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { [weak self] result in
+        } else if index == 0, let aid = artistId, !aid.isEmpty, NetworkMonitor.shared.isConnected {
+            // Pillar 1: Query Navidrome server over LAN (1-3ms) before touching public MusicBrainz
+            NavidromeClient.shared.fetchArtistInfo(artistId: aid, artistName: artist) { [weak self] info in
                 guard let self = self else { return }
-                switch result {
-                case .found(let resolved):
-                    let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
-                    try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
+                    self.updateCanonicalMBID(navMbid, for: artist)
+                    MusicBrainzManager.shared.saveArtistMetadata(artistName: artist, mbid: navMbid, biography: info?.biography)
+                    try? navMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
                     Task { @MainActor in
-                        self.executeFanartQuery(resolvedMBID: resolved, isProvided: false, artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+                        self.executeFanartQuery(resolvedMBID: navMbid, isProvided: true, artist: artist, primaryArtist: primaryArtist, artistId: aid, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
                     }
-                case .notFound:
-                    // MusicBrainz doesn't have an MBID match — backdrops are strictly Fanart.tv only!
-                    Task { @MainActor in
-                        AssetRegistry.shared.markBackdropUnavailable(key: key)
-                        self.activeBackdropFetches.remove(key)
-                        self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-                    }
-                case .networkError:
-                    // Transient failure — do NOT write negative cache, allow retry on next pass
-                    Task { @MainActor in
-                        self.activeBackdropFetches.remove(key)
-                        self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
-                    }
+                } else {
+                    // Fall back to MusicBrainz public API safely
+                    self.resolveMBIDViaMusicBrainz(artist: artist, primaryArtist: primaryArtist, artistId: aid, key: key, fileUrl: fileUrl, sidecarUrl: sidecarUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+                }
+            }
+        } else {
+            self.resolveMBIDViaMusicBrainz(artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, sidecarUrl: sidecarUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+        }
+    }
+
+    private func resolveMBIDViaMusicBrainz(artist: String, primaryArtist: String, artistId: String?, key: String, fileUrl: URL, sidecarUrl: URL, artists: [String], index: Int, allowNetwork: Bool) {
+        self.getMBIDSafe(for: artist, priority: URLSessionTask.highPriority) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .found(let resolved):
+                try? resolved.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                self.updateCanonicalMBID(resolved, for: artist)
+                Task { @MainActor in
+                    self.executeFanartQuery(resolvedMBID: resolved, isProvided: false, artist: artist, primaryArtist: primaryArtist, artistId: artistId, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+                }
+            case .notFound:
+                // MusicBrainz doesn't have an MBID match — backdrops are strictly Fanart.tv only!
+                Task { @MainActor in
+                    AssetRegistry.shared.markBackdropUnavailable(key: key)
+                    self.activeBackdropFetches.remove(key)
+                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
+                }
+            case .networkError:
+                // Transient failure — do NOT write negative cache, allow retry on next pass
+                Task { @MainActor in
+                    self.activeBackdropFetches.remove(key)
+                    self.fetchBackdropRecursive(artists: artists, index: index + 1, artistId: nil, providedMbid: nil, allowNetwork: allowNetwork)
                 }
             }
         }
@@ -1029,10 +1057,18 @@ final class FanartManager: ObservableObject {
                 var isProvidedMbid = (candidateMbid != nil && !candidateMbid!.isEmpty)
 
                 if candidateMbid == nil || candidateMbid!.isEmpty {
-                    if let data = try? Data(contentsOf: sidecarUrl),
+                    if let indexed = canonicalIndex.get(artist) ?? canonicalIndex.get(primaryArtist), !indexed.isEmpty {
+                        candidateMbid = indexed
+                        isProvidedMbid = true
+                    } else if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: artist) ?? MusicBrainzManager.shared.getCachedMBID(for: primaryArtist), !mbCached.isEmpty {
+                        candidateMbid = mbCached
+                        canonicalIndex.set(mbCached, for: artist)
+                        isProvidedMbid = true
+                    } else if let data = try? Data(contentsOf: sidecarUrl),
                        let cached = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !cached.isEmpty {
                         candidateMbid = cached
+                        canonicalIndex.set(cached, for: artist)
                         isProvidedMbid = true
                     }
                 }
@@ -1763,6 +1799,7 @@ final class FanartManager: ObservableObject {
         let primary = extractPrimaryArtist(artist)
         if let valid = providedMbid, !valid.isEmpty {
             self.mbidCache[primary] = valid
+            canonicalIndex.set(valid, for: primary)
             completion(valid)
             return
         }
@@ -1770,11 +1807,23 @@ final class FanartManager: ObservableObject {
             completion(cached)
             return
         }
+        if let indexed = canonicalIndex.get(primary) ?? canonicalIndex.get(artist), !indexed.isEmpty {
+            self.mbidCache[primary] = indexed
+            completion(indexed)
+            return
+        }
+        if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: primary), !mbCached.isEmpty {
+            self.mbidCache[primary] = mbCached
+            canonicalIndex.set(mbCached, for: primary)
+            completion(mbCached)
+            return
+        }
         let backdropSidecar = self.backdropDir.appendingPathComponent(getCacheKey(artistName: primary) + ".mbid")
         if let data = try? Data(contentsOf: backdropSidecar),
            let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !cachedMbid.isEmpty {
             self.mbidCache[primary] = cachedMbid
+            canonicalIndex.set(cachedMbid, for: primary)
             completion(cachedMbid)
             return
         }
@@ -1783,6 +1832,7 @@ final class FanartManager: ObservableObject {
            let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !cachedMbid.isEmpty {
             self.mbidCache[primary] = cachedMbid
+            canonicalIndex.set(cachedMbid, for: primary)
             completion(cachedMbid)
             return
         }
@@ -1790,6 +1840,7 @@ final class FanartManager: ObservableObject {
             switch result {
             case .found(let mbid):
                 self?.mbidCache[primary] = mbid
+                self?.canonicalIndex.set(mbid, for: primary)
                 completion(mbid)
             case .notFound, .networkError:
                 completion(nil)
@@ -1821,8 +1872,14 @@ final class FanartManager: ObservableObject {
                 completion(.found(cached))
                 return
             }
-            if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: primary) {
+            if let indexed = FanartManager.shared.canonicalIndex.get(primary) ?? FanartManager.shared.canonicalIndex.get(artistName), !indexed.isEmpty {
+                FanartManager.shared.mbidCache[primary] = indexed
+                completion(.found(indexed))
+                return
+            }
+            if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: primary), !mbCached.isEmpty {
                 FanartManager.shared.mbidCache[primary] = mbCached
+                FanartManager.shared.canonicalIndex.set(mbCached, for: primary)
                 completion(.found(mbCached))
                 return
             }

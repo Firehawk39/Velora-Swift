@@ -47,7 +47,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
             interval = 0.0 // Zero artificial delay for Navidrome server — raw unthrottled power
             maxConcurrency = 64 // Full unbothered line-rate throughput
         } else if host.contains("musicbrainz.org") {
-            interval = 1.25 // Strict pacing: MusicBrainz requires <= 1 req/sec; 1.25s provides safe overhead margin
+            interval = 1.5 // Strict pacing: MusicBrainz requires <= 1 req/sec; 1.5s provides safe overhead margin
             maxConcurrency = 1
         } else if host.contains("lrclib.net") {
             interval = 2.2 // Paced at ~27 req/min to stay strictly under Cloudflare's 30 req/min limit
@@ -148,12 +148,8 @@ private class DomainThrottler: @unchecked Sendable {
         let now = Date()
         if isCircuitOpen {
             if now < circuitResumeTime {
-                let wait = circuitResumeTime.timeIntervalSince(now)
-                if wait > 0 && wait <= 30.0 {
-                    Thread.sleep(forTimeInterval: wait)
-                } else if wait > 30.0 {
-                    return false
-                }
+                // FAIL FAST non-blockingly (0ms). Never starve thread pools with Thread.sleep!
+                return false
             }
             // Half-open state: allow this request through to test the waters
             isCircuitOpen = false

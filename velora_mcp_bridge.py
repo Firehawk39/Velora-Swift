@@ -16,7 +16,7 @@ import argparse
 import urllib.request
 import urllib.error
 
-DEFAULT_URL = os.environ.get("VELORA_URL", "http://127.0.0.1:8765/mcp")
+DEFAULT_URL = os.environ.get("VELORA_URL", "http://192.168.1.8:8765/mcp")
 
 def send_to_velora(payload: dict, server_url: str) -> dict:
     try:

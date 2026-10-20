@@ -14,7 +14,7 @@ const readline = require('readline');
 const { execSync } = require('child_process');
 
 function normalizeUrl(raw) {
-    if (!raw) return 'http://192.168.1.12:8765/mcp';
+    if (!raw) return 'http://192.168.1.8:8765/mcp';
     let s = raw.trim();
     if (!s.startsWith('http://') && !s.startsWith('https://')) {
         s = 'http://' + s;
@@ -26,11 +26,11 @@ function normalizeUrl(raw) {
         if (!path || path === '/' || path === '') path = '/mcp';
         return `${u.protocol}//${u.hostname}:${u.port || 8765}${path}`;
     } catch {
-        return 'http://192.168.1.12:8765/mcp';
+        return 'http://192.168.1.8:8765/mcp';
     }
 }
 
-let currentTargetUrl = normalizeUrl(process.env.VELORA_URL || 'http://192.168.1.12:8765/mcp');
+let currentTargetUrl = normalizeUrl(process.env.VELORA_URL || 'http://192.168.1.8:8765/mcp');
 
 const VELORA_TOOLS = [
     {
