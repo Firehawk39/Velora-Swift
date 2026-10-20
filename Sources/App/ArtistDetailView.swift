@@ -509,45 +509,12 @@ struct ArtistBackdropView: View {
 
     private func resolveBackdropImage() -> UIImage? {
         let resolvedMbid = mbid ?? MusicBrainzManager.shared.getCachedMBID(for: artistName)
-        if let img = FanartManager.shared.getCachedBackdrop(for: artistName, artistId: artistId, mbid: resolvedMbid) {
-            return img
-        }
-        let primary = extractPrimaryArtist(artistName)
-        if primary != artistName, let img = FanartManager.shared.getCachedBackdrop(for: primary, artistId: artistId, mbid: resolvedMbid) {
-            return img
-        }
-        return nil
+        return FanartManager.shared.resolveBackdrop(for: artistName, artistId: artistId, mbid: resolvedMbid)
     }
 
     private func resolveBackdropUrl() -> URL? {
-        let primary = extractPrimaryArtist(artistName)
         let resolvedMbid = mbid ?? MusicBrainzManager.shared.getCachedMBID(for: artistName)
-        var candidates: [String] = []
-        if let m = resolvedMbid, !m.isEmpty { candidates.append(m) }
-        if !artistId.isEmpty { candidates.append(artistId) }
-        let k1 = FanartManager.shared.getCacheKey(artistName: artistName, artistId: artistId)
-        if !candidates.contains(k1) { candidates.append(k1) }
-        let s1 = FanartManager.shared.sanitizeFileName(artistName)
-        if !candidates.contains(s1) { candidates.append(s1) }
-        let s2 = FanartManager.shared.sanitizeFileName(primary)
-        if !candidates.contains(s2) { candidates.append(s2) }
-        
-        let sidecarUrl = VeloraStorage.backdrops.appendingPathComponent(k1 + ".mbid")
-        if let data = try? Data(contentsOf: sidecarUrl),
-           let cachedMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !cachedMbid.isEmpty, !candidates.contains(cachedMbid) {
-            candidates.append(cachedMbid)
-        }
-
-        for c in candidates {
-            let file = VeloraStorage.backdrops.appendingPathComponent("\(c).jpg")
-            if FileManager.default.fileExists(atPath: file.path),
-               let attr = try? FileManager.default.attributesOfItem(atPath: file.path),
-               (attr[.size] as? Int64 ?? 0) > 100 {
-                return file
-            }
-        }
-        return nil
+        return FanartManager.shared.resolveBackdropFileUrl(for: artistName, artistId: artistId, mbid: resolvedMbid)
     }
 
     var body: some View {

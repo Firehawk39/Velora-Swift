@@ -59,9 +59,8 @@ struct NowPlayingView: View {
             return current
         }
         guard let track = playback.currentTrack else { return nil }
-        let immediateMbid = track.musicBrainzId ?? mb.getCachedMBID(for: track.artist ?? "")
         for artist in track.allArtists {
-            let mbid = (artist == track.allArtists.first) ? immediateMbid : mb.getCachedMBID(for: artist)
+            let mbid = mb.getCachedMBID(for: artist) ?? mb.getCachedMBID(for: track.primaryArtist)
             if let cached = fanart.getCachedBackdrop(for: artist, artistId: track.artistId, mbid: mbid) {
                 return cached
             }
@@ -847,7 +846,7 @@ struct NowPlayingView: View {
                 if !artists.isEmpty {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isCyclingBackdrop = true
-                    let resolvedMbid = track.musicBrainzId ?? mb.getCachedMBID(for: targetArtist)
+                    let resolvedMbid = mb.getCachedMBID(for: targetArtist) ?? mb.getCachedMBID(for: track.primaryArtist)
                     FanartManager.shared.cycleBackdrop(for: artists, artistId: (targetArtist == track.primaryArtist ? track.artistId : nil), mbid: resolvedMbid) {
                         isCyclingBackdrop = false
                     }
@@ -991,10 +990,10 @@ struct NowPlayingView: View {
 
         // Strict Fanart isolation on track change
         let primaryArtist = track.allArtists.first
-        fanart.prepareForTrackChange(to: primaryArtist)
+        fanart.prepareForTrackChange(to: primaryArtist, artistId: track.artistId)
 
         // 0. Pre-populate biography and MBID immediately from disk cache (0ms instant display, offline-safe)
-        let immediateMbid = track.musicBrainzId ?? mb.getCachedMBID(for: artistName)
+        let artistMbid = mb.getCachedMBID(for: artistName) ?? mb.getCachedMBID(for: primaryArtist ?? "")
         if let cachedBio = mb.getArtistBiography(for: artistName), !cachedBio.isEmpty {
             self.artistBiography = cachedBio
         } else {
@@ -1002,11 +1001,11 @@ struct NowPlayingView: View {
         }
         self.loadArtistPortrait(for: track)
 
-        // 1. Immediately trigger backdrop fetch using known Picard MBID (cache check is instant)
-        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: immediateMbid, allowNetwork: false)
+        // 1. Immediately trigger backdrop fetch using cached artist MBID (cache check is instant)
+        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: false)
 
-        // 1b. Trigger clearlogo fetch using known Picard MBID
-        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: immediateMbid)
+        // 1b. Trigger clearlogo fetch using cached artist MBID
+        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
 
         // 2. Fetch extended info from Navidrome (MBID + Bio)
         if let artistId = track.artistId {
@@ -1021,13 +1020,13 @@ struct NowPlayingView: View {
                     }
                     self.isFetchingArtistInfo = false
 
-                    // If Navidrome provides the true artist MBID, use it; otherwise fallback to immediate MBID
-                    let artistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : immediateMbid)
-                    if let validMbid = artistMbid {
+                    // If Navidrome provides the true artist MBID, use it; otherwise fallback to cached artist MBID
+                    let resolvedArtistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : artistMbid)
+                    if let validMbid = resolvedArtistMbid {
                         mb.saveArtistMetadata(artistName: artistName, mbid: validMbid, biography: self.artistBiography)
                     }
-                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: true)
-                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
+                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: resolvedArtistMbid, allowNetwork: true)
+                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedArtistMbid)
                 }
             }
         }
@@ -1052,10 +1051,8 @@ struct NowPlayingView: View {
             withAnimation(.easeOut(duration: 0.2)) { artistPortraitImage = nil }
         }
         
-        let localUrl = VeloraStorage.artistPortraits.appendingPathComponent("\(newArtistId).jpg")
-        
-        // 1. Try local cache synchronously
-        if FileManager.default.fileExists(atPath: localUrl.path) {
+        // 1. Try local cache synchronously with prefix normalization
+        if let localUrl = resolveArtistPortraitUrl(id: newArtistId, serverUrl: nil) {
             DispatchQueue.global(qos: .userInitiated).async {
                 if let data = try? Data(contentsOf: localUrl), let img = UIImage(data: data) {
                     DispatchQueue.main.async {

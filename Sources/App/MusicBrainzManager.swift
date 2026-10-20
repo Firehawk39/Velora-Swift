@@ -186,6 +186,7 @@ final class MusicBrainzManager: ObservableObject {
     func saveArtistMetadata(artistName: String, mbid: String, biography: String?, extra: [String: Any]? = nil) {
         self.nameToMBIDCache[artistName] = mbid
         self.saveCache()
+        FanartManager.shared.updateCanonicalMBID(mbid, for: artistName)
 
         let fileName = "artist_\(mbid).json"
         let fileUrl = self.metadataDir.appendingPathComponent(fileName)
@@ -254,6 +255,12 @@ final class MusicBrainzManager: ObservableObject {
         }
         let primary = extractPrimaryArtist(trimmed)
         if let cached = nameToMBIDCache[primary], cached != "NOT_FOUND" {
+            return cached
+        }
+        if hasAnyArtistFile(named: trimmed), let cached = nameToMBIDCache[trimmed], cached != "NOT_FOUND" {
+            return cached
+        }
+        if primary != trimmed, hasAnyArtistFile(named: primary), let cached = nameToMBIDCache[primary], cached != "NOT_FOUND" {
             return cached
         }
         return nil

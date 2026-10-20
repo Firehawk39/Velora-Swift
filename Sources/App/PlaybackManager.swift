@@ -601,7 +601,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         // STRICT FANART ISOLATION: Instantly clear backdrop if artist changed
         let primaryArtist = track.allArtists.first
-        FanartManager.shared.prepareForTrackChange(to: primaryArtist)
+        FanartManager.shared.prepareForTrackChange(to: primaryArtist, artistId: track.artistId)
 
         AppLogger.shared.audio(
             "Track playback initiated: '\(track.title)' by \(track.artist ?? "Unknown")",
@@ -660,7 +660,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self?.applyLyrics(lyrics, for: track) }
         }
 
-        let resolvedMbid = track.musicBrainzId ?? MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "")
+        let resolvedMbid = MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "") ?? MusicBrainzManager.shared.getCachedMBID(for: primaryArtist ?? "")
         FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
         FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
 
