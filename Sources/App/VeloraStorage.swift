@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// Centralized storage paths for the Velora app.
 /// All data lives in Application Support/VeloraData/ — invisible to the user's Files app,
