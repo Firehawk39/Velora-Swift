@@ -55,6 +55,9 @@ struct NowPlayingView: View {
 
     /// Resolves backdrop with instant local disk & memory fallback matching ArtistDetailView
     private var activeBackdropImage: UIImage? {
+        if fanart.isShowingFallbackBackdrop {
+            return nil
+        }
         if let current = fanart.currentBackdrop {
             return current
         }
@@ -856,6 +859,8 @@ struct NowPlayingView: View {
             Group {
                 if isCyclingBackdrop {
                     LoadingCircle(size: 28, strokeWidth: 3, accentColor: .red)
+                } else if fanart.isShowingFallbackBackdrop {
+                    Image(systemName: "sparkles")
                 } else {
                     Image(systemName: "photo.on.rectangle.angled")
                 }
@@ -867,7 +872,7 @@ struct NowPlayingView: View {
             .clipShape(Circle())
             .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
         }
-        .accessibilityLabel("Change Backdrop")
+        .accessibilityLabel(fanart.isShowingFallbackBackdrop ? "Ambient Mesh Mode" : "Change Backdrop")
     }
 
     private func cycleClearLogoAction() {

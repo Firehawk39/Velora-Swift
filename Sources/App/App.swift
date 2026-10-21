@@ -33,17 +33,18 @@ struct VeloraApp: App {
         VeloraMCPServer.shared.start()
     }
 
-    /// Purge corrupt "NA" poison image files written by previous app versions on download failure.
-    /// These 2-byte text files pass file-existence checks but cannot be rendered as images,
-    /// causing permanently missing artwork even after Repair Sync completes.
+    /// Purge corrupt "NA" poison image files and sub-spec downloads written on failure.
+    /// These files pass file-existence checks but cannot be rendered as images,
+    /// causing missing artwork and wasted disk storage.
     private static func purgePoisonedImageCache() {
         let fm = FileManager.default
-        let dirs = [VeloraStorage.coverArt, VeloraStorage.artistPortraits]
+        let dirs = [VeloraStorage.coverArt, VeloraStorage.artistPortraits, VeloraStorage.backdrops, VeloraStorage.clearLogos]
         for dir in dirs {
             guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { continue }
             for file in files {
                 if let attrs = try? file.resourceValues(forKeys: [.fileSizeKey]), let size = attrs.fileSize {
-                    if size < 1000 {
+                    let minSize = (dir == VeloraStorage.backdrops) ? 10_000 : 1_000
+                    if size < minSize {
                         try? fm.removeItem(at: file)
                     } else if let data = try? Data(contentsOf: file), UIImage(data: data) == nil {
                         try? fm.removeItem(at: file)
@@ -62,10 +63,20 @@ struct VeloraApp: App {
         let maxMemoryCache = min(Int(Double(physicalMemory) * 0.10), 500 * 1024 * 1024)
         let memoryCacheSize = max(50 * 1024 * 1024, maxMemoryCache)
 
+        // Set diskCapacity to 0: Velora maintains its own persistent, content-addressable
+        // file system in Application Support/VeloraData (VeloraStorage).
+        // Foundation URLCache disk writing causes massive duplicate cache bloat (up to 500MB)
+        // while streaming. Disabling URLCache disk writes saves massive storage with zero impact on streaming.
         let cache = URLCache(memoryCapacity: memoryCacheSize,
-                             diskCapacity: 500 * 1024 * 1024,
-                             diskPath: "velora_media_cache")
+                             diskCapacity: 0,
+                             diskPath: nil)
         URLCache.shared = cache
+
+        // Evict legacy Foundation disk cache folder if it was created by older builds
+        if let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let legacyCache = cachesDir.appendingPathComponent("velora_media_cache")
+            try? FileManager.default.removeItem(at: legacyCache)
+        }
     }
 
     var body: some Scene {

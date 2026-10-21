@@ -56,7 +56,7 @@ enum VeloraStorage {
     }
 
     /// Automatically sweeps cache directories (Backdrops, ClearLogos, CoverArt, ArtistPortraits)
-    /// and purges any 0-byte or corrupted assets (<= 100 bytes), self-healing storage.
+    /// and purges any 0-byte or corrupted assets (< 10KB for backdrops, < 1KB for logos/covers, non-image files, or poison markers).
     @discardableResult
     static func autoCleanupCorruptedAssets() -> Int {
         let fm = FileManager.default
@@ -68,19 +68,32 @@ enum VeloraStorage {
             for file in files {
                 let ext = file.pathExtension.lowercased()
                 let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
-                // Purge corrupted/zero-byte image files and empty sidecars
-                if (ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp") && size <= 100 {
-                    try? fm.removeItem(at: file)
-                    purgedCount += 1
-                } else if ext == "mbid" && size == 0 {
-                    try? fm.removeItem(at: file)
-                    purgedCount += 1
+                
+                if ext == "mbid" {
+                    if size == 0 {
+                        try? fm.removeItem(at: file)
+                        purgedCount += 1
+                    } else if let data = try? Data(contentsOf: file),
+                              let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                              text.isEmpty || text == "NOT_FOUND" || text.contains("<html") {
+                        try? fm.removeItem(at: file)
+                        purgedCount += 1
+                    }
+                } else if ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" {
+                    let minThreshold: Int64 = (dir == backdrops) ? 10_000 : 1_000
+                    if size < minThreshold {
+                        try? fm.removeItem(at: file)
+                        purgedCount += 1
+                    } else if let data = try? Data(contentsOf: file), UIImage(data: data) == nil {
+                        try? fm.removeItem(at: file)
+                        purgedCount += 1
+                    }
                 }
             }
         }
         if purgedCount > 0 {
             Task { @MainActor in
-                AppLogger.shared.log("[Storage] 🧹 Auto-cleaned \(purgedCount) corrupted/0-byte cache assets.", level: .info)
+                AppLogger.shared.log("[Storage] 🧹 Auto-cleaned \(purgedCount) corrupted/sub-spec cache assets.", level: .info)
             }
         }
         return purgedCount

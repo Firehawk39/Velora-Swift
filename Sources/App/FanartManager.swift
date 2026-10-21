@@ -51,6 +51,7 @@ final class FanartManager: ObservableObject {
     @Published var currentBackdrop: UIImage? = nil
     @Published var currentClearLogo: UIImage? = nil
     @Published var activeArtworkArtist: String? = nil
+    @Published var isShowingFallbackBackdrop: Bool = false
     private let imageCache = SendableImageCache()
     private let logoCache  = SendableImageCache()
     nonisolated let canonicalIndex = SendableCanonicalIndex()
@@ -171,6 +172,7 @@ final class FanartManager: ObservableObject {
         self.currentClearLogoArtist = nil
         self.currentBackdrop = nil
         self.currentClearLogo = nil
+        self.isShowingFallbackBackdrop = false
     }
 
     /// Direct Seamless Cross-Fade (Spotify / Apple Music Standard):
@@ -184,6 +186,7 @@ final class FanartManager: ObservableObject {
             self.activeArtworkArtist = newArtist
             self.currentArtistName = newArtist
             self.currentClearLogoArtist = newArtist
+            self.isShowingFallbackBackdrop = false
 
             // Direct Seamless Cross-fade: If the incoming artist already has a cached backdrop,
             // cross-fade directly into it without ever showing a blank gradient!
@@ -564,22 +567,40 @@ final class FanartManager: ObservableObject {
         let fileUrl = self.backdropDir.appendingPathComponent(key + ".jpg")
         let sidecarUrl = self.backdropDir.appendingPathComponent(key + ".mbid")
 
-        // Cycling is strictly an online feature
-        guard NetworkMonitor.shared.isConnected else {
+        // If user is currently viewing the pure fallback ambient backdrop, next tap immediately returns to Fanart!
+        if self.isShowingFallbackBackdrop {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                self.isShowingFallbackBackdrop = false
+            }
+            if let cached = self.resolveBackdrop(for: primaryArtist, artistId: artistId, mbid: mbid) {
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    self.currentBackdrop = cached
+                }
+            }
+            completion()
+            return
+        }
+
+        // If offline or Fanart is unconfigured, toggle to fallback ambient mesh directly!
+        guard NetworkMonitor.shared.isConnected, let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                self.isShowingFallbackBackdrop = true
+                self.currentBackdrop = nil
+            }
+            AppLogger.shared.log("[Backdrop] Cycled to Pure Ambient Mesh Fallback (No Fanart)")
             completion()
             return
         }
 
         let doCycle: (String) -> Void = { [weak self] resolvedMBID in
             guard let self = self else { completion(); return }
-            guard let apiKey = self.fanartApiKey, !apiKey.isEmpty else {
-                AppLogger.shared.log("[Fanart] API key not configured, cannot cycle backdrop.")
-                completion()
-                return
-            }
             let urlString = "https://webservice.fanart.tv/v3/music/\(resolvedMBID)?api_key=\(apiKey)"
             self.fetchFromFanart(urlString: urlString, type: .background, artistName: primaryArtist, randomize: true, priority: URLSessionTask.highPriority) { [weak self] url, isEmpty in
                 guard let self = self else { completion(); return }
+                if self.isShowingFallbackBackdrop {
+                    completion()
+                    return
+                }
                 if let url = url {
                     AppLogger.shared.log("[Fanart] Cycling backdrop to URL for \(primaryArtist)")
                     self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { image in
@@ -592,46 +613,13 @@ final class FanartManager: ObservableObject {
                         }
                         completion()
                     }
-                } else if isEmpty {
-                    // Self-healing recovery: If the MBID used returned 404, query MusicBrainz by name to see if we had the wrong MBID!
-                    let primary = extractPrimaryArtist(primaryArtist)
-                    self.mbidCache.removeValue(forKey: primary)
-                    self.mbidCache.removeValue(forKey: primaryArtist)
-                    self.getMBIDSafe(for: primaryArtist, priority: URLSessionTask.highPriority) { [weak self] mbResult in
-                        guard let self = self else { completion(); return }
-                        Task { @MainActor in
-                            if case .found(let healedMbid) = mbResult, healedMbid != resolvedMBID {
-                                AppLogger.shared.log("[Fanart] Self-healing MBID during cycle for \(primaryArtist): \(resolvedMBID) -> \(healedMbid)")
-                                try? healedMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                                self.mbidCache[primaryArtist] = healedMbid
-                                self.mbidCache[primary] = healedMbid
-                                let retryUrlString = "https://webservice.fanart.tv/v3/music/\(healedMbid)?api_key=\(apiKey)"
-                                self.fetchFromFanart(urlString: retryUrlString, type: .background, artistName: primaryArtist, randomize: true, priority: URLSessionTask.highPriority) { [weak self] retryUrl, _ in
-                                    guard let self = self else { completion(); return }
-                                    if let rUrl = retryUrl {
-                                        self.downloadAndCache(from: rUrl, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: healedMbid, priority: URLSessionTask.highPriority) { image in
-                                            if let img = image, (self.currentArtistName == primaryArtist || self.activeArtworkArtist == primaryArtist) {
-                                                self.currentArtistName = primaryArtist
-                                                self.activeArtworkArtist = primaryArtist
-                                                self.currentClearLogoArtist = primaryArtist
-                                                withAnimation(.easeInOut(duration: 0.5)) { self.currentBackdrop = img }
-                                                self.fetchClearLogo(for: [primaryArtist], artistId: artistId, mbid: healedMbid)
-                                            }
-                                            completion()
-                                        }
-                                    } else {
-                                        AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist) (Fanart only)")
-                                        completion()
-                                    }
-                                }
-                            } else {
-                                AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist) (Fanart only)")
-                                completion()
-                            }
-                        }
-                    }
                 } else {
-                    AppLogger.shared.log("[Fanart] Could not cycle backdrop for \(primaryArtist)")
+                    // Fallback to Ambient Mesh if fanart is empty or cycled to fallback slot
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        self.isShowingFallbackBackdrop = true
+                        self.currentBackdrop = nil
+                    }
+                    AppLogger.shared.log("[Backdrop] Cycled to Pure Ambient Mesh Fallback for \(primaryArtist)")
                     completion()
                 }
             }
@@ -1456,33 +1444,33 @@ final class FanartManager: ObservableObject {
                 return
             }
             DispatchQueue.main.async {
-                if let data = data, let img = UIImage(data: data) {
-                    try? data.write(to: localUrl)
-                    if let aid = artistId, !aid.isEmpty {
-                        let aidFileUrl = self.clearLogoDir.appendingPathComponent("logo_\(aid).png")
-                        if aidFileUrl.path != localUrl.path {
-                            try? data.write(to: aidFileUrl)
-                        }
-                        self.logoCache.setObject(img, forKey: "logo_\(aid)" as NSString)
+                guard let data = data, data.count >= 1_000, let img = UIImage(data: data) else {
+                    if error != nil {
+                        AppLogger.shared.log("[TheAudioDB] Clearlogo download failed for \(artist) — will retry next pass", level: .warning)
                     }
-                    if let mbid = usedMbid, !mbid.isEmpty {
-                        let mbidFileUrl = self.clearLogoDir.appendingPathComponent("logo_\(mbid).png")
-                        if mbidFileUrl.path != localUrl.path {
-                            try? data.write(to: mbidFileUrl)
-                        }
-                        self.logoCache.setObject(img, forKey: "logo_\(mbid)" as NSString)
-                        let sidecarUrl = localUrl.deletingPathExtension().appendingPathExtension("mbid")
-                        try? mbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                    }
-                    self.logoCache.setObject(img, forKey: cacheKey as NSString)
-                    let matchesActiveArtwork = (self.activeArtworkArtist == nil || self.activeArtworkArtist == artist)
-                    let matchesLogoArtist = (self.currentClearLogoArtist == artist || self.activeArtworkArtist == artist)
-                    if matchesActiveArtwork && matchesLogoArtist {
-                        self.currentClearLogoArtist = artist
-                        withAnimation(.easeInOut(duration: 0.6)) { self.currentClearLogo = img }
-                    }
-                } else if error != nil {
-                    AppLogger.shared.log("[TheAudioDB] Clearlogo download failed for \(artist) — will retry next pass", level: .warning)
+                    self.activeClearLogoFetches.remove(cacheKey)
+                    if let aid = artistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
+                    if let mbid = usedMbid, !mbid.isEmpty { self.activeClearLogoFetches.remove("logo_\(mbid)") }
+                    completion?()
+                    return
+                }
+
+                // Save ONCE to the canonical local URL (eliminates duplicate PNG copies)
+                try? data.write(to: localUrl)
+                if let aid = artistId, !aid.isEmpty {
+                    self.logoCache.setObject(img, forKey: "logo_\(aid)" as NSString)
+                }
+                if let mbid = usedMbid, !mbid.isEmpty {
+                    self.logoCache.setObject(img, forKey: "logo_\(mbid)" as NSString)
+                    let sidecarUrl = localUrl.deletingPathExtension().appendingPathExtension("mbid")
+                    try? mbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                }
+                self.logoCache.setObject(img, forKey: cacheKey as NSString)
+                let matchesActiveArtwork = (self.activeArtworkArtist == nil || self.activeArtworkArtist == artist)
+                let matchesLogoArtist = (self.currentClearLogoArtist == artist || self.activeArtworkArtist == artist)
+                if matchesActiveArtwork && matchesLogoArtist {
+                    self.currentClearLogoArtist = artist
+                    withAnimation(.easeInOut(duration: 0.6)) { self.currentClearLogo = img }
                 }
                 self.activeClearLogoFetches.remove(cacheKey)
                 if let aid = artistId, !aid.isEmpty { self.activeClearLogoFetches.remove("logo_" + aid) }
@@ -1633,17 +1621,31 @@ final class FanartManager: ObservableObject {
                             let defaultIndex = abs(hashValue) % bgs.count
                             let index = defaultIndex
                             
-                            if randomize && bgs.count > 1 {
+                            if randomize {
                                 Task { @MainActor in
+                                    // Total states include all available Fanart backdrops PLUS 1 Pure Ambient Fallback slot!
+                                    let totalStates = bgs.count + 1
                                     let current = FanartManager.shared.backdropCycleIndices[artistName] ?? defaultIndex
-                                    let nextIndex = (current + 1) % bgs.count
+                                    let nextIndex = (current + 1) % totalStates
                                     FanartManager.shared.backdropCycleIndices[artistName] = nextIndex
-                                    let selected = bgs[nextIndex]["url"] as? String
-                                    completion(selected, false)
+
+                                    if nextIndex == bgs.count {
+                                        // This is the FALLBACK state (No Fanart)!
+                                        withAnimation(.easeInOut(duration: 0.5)) {
+                                            FanartManager.shared.isShowingFallbackBackdrop = true
+                                            FanartManager.shared.currentBackdrop = nil
+                                        }
+                                        AppLogger.shared.log("[Fanart] Cycled to Pure Ambient Mesh Fallback (No Fanart) for \(artistName)")
+                                        completion(nil, false)
+                                    } else {
+                                        withAnimation(.easeInOut(duration: 0.5)) {
+                                            FanartManager.shared.isShowingFallbackBackdrop = false
+                                        }
+                                        let selected = bgs[nextIndex]["url"] as? String
+                                        completion(selected, false)
+                                    }
                                 }
                                 return
-                            } else if randomize && bgs.count == 1 {
-                                AppLogger.shared.log("[Fanart] Only 1 backdrop exists for \(artistName), cannot cycle.")
                             }
                             
                             let selected = bgs[index]["url"] as? String
@@ -1736,56 +1738,47 @@ final class FanartManager: ObservableObject {
         var req = URLRequest(url: url)
         req.timeoutInterval = 20.0
         ThrottledNetworkManager.shared.enqueue(request: req, priority: priority) { data, _, _ in
-            if let data = data, let image = UIImage(data: data) {
-                if let minRes = minResolution {
-                    let cgW = CGFloat(image.cgImage?.width ?? Int(image.size.width * image.scale))
-                    let cgH = CGFloat(image.cgImage?.height ?? Int(image.size.height * image.scale))
-                    let w = max(cgW, image.size.width)
-                    let h = max(cgH, image.size.height)
-                    if w < minRes.width || h < minRes.height {
-                        DispatchQueue.main.async {
-                            AppLogger.shared.log("[Backdrop] Rejected non-1080p backdrop for \(primaryArtistName): \(Int(w))x\(Int(h)) is below 1080p minimum (\(Int(minRes.width))x\(Int(minRes.height))).", level: .info)
-                            completion(nil)
-                        }
-                        return
-                    }
-                }
-
-                try? data.write(to: localUrl)
-                let sanitizedName = self.sanitizeFileName(primaryArtistName)
-                let altUrl = self.backdropDir.appendingPathComponent("\(sanitizedName).jpg")
-                if altUrl.path != localUrl.path {
-                    try? data.write(to: altUrl)
-                }
-
-                if let validMbid = mbid, !validMbid.isEmpty {
-                    let mbidUrl = self.backdropDir.appendingPathComponent("\(validMbid).jpg")
-                    if mbidUrl.path != localUrl.path {
-                        try? data.write(to: mbidUrl)
-                    }
-                    let sidecarUrl = self.backdropDir.appendingPathComponent("\(cacheKey).mbid")
-                    try? validMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                    let altSidecar = self.backdropDir.appendingPathComponent("\(sanitizedName).mbid")
-                    try? validMbid.write(to: altSidecar, atomically: true, encoding: .utf8)
-                }
-
-                // CRITICAL: Even if this was a "silent" or background fetch,
-                // if the artist is the one we are currently viewing, update the UI!
-                DispatchQueue.main.async {
-                    self.imageCache.setObject(image, forKey: cacheKey as NSString)
-                    self.imageCache.setObject(image, forKey: sanitizedName as NSString)
-                    if let validMbid = mbid, !validMbid.isEmpty {
-                        self.imageCache.setObject(image, forKey: validMbid as NSString)
-                    }
-                    if self.currentArtistName == primaryArtistName || self.activeArtworkArtist == primaryArtistName {
-                        withAnimation(.easeInOut(duration: 0.8)) {
-                            self.currentBackdrop = image
-                        }
-                    }
-                    completion(image)
-                }
-            } else {
+            guard let data = data, data.count >= 10_000, let image = UIImage(data: data) else {
                 DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            if let minRes = minResolution {
+                let cgW = CGFloat(image.cgImage?.width ?? Int(image.size.width * image.scale))
+                let cgH = CGFloat(image.cgImage?.height ?? Int(image.size.height * image.scale))
+                let w = max(cgW, image.size.width)
+                let h = max(cgH, image.size.height)
+                if w < minRes.width || h < minRes.height {
+                    DispatchQueue.main.async {
+                        AppLogger.shared.log("[Backdrop] Rejected non-1080p backdrop for \(primaryArtistName): \(Int(w))x\(Int(h)) is below 1080p minimum (\(Int(minRes.width))x\(Int(minRes.height))).", level: .info)
+                        completion(nil)
+                    }
+                    return
+                }
+            }
+
+            // Save ONCE to the canonical file URL (no duplicate multi-megabyte copies!)
+            try? data.write(to: localUrl)
+            let sanitizedName = self.sanitizeFileName(primaryArtistName)
+
+            if let validMbid = mbid, !validMbid.isEmpty {
+                let sidecarUrl = self.backdropDir.appendingPathComponent("\(cacheKey).mbid")
+                try? validMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+            }
+
+            // In-memory L1 cache for instant 0ms access without multi-file disk duplication
+            DispatchQueue.main.async {
+                self.imageCache.setObject(image, forKey: cacheKey as NSString)
+                self.imageCache.setObject(image, forKey: sanitizedName as NSString)
+                if let validMbid = mbid, !validMbid.isEmpty {
+                    self.imageCache.setObject(image, forKey: validMbid as NSString)
+                }
+                if self.currentArtistName == primaryArtistName || self.activeArtworkArtist == primaryArtistName {
+                    withAnimation(.easeInOut(duration: 0.8)) {
+                        self.currentBackdrop = image
+                    }
+                }
+                completion(image)
             }
         }
     }
