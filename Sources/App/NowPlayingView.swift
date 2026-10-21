@@ -53,20 +53,49 @@ struct NowPlayingView: View {
     var isSmallDevice: Bool { UIScreen.main.bounds.width <= 375 }
     var isSE:          Bool { ScreenTier.isSE }
 
-    /// Resolves backdrop with instant local disk & memory fallback matching ArtistDetailView
+    /// Resolves backdrop with instant local disk & memory fallback matching ArtistDetailView.
+    /// Strictly guarantees 0 mismatch: will NEVER display a backdrop belonging to a previous artist.
     private var activeBackdropImage: UIImage? {
         if fanart.isShowingFallbackBackdrop {
             return nil
         }
-        if let current = fanart.currentBackdrop {
+        guard let track = playback.currentTrack else { return nil }
+        let currentArtists = Set(track.allArtists.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) })
+        let primaryLower = track.primaryArtist.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Only return currentBackdrop if it strictly belongs to the currently playing track's artist!
+        if let current = fanart.currentBackdrop,
+           let activeArtist = fanart.activeArtworkArtist?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+           (currentArtists.contains(activeArtist) || activeArtist == primaryLower) {
             return current
         }
-        guard let track = playback.currentTrack else { return nil }
+
+        // Fast RAM/disk fallback for current track's artists
         for artist in track.allArtists {
             let mbid = mb.getCachedMBID(for: artist) ?? mb.getCachedMBID(for: track.primaryArtist)
             if let cached = fanart.getCachedBackdrop(for: artist, artistId: track.artistId, mbid: mbid) {
                 return cached
             }
+        }
+        return nil
+    }
+
+    /// Resolves transparent clear logo with strict artist identity matching.
+    /// Eliminates mismatch when skipping fast: only renders if the logo belongs to the active track's artist.
+    private var activeClearLogoImage: UIImage? {
+        guard let track = playback.currentTrack else { return nil }
+        let currentArtists = Set(track.allArtists.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) })
+        let primaryLower = track.primaryArtist.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let logo = fanart.currentClearLogo,
+           let logoArtist = fanart.currentClearLogoArtist?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines),
+           (currentArtists.contains(logoArtist) || logoArtist == primaryLower) {
+            return logo
+        }
+
+        // Fast RAM/disk fallback for current track's artists
+        if let cached = fanart.getCachedClearLogo(for: track.allArtists, artistId: track.artistId) {
+            return cached
         }
         return nil
     }
@@ -449,7 +478,7 @@ struct NowPlayingView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .overlay(alignment: .bottomTrailing) {
-                            if let logo = fanart.currentClearLogo {
+                            if let logo = activeClearLogoImage {
                                 Image(uiImage: logo)
                                     .resizable()
                                     .scaledToFit()
@@ -843,7 +872,14 @@ struct NowPlayingView: View {
         Button {
             resetIdleTimer()
             if let track = playback.currentTrack, !isCyclingBackdrop {
-                let targetArtist = fanart.activeArtworkArtist ?? track.primaryArtist
+                let currentArtists = Set(track.allArtists.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) })
+                let activeArtistValid: String? = {
+                    if let active = fanart.activeArtworkArtist, currentArtists.contains(active.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        return active
+                    }
+                    return nil
+                }()
+                let targetArtist = activeArtistValid ?? track.primaryArtist
                 let allTrackArtists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
                 let artists = [targetArtist] + allTrackArtists.filter { $0 != targetArtist }
                 if !artists.isEmpty {
@@ -878,7 +914,14 @@ struct NowPlayingView: View {
     private func cycleClearLogoAction() {
         resetIdleTimer()
         guard let track = playback.currentTrack, !isCyclingClearLogo else { return }
-        let targetArtist = fanart.activeArtworkArtist ?? track.primaryArtist
+        let currentArtists = Set(track.allArtists.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) })
+        let activeArtistValid: String? = {
+            if let active = fanart.activeArtworkArtist, currentArtists.contains(active.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return active
+            }
+            return nil
+        }()
+        let targetArtist = activeArtistValid ?? track.primaryArtist
         let allTrackArtists = track.allArtists.isEmpty ? [track.primaryArtist] : track.allArtists
         let artists = [targetArtist] + allTrackArtists.filter { $0 != targetArtist }
         guard !artists.isEmpty else { return }
@@ -948,7 +991,7 @@ struct NowPlayingView: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if let logo = fanart.currentClearLogo {
+                if let logo = activeClearLogoImage {
                     Image(uiImage: logo)
                         .resizable()
                         .scaledToFit()

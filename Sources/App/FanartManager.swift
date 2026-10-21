@@ -51,10 +51,50 @@ final class FanartManager: ObservableObject {
     @Published var currentBackdrop: UIImage? = nil
     @Published var currentClearLogo: UIImage? = nil
     @Published var activeArtworkArtist: String? = nil
+    @Published var currentClearLogoArtist: String? = nil
     @Published var isShowingFallbackBackdrop: Bool = false
     private let imageCache = SendableImageCache()
     private let logoCache  = SendableImageCache()
     nonisolated let canonicalIndex = SendableCanonicalIndex()
+    private var currentPlaybackGeneration: UInt64 = 0
+
+    /// Verifies if the candidate artist matches the currently playing track's artist.
+    /// Uses PlaybackManager.shared.currentTrack as the single source of truth,
+    /// falling back to activeArtworkArtist during initial startup or track transitions.
+    func isCurrentPlayingArtist(_ artist: String, primaryArtist: String? = nil) -> Bool {
+        let cleanArtist = artist.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanArtist.isEmpty else { return false }
+
+        // 1. Primary Source of Truth: Active playback track in PlaybackManager
+        if let currentTrack = PlaybackManager.shared?.currentTrack {
+            let trackArtists = Set(currentTrack.allArtists.map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) })
+            let trackPrimary = currentTrack.primaryArtist.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if trackArtists.contains(cleanArtist) || trackPrimary == cleanArtist || trackArtists.contains(extractPrimaryArtist(cleanArtist).lowercased()) {
+                return true
+            }
+            if let p = primaryArtist?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !p.isEmpty {
+                if trackArtists.contains(p) || trackPrimary == p || trackArtists.contains(extractPrimaryArtist(p).lowercased()) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        // 2. Secondary fallback if playback track has not initialized yet
+        guard let current = self.activeArtworkArtist?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !current.isEmpty else {
+            return false
+        }
+        if cleanArtist == current || extractPrimaryArtist(cleanArtist).lowercased() == current {
+            return true
+        }
+        if let p = primaryArtist?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !p.isEmpty {
+            if p == current || extractPrimaryArtist(p).lowercased() == current {
+                return true
+            }
+        }
+        return false
+    }
 
     // Stores discovered clear logo URLs for each artist across Fanart.tv and TheAudioDB
     var clearLogoUrlsByArtist: [String: [String]] = [:]
@@ -178,6 +218,7 @@ final class FanartManager: ObservableObject {
     /// Direct Seamless Cross-Fade (Spotify / Apple Music Standard):
     /// Pre-resolves the incoming track's backdrop and cross-fades directly without ever flashing an empty gradient.
     func prepareForTrackChange(to primaryArtist: String?, artistId: String? = nil) {
+        currentPlaybackGeneration &+= 1
         guard let newArtist = primaryArtist, !newArtist.isEmpty else {
             resetActivePlaybackDisplay()
             return
@@ -479,6 +520,7 @@ final class FanartManager: ObservableObject {
         guard !artists.isEmpty else { return }
         let primaryArtist = artists[0]
         let isNewArtist = self.currentArtistName != primaryArtist
+        let generation = self.currentPlaybackGeneration
 
         if isNewArtist {
             self.currentArtistName = primaryArtist
@@ -526,6 +568,12 @@ final class FanartManager: ObservableObject {
             }
 
             await MainActor.run {
+                // RACE-CONDITION GUARD: Ensure track has NOT changed while checking disk!
+                guard self.currentPlaybackGeneration == generation, self.isCurrentPlayingArtist(primaryArtist) else {
+                    AppLogger.shared.log("[Fanart] Aborting stale detached backdrop resolution for \(primaryArtist) — track was skipped")
+                    return
+                }
+
                 if let cached = hitImage {
                     AppLogger.shared.fanart(
                         "Backdrop loaded into UI state for \(primaryArtist)",
@@ -604,7 +652,7 @@ final class FanartManager: ObservableObject {
                 if let url = url {
                     AppLogger.shared.log("[Fanart] Cycling backdrop to URL for \(primaryArtist)")
                     self.downloadAndCache(from: url, to: fileUrl, primaryArtistName: primaryArtist, cacheKey: key, mbid: resolvedMBID, priority: URLSessionTask.highPriority) { image in
-                        if let img = image, (self.currentArtistName == primaryArtist || self.activeArtworkArtist == primaryArtist) {
+                        if let img = image, self.isCurrentPlayingArtist(primaryArtist) {
                             self.currentArtistName = primaryArtist
                             self.activeArtworkArtist = primaryArtist
                             self.currentClearLogoArtist = primaryArtist
@@ -828,6 +876,11 @@ final class FanartManager: ObservableObject {
                     guard let self = self else { return }
                     if success {
                         self.activeBackdropFetches.remove(key)
+                        // RACE-CONDITION GUARD: Verify active track before mutating UI
+                        guard self.isCurrentPlayingArtist(artist, primaryArtist: primaryArtist) else {
+                            AppLogger.shared.log("[Fanart] Discarding stale TheAudioDB backdrop for \(artist) — user skipped track")
+                            return
+                        }
                         self.currentArtistName = artist
                         self.activeArtworkArtist = artist
                         self.currentClearLogoArtist = artist
@@ -855,6 +908,11 @@ final class FanartManager: ObservableObject {
                     guard let self = self else { return }
                     self.activeBackdropFetches.remove(key)
                     if let img = image {
+                        // RACE-CONDITION GUARD: Verify active track before mutating UI
+                        guard self.isCurrentPlayingArtist(artist, primaryArtist: primaryArtist) else {
+                            AppLogger.shared.log("[Fanart] Discarding stale Fanart.tv backdrop for \(artist) — user skipped track")
+                            return
+                        }
                         self.currentArtistName = artist
                         self.activeArtworkArtist = artist
                         self.currentClearLogoArtist = artist
@@ -1110,7 +1168,6 @@ final class FanartManager: ObservableObject {
     // MARK: - Clear Logos (TheAudioDB ONLY)
 
     private var activeClearLogoFetches = Set<String>()
-    private var currentClearLogoArtist: String?
 
     /// Convenience single-artist wrapper for fetchClearLogo.
     func fetchClearLogo(for artist: String, mbid: String? = nil) {
@@ -1123,6 +1180,9 @@ final class FanartManager: ObservableObject {
         guard !artists.isEmpty else { return }
         // STRICT ARTIST LINKING: Prioritize active backdrop artist to guarantee logo matches backdrop
         let primary = activeArtworkArtist ?? extractPrimaryArtist(artists[0])
+        guard isCurrentPlayingArtist(primary) || isCurrentPlayingArtist(artists[0]) else {
+            return
+        }
         let isNewArtist = self.currentClearLogoArtist != primary
 
         if isNewArtist {
@@ -1136,7 +1196,8 @@ final class FanartManager: ObservableObject {
 
         // 1. Unified cache check across all candidate keys
         if let cached = getCachedClearLogo(for: targetArtists, artistId: effectiveArtistId, mbid: effectiveMbid) {
-            if self.currentClearLogoArtist == primary {
+            if self.isCurrentPlayingArtist(primary) {
+                self.currentClearLogoArtist = primary
                 if self.currentClearLogo == nil {
                     withAnimation(.easeInOut(duration: 0.5)) { self.currentClearLogo = cached }
                 } else {
@@ -1187,6 +1248,10 @@ final class FanartManager: ObservableObject {
             guard let self = self else { return }
             self.fetchFromTheAudioDB(artistName: primary, mbid: currentMbid, priority: URLSessionTask.highPriority) { [weak self] result in
                 guard let self = self else { return }
+                guard self.isCurrentPlayingArtist(primary) else {
+                    self.activeClearLogoFetches.remove(primaryKey)
+                    return
+                }
                 let resolvedMbid = result.mbid ?? currentMbid
 
                 if let rm = resolvedMbid, !rm.isEmpty {
@@ -1224,6 +1289,10 @@ final class FanartManager: ObservableObject {
                 let urlString = "https://webservice.fanart.tv/v3/music/\(validMbid)?api_key=\(apiKey)"
                 self.fetchFromFanart(urlString: urlString, type: .clearlogo, artistName: primary, priority: URLSessionTask.highPriority) { [weak self] url, isEmpty in
                     guard let self = self else { return }
+                    guard self.isCurrentPlayingArtist(primary) else {
+                        self.activeClearLogoFetches.remove(primaryKey)
+                        return
+                    }
                     if let url = url {
                         AppLogger.shared.log("[Fanart] Fetched clearlogo for \(primary) via MBID \(validMbid)")
                         self.downloadClearLogoFile(from: url, to: destFileUrl, artist: primary, cacheKey: primaryKey, artistId: effectiveArtistId, usedMbid: validMbid)
@@ -1466,9 +1535,7 @@ final class FanartManager: ObservableObject {
                     try? mbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
                 }
                 self.logoCache.setObject(img, forKey: cacheKey as NSString)
-                let matchesActiveArtwork = (self.activeArtworkArtist == nil || self.activeArtworkArtist == artist)
-                let matchesLogoArtist = (self.currentClearLogoArtist == artist || self.activeArtworkArtist == artist)
-                if matchesActiveArtwork && matchesLogoArtist {
+                if self.isCurrentPlayingArtist(artist) {
                     self.currentClearLogoArtist = artist
                     withAnimation(.easeInOut(duration: 0.6)) { self.currentClearLogo = img }
                 }
@@ -1773,7 +1840,9 @@ final class FanartManager: ObservableObject {
                 if let validMbid = mbid, !validMbid.isEmpty {
                     self.imageCache.setObject(image, forKey: validMbid as NSString)
                 }
-                if self.currentArtistName == primaryArtistName || self.activeArtworkArtist == primaryArtistName {
+                if self.isCurrentPlayingArtist(primaryArtistName) {
+                    self.activeArtworkArtist = primaryArtistName
+                    self.currentArtistName = primaryArtistName
                     withAnimation(.easeInOut(duration: 0.8)) {
                         self.currentBackdrop = image
                     }
