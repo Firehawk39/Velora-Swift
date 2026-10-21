@@ -516,6 +516,25 @@ final class MusicBrainzManager: ObservableObject {
 
     private func resolveMBID(for artist: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let primary = extractPrimaryArtist(artist)
+
+        // 1. Check Navidrome server over LAN first!
+        if let client = PlaybackManager.shared?.client {
+            if let matched = client.artists.first(where: { $0.name.caseInsensitiveCompare(primary) == .orderedSame || $0.name.caseInsensitiveCompare(artist) == .orderedSame }) {
+                client.fetchArtistInfo(artistId: matched.id, artistName: primary) { [weak self] info in
+                    if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
+                        self?.saveArtistMetadata(artistName: primary, mbid: navMbid, biography: info?.biography)
+                        completion(navMbid)
+                        return
+                    }
+                    self?.queryMusicBrainzForMBID(primary: primary, completion: completion)
+                }
+                return
+            }
+        }
+        queryMusicBrainzForMBID(primary: primary, completion: completion)
+    }
+
+    private func queryMusicBrainzForMBID(primary: String, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let encoded = primary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         // Use exact name query to improve accuracy
         let urlString = "https://musicbrainz.org/ws/2/artist/?query=artist:\"\(encoded)\"&fmt=json"

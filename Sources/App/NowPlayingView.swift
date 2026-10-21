@@ -749,8 +749,11 @@ struct NowPlayingView: View {
                                 .font(.system(size: isSE ? 22 : 26, weight: .bold))
                                 .foregroundColor(.white)
 
-                            if let info = mb.currentAlbumInfo {
-                                Text([info.label, info.firstReleaseDate].compactMap { $0 }.joined(separator: " • "))
+                            let navAlbum = playback.client.albums.first(where: { $0.id == playback.currentTrack?.albumId })
+                            let navYear = (navAlbum?.year != nil) ? "\(navAlbum!.year!)" : (playback.currentTrack?.year != nil ? "\(playback.currentTrack!.year!)" : nil)
+                            let releaseSubtitle = [mb.currentAlbumInfo?.label, mb.currentAlbumInfo?.firstReleaseDate ?? navYear, navAlbum?.genre].compactMap { $0 }.joined(separator: " • ")
+                            if !releaseSubtitle.isEmpty {
+                                Text(releaseSubtitle)
                                     .font(.system(size: isSE ? 14 : 16))
                                     .foregroundColor(.white.opacity(0.5))
                             }
@@ -1040,8 +1043,11 @@ struct NowPlayingView: View {
         let primaryArtist = track.allArtists.first
         fanart.prepareForTrackChange(to: primaryArtist, artistId: track.artistId)
 
-        // 0. Pre-populate biography and MBID immediately from disk cache (0ms instant display, offline-safe)
-        let artistMbid = mb.getCachedMBID(for: artistName) ?? mb.getCachedMBID(for: primaryArtist ?? "")
+        // 0. Pre-populate biography and MBID directly from Navidrome tags or disk cache (0ms instant display, offline-safe)
+        let navAlbum = playback.client.albums.first(where: { $0.id == track.albumId })
+        let albumMbid = navAlbum?.musicBrainzId
+        let trackMbid = track.musicBrainzId
+        let artistMbid = trackMbid ?? albumMbid ?? mb.getCachedMBID(for: artistName) ?? mb.getCachedMBID(for: primaryArtist ?? "")
         if let cachedBio = mb.getArtistBiography(for: artistName), !cachedBio.isEmpty {
             self.artistBiography = cachedBio
         } else {
@@ -1056,7 +1062,8 @@ struct NowPlayingView: View {
         fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
 
         // 2. Fetch extended info from Navidrome (MBID + Bio)
-        if let artistId = track.artistId {
+        let artistIdToQuery = track.artistId ?? playback.client.artists.first(where: { $0.name.caseInsensitiveCompare(artistName) == .orderedSame || (primaryArtist != nil && $0.name.caseInsensitiveCompare(primaryArtist!) == .orderedSame) })?.id
+        if let artistId = artistIdToQuery {
             isFetchingArtistInfo = true
             playback.client.fetchArtistInfo(artistId: artistId, artistName: artistName) { info in
                 Task { @MainActor in
@@ -1077,10 +1084,13 @@ struct NowPlayingView: View {
                     fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedArtistMbid)
                 }
             }
+        } else {
+            // Even without an explicit artistId, trigger backdrop and logo fetch with available MBID
+            fanart.fetchBackdrop(for: track.allArtists, artistId: nil, mbid: artistMbid, allowNetwork: true)
+            fanart.fetchClearLogo(for: track.allArtists, artistId: nil, mbid: artistMbid)
         }
 
         // 3. Album info
-        let albumMbid = playback.client.albums.first(where: { $0.id == track.albumId })?.musicBrainzId
         mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: albumMbid)
     }
     /// Loads the artist portrait with the exact same ID-validation strategy as backdrops

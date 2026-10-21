@@ -743,21 +743,27 @@ final class FanartManager: ObservableObject {
         if let validMBID = candidateMbid, !validMBID.isEmpty {
             try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
             self.executeFanartQuery(resolvedMBID: validMBID, isProvided: isProvidedMbid, artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
-        } else if index == 0, let aid = artistId, !aid.isEmpty, NetworkMonitor.shared.isConnected, let client = PlaybackManager.shared?.client {
-            // Pillar 1: Query Navidrome server over LAN (1-3ms) before touching public MusicBrainz
-            client.fetchArtistInfo(artistId: aid, artistName: artist) { [weak self] (info: SubsonicArtistInfo?) in
-                guard let self = self else { return }
-                if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
-                    self.updateCanonicalMBID(navMbid, for: artist)
-                    MusicBrainzManager.shared.saveArtistMetadata(artistName: artist, mbid: navMbid, biography: info?.biography)
-                    try? navMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
-                    Task { @MainActor in
-                        self.executeFanartQuery(resolvedMBID: navMbid, isProvided: true, artist: artist, primaryArtist: primaryArtist, artistId: aid, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+        } else if NetworkMonitor.shared.isConnected, let client = PlaybackManager.shared?.client {
+            // Find artist ID in Navidrome: use provided artistId for primary, or search client.artists by name
+            let candidateAid = (index == 0 ? artistId : nil) ?? client.artists.first(where: { $0.name.caseInsensitiveCompare(artist) == .orderedSame || $0.name.caseInsensitiveCompare(primaryArtist) == .orderedSame })?.id
+            if let aid = candidateAid, !aid.isEmpty {
+                // Query Navidrome server over LAN (1-3ms)
+                client.fetchArtistInfo(artistId: aid, artistName: artist) { [weak self] (info: SubsonicArtistInfo?) in
+                    guard let self = self else { return }
+                    if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
+                        self.updateCanonicalMBID(navMbid, for: artist)
+                        MusicBrainzManager.shared.saveArtistMetadata(artistName: artist, mbid: navMbid, biography: info?.biography)
+                        try? navMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                        Task { @MainActor in
+                            self.executeFanartQuery(resolvedMBID: navMbid, isProvided: true, artist: artist, primaryArtist: primaryArtist, artistId: aid, key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
+                        }
+                    } else {
+                        // Fall back to MusicBrainz public API safely as last resort
+                        self.resolveMBIDViaMusicBrainz(artist: artist, primaryArtist: primaryArtist, artistId: aid, key: key, fileUrl: fileUrl, sidecarUrl: sidecarUrl, artists: artists, index: index, allowNetwork: allowNetwork)
                     }
-                } else {
-                    // Fall back to MusicBrainz public API safely
-                    self.resolveMBIDViaMusicBrainz(artist: artist, primaryArtist: primaryArtist, artistId: aid, key: key, fileUrl: fileUrl, sidecarUrl: sidecarUrl, artists: artists, index: index, allowNetwork: allowNetwork)
                 }
+            } else {
+                self.resolveMBIDViaMusicBrainz(artist: artist, primaryArtist: primaryArtist, artistId: nil, key: key, fileUrl: fileUrl, sidecarUrl: sidecarUrl, artists: artists, index: index, allowNetwork: allowNetwork)
             }
         } else {
             self.resolveMBIDViaMusicBrainz(artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, sidecarUrl: sidecarUrl, artists: artists, index: index, allowNetwork: allowNetwork)
@@ -1910,6 +1916,34 @@ final class FanartManager: ObservableObject {
             completion(cachedMbid)
             return
         }
+        // Query Navidrome server over LAN before calling external MusicBrainz
+        if let client = PlaybackManager.shared?.client {
+            let candidateAid = client.artists.first(where: { $0.name.caseInsensitiveCompare(primary) == .orderedSame || $0.name.caseInsensitiveCompare(artist) == .orderedSame })?.id
+            if let aid = candidateAid, !aid.isEmpty {
+                client.fetchArtistInfo(artistId: aid, artistName: primary) { [weak self] info in
+                    guard let self = self else { completion(nil); return }
+                    if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
+                        self.mbidCache[primary] = navMbid
+                        self.canonicalIndex.set(navMbid, for: primary)
+                        MusicBrainzManager.shared.saveArtistMetadata(artistName: primary, mbid: navMbid, biography: info?.biography)
+                        completion(navMbid)
+                        return
+                    }
+                    self.getMBIDSafe(for: primary, priority: priority) { [weak self] result in
+                        switch result {
+                        case .found(let mbid):
+                            self?.mbidCache[primary] = mbid
+                            self?.canonicalIndex.set(mbid, for: primary)
+                            completion(mbid)
+                        case .notFound, .networkError:
+                            completion(nil)
+                        }
+                    }
+                }
+                return
+            }
+        }
+
         self.getMBIDSafe(for: primary, priority: priority) { [weak self] result in
             switch result {
             case .found(let mbid):
