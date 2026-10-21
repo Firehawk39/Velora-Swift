@@ -53,7 +53,7 @@ final class FanartManager: ObservableObject {
     @Published var activeArtworkArtist: String? = nil
     private let imageCache = SendableImageCache()
     private let logoCache  = SendableImageCache()
-    private let canonicalIndex = SendableCanonicalIndex()
+    nonisolated let canonicalIndex = SendableCanonicalIndex()
 
     // Stores discovered clear logo URLs for each artist across Fanart.tv and TheAudioDB
     var clearLogoUrlsByArtist: [String: [String]] = [:]
@@ -103,6 +103,18 @@ final class FanartManager: ObservableObject {
         if primary != artistName {
             canonicalIndex.set(mbid, for: primary)
         }
+    }
+
+    /// Fast O(1) query for cached MBID by artist name or primary artist name
+    nonisolated func getCanonicalMBID(for artistName: String) -> String? {
+        if let direct = canonicalIndex.get(artistName), !direct.isEmpty {
+            return direct
+        }
+        let primary = extractPrimaryArtist(artistName)
+        if primary != artistName, let p = canonicalIndex.get(primary), !p.isEmpty {
+            return p
+        }
+        return nil
     }
 
     // MARK: - API Key Lifecycle & Cache Invalidation
@@ -695,9 +707,9 @@ final class FanartManager: ObservableObject {
         if let validMBID = candidateMbid, !validMBID.isEmpty {
             try? validMBID.write(to: sidecarUrl, atomically: true, encoding: .utf8)
             self.executeFanartQuery(resolvedMBID: validMBID, isProvided: isProvidedMbid, artist: artist, primaryArtist: primaryArtist, artistId: (index == 0 ? artistId : nil), key: key, fileUrl: fileUrl, artists: artists, index: index, allowNetwork: allowNetwork)
-        } else if index == 0, let aid = artistId, !aid.isEmpty, NetworkMonitor.shared.isConnected {
+        } else if index == 0, let aid = artistId, !aid.isEmpty, NetworkMonitor.shared.isConnected, let client = PlaybackManager.shared?.client {
             // Pillar 1: Query Navidrome server over LAN (1-3ms) before touching public MusicBrainz
-            NavidromeClient.shared.fetchArtistInfo(artistId: aid, artistName: artist) { [weak self] info in
+            client.fetchArtistInfo(artistId: aid, artistName: artist) { [weak self] (info: SubsonicArtistInfo?) in
                 guard let self = self else { return }
                 if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
                     self.updateCanonicalMBID(navMbid, for: artist)
@@ -1872,14 +1884,14 @@ final class FanartManager: ObservableObject {
                 completion(.found(cached))
                 return
             }
-            if let indexed = FanartManager.shared.canonicalIndex.get(primary) ?? FanartManager.shared.canonicalIndex.get(artistName), !indexed.isEmpty {
+            if let indexed = FanartManager.shared.getCanonicalMBID(for: primary) ?? FanartManager.shared.getCanonicalMBID(for: artistName), !indexed.isEmpty {
                 FanartManager.shared.mbidCache[primary] = indexed
                 completion(.found(indexed))
                 return
             }
             if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: primary), !mbCached.isEmpty {
                 FanartManager.shared.mbidCache[primary] = mbCached
-                FanartManager.shared.canonicalIndex.set(mbCached, for: primary)
+                FanartManager.shared.updateCanonicalMBID(mbCached, for: primary)
                 completion(.found(mbCached))
                 return
             }

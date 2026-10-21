@@ -665,8 +665,8 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
         let resolvedMbid = MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "")
             ?? MusicBrainzManager.shared.getCachedMBID(for: primaryArtist ?? "")
-            ?? FanartManager.shared.canonicalIndex.get(track.artist ?? "")
-            ?? FanartManager.shared.canonicalIndex.get(primaryArtist ?? "")
+            ?? FanartManager.shared.getCanonicalMBID(for: track.artist ?? "")
+            ?? FanartManager.shared.getCanonicalMBID(for: primaryArtist ?? "")
         FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
         FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
 
@@ -713,7 +713,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         // If user skips or switches tracks during the 3.0s, the task is cancelled immediately (0 network calls emitted).
         currentPrefetchTask = Task(priority: .background) { [weak self] in
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            guard !Task.isCancelled, let self = self else { return }
+            guard !Task.isCancelled, self != nil else { return }
 
             // 1. Prefetch Backdrop for Track N+1 Silently
             await FanartManager.shared.downloadBackdropSilently(for: nextTrack.allArtists, artistId: nextTrack.artistId)
