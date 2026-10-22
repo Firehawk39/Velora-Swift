@@ -1313,6 +1313,7 @@ struct MicroMeshGradientView: View {
                 .ignoresSafeArea()
 
             if !isAllBlack {
+                let blurRadius: CGFloat = ScreenTier.isSE ? 28 : (isLandscape ? 45 : 40)
                 GeometryReader { geo in
                     ZStack {
                         if let tex1 = phase1Texture {
@@ -1321,7 +1322,7 @@ struct MicroMeshGradientView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: geo.size.width, height: geo.size.height)
                                 .scaleEffect(1.25)
-                                .blur(radius: isLandscape ? 45 : 40)
+                                .blur(radius: blurRadius)
                                 .opacity(phase ? 0.0 : 1.0)
                         }
 
@@ -1331,7 +1332,7 @@ struct MicroMeshGradientView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: geo.size.width, height: geo.size.height)
                                 .scaleEffect(1.25)
-                                .blur(radius: isLandscape ? 45 : 40)
+                                .blur(radius: blurRadius)
                                 .opacity(phase ? 1.0 : 0.0)
                         }
                     }
@@ -1344,7 +1345,7 @@ struct MicroMeshGradientView: View {
         }
         .onAppear {
             updateTextures()
-            if !isAllBlack {
+            if !isAllBlack && !ProcessInfo.processInfo.isLowPowerModeEnabled {
                 withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                     phase = true
                 }
@@ -1352,7 +1353,7 @@ struct MicroMeshGradientView: View {
         }
         .onChange(of: colorKey) { _ in
             updateTextures()
-            if !isAllBlack && !phase {
+            if !isAllBlack && !phase && !ProcessInfo.processInfo.isLowPowerModeEnabled {
                 withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                     phase = true
                 }
