@@ -1313,9 +1313,9 @@ struct MicroMeshGradientView: View {
                 .ignoresSafeArea()
 
             if !isAllBlack {
-                let blurRadius: CGFloat = ScreenTier.isSE ? 28 : (isLandscape ? 45 : 40)
                 GeometryReader { geo in
                     ZStack {
+                        let blurRadius: CGFloat = isLandscape ? (ScreenTier.isSE ? 30 : 45) : (ScreenTier.isSE ? 25 : 40)
                         if let tex1 = phase1Texture {
                             Image(uiImage: tex1)
                                 .resizable()
@@ -1345,7 +1345,7 @@ struct MicroMeshGradientView: View {
         }
         .onAppear {
             updateTextures()
-            if !isAllBlack && !ProcessInfo.processInfo.isLowPowerModeEnabled {
+            if !isAllBlack {
                 withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                     phase = true
                 }
@@ -1353,7 +1353,7 @@ struct MicroMeshGradientView: View {
         }
         .onChange(of: colorKey) { _ in
             updateTextures()
-            if !isAllBlack && !phase && !ProcessInfo.processInfo.isLowPowerModeEnabled {
+            if !isAllBlack && !phase {
                 withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                     phase = true
                 }
