@@ -1315,14 +1315,13 @@ struct MicroMeshGradientView: View {
             if !isAllBlack {
                 GeometryReader { geo in
                     ZStack {
-                        let blurRadius: CGFloat = isLandscape ? (ScreenTier.isSE ? 30 : 45) : (ScreenTier.isSE ? 25 : 40)
                         if let tex1 = phase1Texture {
                             Image(uiImage: tex1)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: geo.size.width, height: geo.size.height)
                                 .scaleEffect(1.25)
-                                .blur(radius: blurRadius)
+                                .blur(radius: isLandscape ? 45 : 40)
                                 .opacity(phase ? 0.0 : 1.0)
                         }
 
@@ -1332,7 +1331,7 @@ struct MicroMeshGradientView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: geo.size.width, height: geo.size.height)
                                 .scaleEffect(1.25)
-                                .blur(radius: blurRadius)
+                                .blur(radius: isLandscape ? 45 : 40)
                                 .opacity(phase ? 1.0 : 0.0)
                         }
                     }
