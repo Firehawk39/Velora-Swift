@@ -152,6 +152,9 @@ extension NavidromeClient {
                     let parsed = rawArtists.map { raw in
                         Artist(id: raw.id, name: raw.name, coverArt: self.getCoverArtUrl(id: raw.id))
                     }
+                    for artist in parsed {
+                        FanartManager.shared.registerArtistId(artist.id, for: artist.name)
+                    }
                     self.artists = parsed
                     self.fetchError = nil
                     self.saveOfflineMetadata()

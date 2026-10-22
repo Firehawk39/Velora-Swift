@@ -224,22 +224,27 @@ final class IntegrityManager: ObservableObject {
             }
         }
 
-        // Count Backdrops
+        // Count Backdrops (ignoring non-image .mbid sidecar metadata)
+        let imageExts: Set<String> = ["jpg", "jpeg", "png", "webp"]
         var backdropCount = 0
         var unlistedBackdropsCount = 0
         if let backdropFiles = try? fm.contentsOfDirectory(at: VeloraStorage.backdrops, includingPropertiesForKeys: [.fileSizeKey]) {
             for file in backdropFiles {
+                let ext = file.pathExtension.lowercased()
+                guard imageExts.contains(ext) else { continue }
                 let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
                 if size > 100 { backdropCount += 1 }
                 else { unlistedBackdropsCount += 1 }
             }
         }
 
-        // Count Logos
+        // Count Logos (ignoring non-image .mbid sidecar metadata)
         var logoCount = 0
         var unlistedLogosCount = 0
         if let logoFiles = try? fm.contentsOfDirectory(at: VeloraStorage.clearLogos, includingPropertiesForKeys: [.fileSizeKey]) {
             for file in logoFiles {
+                let ext = file.pathExtension.lowercased()
+                guard imageExts.contains(ext) else { continue }
                 let size = (try? fm.attributesOfItem(atPath: file.path)[.size]) as? Int64 ?? 0
                 if size > 100 { logoCount += 1 }
                 else { unlistedLogosCount += 1 }

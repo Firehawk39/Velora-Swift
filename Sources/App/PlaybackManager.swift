@@ -663,23 +663,34 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             Task { @MainActor in self?.applyLyrics(lyrics, for: track) }
         }
 
-        let resolvedMbid = MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "")
+        let effectiveArtistId = track.artistId
+            ?? client.artists.first(where: {
+                $0.name.caseInsensitiveCompare(track.artist ?? "") == .orderedSame ||
+                (primaryArtist != nil && $0.name.caseInsensitiveCompare(primaryArtist!) == .orderedSame)
+            })?.id
+            ?? client.albums.first(where: { $0.id == track.albumId })?.artistId
+
+        let navAlbum = client.albums.first(where: { $0.id == track.albumId })
+        let resolvedMbid = track.musicBrainzId
+            ?? navAlbum?.musicBrainzId
+            ?? MusicBrainzManager.shared.getCachedMBID(for: track.artist ?? "")
             ?? MusicBrainzManager.shared.getCachedMBID(for: primaryArtist ?? "")
             ?? FanartManager.shared.getCanonicalMBID(for: track.artist ?? "")
             ?? FanartManager.shared.getCanonicalMBID(for: primaryArtist ?? "")
-        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
-        FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedMbid)
+
+        FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: effectiveArtistId, mbid: resolvedMbid)
+        FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: effectiveArtistId, mbid: resolvedMbid)
 
         // Pillar 1: Navidrome-First 0ms LAN MBID resolution if not yet in RAM/disk cache
-        if resolvedMbid == nil, let aid = track.artistId, !aid.isEmpty, NetworkMonitor.shared.isConnected {
+        if resolvedMbid == nil, let aid = effectiveArtistId, !aid.isEmpty, NetworkMonitor.shared.isConnected {
             let primary = primaryArtist ?? (track.artist ?? "")
             client.fetchArtistInfo(artistId: aid, artistName: primary) { [weak self] info in
                 guard self != nil else { return }
                 if let navMbid = info?.musicBrainzId, !navMbid.isEmpty {
                     FanartManager.shared.updateCanonicalMBID(navMbid, for: primary)
                     MusicBrainzManager.shared.saveArtistMetadata(artistName: primary, mbid: navMbid, biography: info?.biography)
-                    FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: navMbid)
-                    FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: navMbid)
+                    FanartManager.shared.fetchBackdrop(for: track.allArtists, artistId: aid, mbid: navMbid)
+                    FanartManager.shared.fetchClearLogo(for: track.allArtists, artistId: aid, mbid: navMbid)
                 }
             }
         }

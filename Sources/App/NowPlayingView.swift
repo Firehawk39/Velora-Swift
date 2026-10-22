@@ -1039,14 +1039,11 @@ struct NowPlayingView: View {
             ]
         )
 
-        // Strict Fanart isolation on track change
-        let primaryArtist = track.allArtists.first
-        fanart.prepareForTrackChange(to: primaryArtist, artistId: track.artistId)
-
         // 0. Pre-populate biography and MBID directly from Navidrome tags or disk cache (0ms instant display, offline-safe)
         let navAlbum = playback.client.albums.first(where: { $0.id == track.albumId })
         let albumMbid = navAlbum?.musicBrainzId
         let trackMbid = track.musicBrainzId
+        let primaryArtist = track.allArtists.first
         let artistMbid = trackMbid ?? albumMbid ?? mb.getCachedMBID(for: artistName) ?? mb.getCachedMBID(for: primaryArtist ?? "")
         if let cachedBio = mb.getArtistBiography(for: artistName), !cachedBio.isEmpty {
             self.artistBiography = cachedBio
@@ -1055,42 +1052,30 @@ struct NowPlayingView: View {
         }
         self.loadArtistPortrait(for: track)
 
-        // 1. Immediately trigger backdrop fetch using cached artist MBID (cache check is instant)
-        fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: artistMbid, allowNetwork: false)
+        // 1. Fetch extended artist biography from Navidrome if not already cached
+        if self.artistBiography == nil {
+            let artistIdToQuery = track.artistId ?? playback.client.artists.first(where: { $0.name.caseInsensitiveCompare(artistName) == .orderedSame || (primaryArtist != nil && $0.name.caseInsensitiveCompare(primaryArtist!) == .orderedSame) })?.id
+            if let artistId = artistIdToQuery {
+                isFetchingArtistInfo = true
+                playback.client.fetchArtistInfo(artistId: artistId, artistName: artistName) { info in
+                    Task { @MainActor in
+                        guard self.playback.currentTrack?.id == track.id else { return }
 
-        // 1b. Trigger clearlogo fetch using cached artist MBID
-        fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: artistMbid)
+                        if let bio = info?.biography, !bio.isEmpty {
+                            self.artistBiography = bio
+                        }
+                        self.isFetchingArtistInfo = false
 
-        // 2. Fetch extended info from Navidrome (MBID + Bio)
-        let artistIdToQuery = track.artistId ?? playback.client.artists.first(where: { $0.name.caseInsensitiveCompare(artistName) == .orderedSame || (primaryArtist != nil && $0.name.caseInsensitiveCompare(primaryArtist!) == .orderedSame) })?.id
-        if let artistId = artistIdToQuery {
-            isFetchingArtistInfo = true
-            playback.client.fetchArtistInfo(artistId: artistId, artistName: artistName) { info in
-                Task { @MainActor in
-                    // Check if we haven't skipped to another track in the meantime
-                    guard self.playback.currentTrack?.id == track.id else { return }
-
-                    if let bio = info?.biography, !bio.isEmpty {
-                        self.artistBiography = bio
+                        let resolvedArtistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : artistMbid)
+                        if let validMbid = resolvedArtistMbid {
+                            mb.saveArtistMetadata(artistName: artistName, mbid: validMbid, biography: self.artistBiography)
+                        }
                     }
-                    self.isFetchingArtistInfo = false
-
-                    // If Navidrome provides the true artist MBID, use it; otherwise fallback to cached artist MBID
-                    let resolvedArtistMbid = (info?.musicBrainzId?.isEmpty == false ? info?.musicBrainzId : artistMbid)
-                    if let validMbid = resolvedArtistMbid {
-                        mb.saveArtistMetadata(artistName: artistName, mbid: validMbid, biography: self.artistBiography)
-                    }
-                    fanart.fetchBackdrop(for: track.allArtists, artistId: track.artistId, mbid: resolvedArtistMbid, allowNetwork: true)
-                    fanart.fetchClearLogo(for: track.allArtists, artistId: track.artistId, mbid: resolvedArtistMbid)
                 }
             }
-        } else {
-            // Even without an explicit artistId, trigger backdrop and logo fetch with available MBID
-            fanart.fetchBackdrop(for: track.allArtists, artistId: nil, mbid: artistMbid, allowNetwork: true)
-            fanart.fetchClearLogo(for: track.allArtists, artistId: nil, mbid: artistMbid)
         }
 
-        // 3. Album info
+        // 2. Album info
         mb.fetchAboutAlbum(albumName: albumName, artistName: artistName, mbid: albumMbid)
     }
     /// Loads the artist portrait with the exact same ID-validation strategy as backdrops

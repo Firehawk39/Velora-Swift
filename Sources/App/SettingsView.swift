@@ -615,7 +615,7 @@ struct AppSettingsView: View {
                                         AuditMetricRow(
                                             icon: "sparkles",
                                             title: "Backdrops & Logos",
-                                            detail: "\(stats.cachedBackdrops + stats.cachedLogos) cached" + (stats.unlistedBackdrops > 0 ? " • \(stats.unlistedBackdrops) not on Fanart" : ""),
+                                            detail: "\(stats.cachedBackdrops) backdrops • \(stats.cachedLogos) logos" + (stats.unlistedBackdrops > 0 ? " • \(stats.unlistedBackdrops) not on Fanart" : ""),
                                             isComplete: (stats.cachedBackdrops + stats.unlistedBackdrops) >= stats.totalArtists && stats.totalArtists > 0,
                                             isDark: isDark
                                         )

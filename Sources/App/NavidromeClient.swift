@@ -98,6 +98,7 @@ final class NavidromeClient: ObservableObject {
                         if let artId = artists[i].coverArt {
                             artists[i].coverArt = self.getCoverArtUrl(id: extractArtId(from: artId))
                         }
+                        FanartManager.shared.registerArtistId(artists[i].id, for: artists[i].name)
                     }
                     self.artists = artists
                 }

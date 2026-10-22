@@ -56,7 +56,33 @@ final class FanartManager: ObservableObject {
     private let imageCache = SendableImageCache()
     private let logoCache  = SendableImageCache()
     nonisolated let canonicalIndex = SendableCanonicalIndex()
+    nonisolated let artistIdIndex = SendableCanonicalIndex()
     private var currentPlaybackGeneration: UInt64 = 0
+
+    /// Ingests artist name-to-ID mapping so missing track.artistId can still be resolved offline (0ms)
+    nonisolated func registerArtistId(_ id: String, for artistName: String) {
+        guard !id.isEmpty, !artistName.isEmpty else { return }
+        artistIdIndex.set(id, for: artistName)
+        let primary = extractPrimaryArtist(artistName)
+        if primary != artistName {
+            artistIdIndex.set(id, for: primary)
+        }
+
+        // Proactive local healing: if backdrop exists under id but not sanitizedName (or vice-versa), link immediately!
+        let sName = sanitizeFileName(primary)
+        let fm = FileManager.default
+        let idUrl = backdropDir.appendingPathComponent("\(id).jpg")
+        let nameUrl = backdropDir.appendingPathComponent("\(sName).jpg")
+        if fm.fileExists(atPath: idUrl.path) && !fm.fileExists(atPath: nameUrl.path) {
+            if (try? fm.linkItem(at: idUrl, to: nameUrl)) == nil {
+                try? fm.copyItem(at: idUrl, to: nameUrl)
+            }
+        } else if fm.fileExists(atPath: nameUrl.path) && !fm.fileExists(atPath: idUrl.path) {
+            if (try? fm.linkItem(at: nameUrl, to: idUrl)) == nil {
+                try? fm.copyItem(at: nameUrl, to: idUrl)
+            }
+        }
+    }
 
     /// Verifies if the candidate artist matches the currently playing track's artist.
     /// Uses PlaybackManager.shared.currentTrack as the single source of truth,
@@ -288,7 +314,11 @@ final class FanartManager: ObservableObject {
         if primary != artist, let indexedPrimary = canonicalIndex.get(primary), !keys.contains(indexedPrimary) { keys.append(indexedPrimary) }
 
         // 2. Normalized Artist ID (handling both "ar-123" and "123")
-        if let aid = artistId, !aid.isEmpty {
+        var effectiveAid = artistId
+        if effectiveAid == nil || effectiveAid!.isEmpty {
+            effectiveAid = artistIdIndex.get(artist) ?? artistIdIndex.get(primary)
+        }
+        if let aid = effectiveAid, !aid.isEmpty {
             keys.append(aid)
             if aid.hasPrefix("ar-") {
                 let stripped = String(aid.dropFirst(3))
@@ -354,7 +384,7 @@ final class FanartManager: ObservableObject {
 
         // 3. L3 FALLBACK: Check on-disk sidecars only when L1 and L2 miss
         var sidecarKeys = [artistId, sanitizeFileName(artist), sanitizeFileName(extractPrimaryArtist(artist))].compactMap { $0 }.filter { !$0.isEmpty }
-        if let aid = artistId, !aid.isEmpty {
+        if let aid = artistId ?? artistIdIndex.get(artist) ?? artistIdIndex.get(extractPrimaryArtist(artist)), !aid.isEmpty {
             if aid.hasPrefix("ar-") {
                 let stripped = String(aid.dropFirst(3))
                 if !stripped.isEmpty && !sidecarKeys.contains(stripped) { sidecarKeys.append(stripped) }
@@ -369,17 +399,20 @@ final class FanartManager: ObservableObject {
                let diskMbid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                !diskMbid.isEmpty {
                 canonicalIndex.set(diskMbid, for: artist)
-                for ext in ["jpg", "jpeg", "png"] {
-                    let fileUrl = self.backdropDir.appendingPathComponent("\(diskMbid).\(ext)")
-                    if FileManager.default.fileExists(atPath: fileUrl.path),
-                       let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
-                       let size = attr[.size] as? Int64, size > 100,
-                       let data = try? Data(contentsOf: fileUrl),
-                       let image = UIImage(data: data) {
-                        for k in candidateKeys + [diskMbid] {
-                            self.imageCache.setObject(image, forKey: k as NSString)
+                let checkKeys = [sk, diskMbid]
+                for ck in checkKeys {
+                    for ext in ["jpg", "jpeg", "png"] {
+                        let fileUrl = self.backdropDir.appendingPathComponent("\(ck).\(ext)")
+                        if FileManager.default.fileExists(atPath: fileUrl.path),
+                           let attr = try? FileManager.default.attributesOfItem(atPath: fileUrl.path),
+                           let size = attr[.size] as? Int64, size > 100,
+                           let data = try? Data(contentsOf: fileUrl),
+                           let image = UIImage(data: data) {
+                            for k in candidateKeys + checkKeys {
+                                self.imageCache.setObject(image, forKey: k as NSString)
+                            }
+                            return image
                         }
-                        return image
                     }
                 }
             }
@@ -521,6 +554,16 @@ final class FanartManager: ObservableObject {
         let primaryArtist = artists[0]
         let isNewArtist = self.currentArtistName != primaryArtist
         let generation = self.currentPlaybackGeneration
+
+        // 0ms Short-Circuit: If the active artwork is already loaded and matches this artist, avoid redundant tasks
+        if !isNewArtist, self.activeArtworkArtist == primaryArtist, self.currentBackdrop != nil {
+            return
+        }
+
+        let primaryKey = getCacheKey(artistName: primaryArtist, artistId: artistId)
+        if activeBackdropFetches.contains(primaryKey) || activeBackdropFetches.contains(primaryArtist) {
+            return
+        }
 
         if isNewArtist {
             self.currentArtistName = primaryArtist
@@ -1530,13 +1573,26 @@ final class FanartManager: ObservableObject {
                     return
                 }
 
-                // Save ONCE to the canonical local URL (eliminates duplicate PNG copies)
+                // Save to canonical local URL and hard-link alias keys for instant offline access
                 try? data.write(to: localUrl)
+                let fm = FileManager.default
                 if let aid = artistId, !aid.isEmpty {
                     self.logoCache.setObject(img, forKey: "logo_\(aid)" as NSString)
+                    let aidUrl = self.clearLogoDir.appendingPathComponent("logo_\(aid).png")
+                    if !fm.fileExists(atPath: aidUrl.path) {
+                        if (try? fm.linkItem(at: localUrl, to: aidUrl)) == nil {
+                            try? fm.copyItem(at: localUrl, to: aidUrl)
+                        }
+                    }
                 }
                 if let mbid = usedMbid, !mbid.isEmpty {
                     self.logoCache.setObject(img, forKey: "logo_\(mbid)" as NSString)
+                    let mbidUrl = self.clearLogoDir.appendingPathComponent("logo_\(mbid).png")
+                    if !fm.fileExists(atPath: mbidUrl.path) {
+                        if (try? fm.linkItem(at: localUrl, to: mbidUrl)) == nil {
+                            try? fm.copyItem(at: localUrl, to: mbidUrl)
+                        }
+                    }
                     let sidecarUrl = localUrl.deletingPathExtension().appendingPathExtension("mbid")
                     try? mbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
                 }
@@ -1830,16 +1886,38 @@ final class FanartManager: ObservableObject {
                 }
             }
 
-            // Save ONCE to the canonical file URL (no duplicate multi-megabyte copies!)
+            // Save to canonical file URL
             try? data.write(to: localUrl)
             let sanitizedName = self.sanitizeFileName(primaryArtistName)
 
-            if let validMbid = mbid, !validMbid.isEmpty {
-                let sidecarUrl = self.backdropDir.appendingPathComponent("\(cacheKey).mbid")
-                try? validMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+            // APFS / POSIX Hard-links (0 extra storage): ensure offline disk searches by artistName or MBID always succeed
+            let fm = FileManager.default
+            if cacheKey != sanitizedName {
+                let nameUrl = self.backdropDir.appendingPathComponent("\(sanitizedName).jpg")
+                if !fm.fileExists(atPath: nameUrl.path) {
+                    if (try? fm.linkItem(at: localUrl, to: nameUrl)) == nil {
+                        try? fm.copyItem(at: localUrl, to: nameUrl)
+                    }
+                }
             }
 
-            // In-memory L1 cache for instant 0ms access without multi-file disk duplication
+            if let validMbid = mbid, !validMbid.isEmpty {
+                let mbidUrl = self.backdropDir.appendingPathComponent("\(validMbid).jpg")
+                if !fm.fileExists(atPath: mbidUrl.path) {
+                    if (try? fm.linkItem(at: localUrl, to: mbidUrl)) == nil {
+                        try? fm.copyItem(at: localUrl, to: mbidUrl)
+                    }
+                }
+
+                let sidecarUrl = self.backdropDir.appendingPathComponent("\(cacheKey).mbid")
+                try? validMbid.write(to: sidecarUrl, atomically: true, encoding: .utf8)
+                if cacheKey != sanitizedName {
+                    let nameSidecarUrl = self.backdropDir.appendingPathComponent("\(sanitizedName).mbid")
+                    try? validMbid.write(to: nameSidecarUrl, atomically: true, encoding: .utf8)
+                }
+            }
+
+            // In-memory L1 cache for instant 0ms access
             DispatchQueue.main.async {
                 self.imageCache.setObject(image, forKey: cacheKey as NSString)
                 self.imageCache.setObject(image, forKey: sanitizedName as NSString)

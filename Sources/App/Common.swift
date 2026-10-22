@@ -223,7 +223,8 @@ let knownBandNamesWithDelimiters: Set<String> = [
     "arms and sleepers",
     "blood, sweat & tears",
     "emerson, lake & palmer",
-    "peter, paul and mary"
+    "peter, paul and mary",
+    "sultan + shepard"
 ]
 
 /// Extracts the clean primary artist name while protecting bands that have delimiters in their name (e.g. "Chase & Status")
