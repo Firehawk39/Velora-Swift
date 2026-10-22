@@ -94,7 +94,14 @@ struct NowPlayingView: View {
         }
 
         // Fast RAM/disk fallback for current track's artists
-        if let cached = fanart.getCachedClearLogo(for: track.allArtists, artistId: track.artistId) {
+        for artist in track.allArtists {
+            let mbid = mb.getCachedMBID(for: artist) ?? mb.getCachedMBID(for: track.primaryArtist) ?? track.musicBrainzId
+            if let cached = fanart.getCachedClearLogo(for: [artist], artistId: track.artistId, mbid: mbid) {
+                return cached
+            }
+        }
+        let fallbackMbid = mb.getCachedMBID(for: track.primaryArtist) ?? track.musicBrainzId
+        if let cached = fanart.getCachedClearLogo(for: track.allArtists, artistId: track.artistId, mbid: fallbackMbid) {
             return cached
         }
         return nil

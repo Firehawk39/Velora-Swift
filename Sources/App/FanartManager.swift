@@ -243,7 +243,7 @@ final class FanartManager: ObservableObject {
 
     /// Direct Seamless Cross-Fade (Spotify / Apple Music Standard):
     /// Pre-resolves the incoming track's backdrop and cross-fades directly without ever flashing an empty gradient.
-    func prepareForTrackChange(to primaryArtist: String?, artistId: String? = nil) {
+    func prepareForTrackChange(to primaryArtist: String?, allArtists: [String] = [], artistId: String? = nil, mbid: String? = nil) {
         currentPlaybackGeneration &+= 1
         guard let newArtist = primaryArtist, !newArtist.isEmpty else {
             resetActivePlaybackDisplay()
@@ -255,25 +255,45 @@ final class FanartManager: ObservableObject {
             self.currentClearLogoArtist = newArtist
             self.isShowingFallbackBackdrop = false
 
-            // Direct Seamless Cross-fade: If the incoming artist already has a cached backdrop,
-            // cross-fade directly into it without ever showing a blank gradient!
-            if let nextBackdrop = self.resolveBackdrop(for: newArtist, artistId: artistId) {
-                withAnimation(.easeInOut(duration: 0.6)) {
-                    self.currentBackdrop = nextBackdrop
+            let candidateArtists = !allArtists.isEmpty ? allArtists : [newArtist]
+
+            // 1. INDEPENDENT BACKDROP RESOLUTION (0ms L1 RAM -> L2 Disk)
+            var nextBackdrop: UIImage? = nil
+            for artist in candidateArtists {
+                if let bg = self.resolveBackdrop(for: artist, artistId: artistId, mbid: mbid) {
+                    nextBackdrop = bg
+                    break
                 }
-                if let nextLogo = self.getCachedClearLogo(for: [newArtist], artistId: artistId) {
-                    withAnimation(.easeInOut(duration: 0.6)) {
-                        self.currentClearLogo = nextLogo
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        self.currentClearLogo = nil
-                    }
+            }
+
+            if let backdrop = nextBackdrop {
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    self.currentBackdrop = backdrop
                 }
             } else {
-                // If the new artist genuinely does not have a cached backdrop, smoothly fade to ambient
                 withAnimation(.easeInOut(duration: 0.4)) {
                     self.currentBackdrop = nil
+                }
+            }
+
+            // 2. INDEPENDENT CLEAR LOGO RESOLUTION (Decoupled from Backdrop!)
+            var nextLogo: UIImage? = nil
+            for artist in candidateArtists {
+                if let logo = self.getCachedClearLogo(for: [artist], artistId: artistId, mbid: mbid) {
+                    nextLogo = logo
+                    break
+                }
+            }
+            if nextLogo == nil {
+                nextLogo = self.getCachedClearLogo(for: candidateArtists, artistId: artistId, mbid: mbid)
+            }
+
+            if let logo = nextLogo {
+                withAnimation(.easeInOut(duration: 0.6)) {
+                    self.currentClearLogo = logo
+                }
+            } else {
+                withAnimation(.easeInOut(duration: 0.3)) {
                     self.currentClearLogo = nil
                 }
             }
@@ -486,8 +506,17 @@ final class FanartManager: ObservableObject {
         return nil
     }
 
-    func hasBackdrop(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
+    nonisolated func hasBackdrop(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
         return getCachedBackdrop(for: artist, artistId: artistId, mbid: mbid) != nil
+    }
+
+    nonisolated func hasBackdrop(for artists: [String], artistId: String? = nil, mbid: String? = nil) -> Bool {
+        for a in artists {
+            if getCachedBackdrop(for: a, artistId: artistId, mbid: mbid) != nil {
+                return true
+            }
+        }
+        return false
     }
 
     /// Returns true if a valid backdrop exists OR it was verified unavailable
@@ -518,12 +547,16 @@ final class FanartManager: ObservableObject {
         return size > 100
     }
 
-    func hasClearLogo(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
-        let keys = getClearLogoKeys(for: [artist], artistId: artistId, mbid: mbid)
+    nonisolated func hasClearLogo(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
+        return hasClearLogo(for: [artist], artistId: artistId, mbid: mbid)
+    }
+
+    nonisolated func hasClearLogo(for artists: [String], artistId: String? = nil, mbid: String? = nil) -> Bool {
+        let keys = getClearLogoKeys(for: artists, artistId: artistId, mbid: mbid)
         for k in keys {
             let fileUrl = clearLogoDir.appendingPathComponent(k + ".png")
-            if fileManager.fileExists(atPath: fileUrl.path) {
-                let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+            if FileManager.default.fileExists(atPath: fileUrl.path) {
+                let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
                 if size > 100 { return true }
             }
         }

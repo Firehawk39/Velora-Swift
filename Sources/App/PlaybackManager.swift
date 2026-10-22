@@ -602,9 +602,10 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.currentPrefetchTask?.cancel()
         self.currentPrefetchTask = nil
 
-        // STRICT FANART ISOLATION: Instantly clear backdrop if artist changed
-        let primaryArtist = track.allArtists.first
-        FanartManager.shared.prepareForTrackChange(to: primaryArtist, artistId: track.artistId)
+        // STRICT FANART ISOLATION: Pre-resolve backdrop & clear logo independently across candidate artists
+        let primaryArtist = track.allArtists.first ?? track.primaryArtist
+        let mbid = MusicBrainzManager.shared.getCachedMBID(for: primaryArtist) ?? track.musicBrainzId
+        FanartManager.shared.prepareForTrackChange(to: primaryArtist, allArtists: track.allArtists, artistId: track.artistId, mbid: mbid)
 
         AppLogger.shared.audio(
             "Track playback initiated: '\(track.title)' by \(track.artist ?? "Unknown")",
