@@ -147,7 +147,7 @@ func resolveCoverArtUrl(id: String, serverUrl: String?, albumId: String? = nil, 
         return embeddedUrl
     }
 
-    guard NetworkMonitor.shared.isConnected else { return nil }
+    guard NetworkMonitor.isConnectedSync else { return nil }
     return serverUrl.flatMap { URL(string: $0) }
 }
 
@@ -183,7 +183,7 @@ func resolveArtistPortraitUrl(id: String, serverUrl: String?) -> URL? {
         }
     }
 
-    guard NetworkMonitor.shared.isConnected else { return nil }
+    guard NetworkMonitor.isConnectedSync else { return nil }
     return serverUrl.flatMap { URL(string: $0) }
 }
 
