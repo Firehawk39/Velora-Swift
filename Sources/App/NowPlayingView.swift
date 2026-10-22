@@ -1052,8 +1052,8 @@ struct NowPlayingView: View {
         }
         self.loadArtistPortrait(for: track)
 
-        // 1. Fetch extended artist biography from Navidrome if not already cached
-        if self.artistBiography == nil {
+        // 1. Fetch extended artist biography from Navidrome if not already cached and network is online
+        if self.artistBiography == nil, NetworkMonitor.shared.isConnected {
             let artistIdToQuery = track.artistId ?? playback.client.artists.first(where: { $0.name.caseInsensitiveCompare(artistName) == .orderedSame || (primaryArtist != nil && $0.name.caseInsensitiveCompare(primaryArtist!) == .orderedSame) })?.id
             if let artistId = artistIdToQuery {
                 isFetchingArtistInfo = true
@@ -1113,7 +1113,8 @@ struct NowPlayingView: View {
             return
         }
         
-        // 2. Fetch from Navidrome
+        // 2. Fetch from Navidrome (strictly only when online)
+        guard NetworkMonitor.shared.isConnected else { return }
         let fallbackUrlString = playback.client.getCoverArtUrl(id: newArtistId)
         guard let url = URL(string: fallbackUrlString) else { return }
         
