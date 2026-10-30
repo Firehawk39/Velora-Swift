@@ -135,3 +135,4 @@ public struct LRCParser: Sendable {
         return headers.contains { lower.hasPrefix($0) }
     }
 }
+
