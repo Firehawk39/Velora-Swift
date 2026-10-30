@@ -414,7 +414,7 @@ final class SyncManager: ObservableObject {
                         group.addTask {
                             let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                                 Task { @MainActor in
-                                    client.fetchLyrics(trackId: song.id, artist: song.primaryArtist, title: song.title, duration: Double(song.duration ?? 0), priority: URLSessionTask.lowPriority) { result in
+                                    client.fetchLyrics(trackId: song.id, artist: song.primaryArtist, title: song.title, album: song.album, duration: Double(song.duration ?? 0), priority: URLSessionTask.lowPriority) { result in
                                         continuation.resume(returning: result != nil)
                                     }
                                 }
@@ -448,7 +448,7 @@ final class SyncManager: ObservableObject {
                             group.addTask {
                                 let succeeded = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
                                     Task { @MainActor in
-                                        client.fetchLyrics(trackId: nextSong.id, artist: nextSong.primaryArtist, title: nextSong.title, duration: Double(nextSong.duration ?? 0), priority: URLSessionTask.lowPriority) { result in
+                                        client.fetchLyrics(trackId: nextSong.id, artist: nextSong.primaryArtist, title: nextSong.title, album: nextSong.album, duration: Double(nextSong.duration ?? 0), priority: URLSessionTask.lowPriority) { result in
                                             continuation.resume(returning: result != nil)
                                         }
                                     }

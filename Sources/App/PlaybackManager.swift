@@ -11,12 +11,12 @@ extension AVPlayerItem {
     }
 }
 
-struct LyricWord: Hashable {
+struct LyricWord: Hashable, Sendable {
     let time: Double
     let text: String
 }
 
-struct LyricLine: Hashable {
+struct LyricLine: Hashable, Sendable {
     let time: Double
     let text: String
     let words: [LyricWord]
@@ -481,11 +481,13 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             MainActor.assumeIsolated {
                 guard let self = self,
                       self.player === capturedPlayer,  // Only the ACTIVE player may update progress
-                      let item = capturedPlayer.currentItem,
-                      item.duration.isNumeric else { return }
+                      let item = capturedPlayer.currentItem else { return }
 
                 self.progress = time.seconds
-                self.duration = item.duration.seconds
+                let itemDuration = item.duration.isNumeric ? item.duration.seconds : Double(self.currentTrack?.duration ?? 0)
+                if itemDuration > 0 {
+                    self.duration = itemDuration
+                }
                 self.updateNowPlayingInfo()
 
                 // Scrobble / Add to recently played at 30% completion
@@ -593,6 +595,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.duration = 0
         self.hasScrobbledCurrentTrack = false
         self.currentLyrics = nil
+        self.currentSyncedLyrics = nil
 
         // Cancel any lingering background artwork download from previous track
         self.artworkDownloadTask?.cancel()
@@ -658,6 +661,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             trackId: track.id,
             artist: track.artist ?? "",
             title: track.title,
+            album: track.album,
             duration: Double(track.duration ?? 0),
             priority: URLSessionTask.highPriority
         ) { [weak self] lyrics in
@@ -1057,68 +1061,27 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
 
-    // Compiled once — applied in parseLRC and applyLyrics
-    private static let lrcTimestampRegex = try! NSRegularExpression(pattern: #"\[\d+:\d+\.\d+\]"#)
-    private static let wordTagRegex = try! NSRegularExpression(pattern: "<(\\d+):(\\d+\\.\\d+)>\\s*([^<]+)")
-
     /// Single source of truth for applying a lyrics payload to the current track.
     @MainActor
     private func applyLyrics(_ lyrics: String?, for track: Track) {
         guard currentTrack?.id == track.id else { return }
         if let lyrics = lyrics {
+            if lyrics.trimmingCharacters(in: .whitespacesAndNewlines) == "INSTRUMENTAL" {
+                currentLyrics = "• • •"
+                currentSyncedLyrics = nil
+                return
+            }
             currentLyrics = lyrics
-            let range = NSRange(lyrics.startIndex..<lyrics.endIndex, in: lyrics)
-            currentSyncedLyrics = Self.lrcTimestampRegex.firstMatch(in: lyrics, range: range) != nil
-                ? parseLRC(lyrics)
-                : nil
+            if LRCParser.hasTimestamps(lyrics) {
+                let parsed = LRCParser.parse(lyrics)
+                currentSyncedLyrics = parsed.isEmpty ? nil : parsed
+            } else {
+                currentSyncedLyrics = nil
+            }
         } else {
             currentLyrics = nil
             currentSyncedLyrics = nil
         }
-    }
-
-    private func parseLRC(_ lyrics: String) -> [LyricLine] {
-        var result: [LyricLine] = []
-        let lines = lyrics.components(separatedBy: .newlines)
-
-        let wordTagRegex = Self.wordTagRegex
-
-        for line in lines {
-            guard line.hasPrefix("["), let bracketEnd = line.firstIndex(of: "]") else { continue }
-            let timeString = String(line[line.index(after: line.startIndex)..<bracketEnd])
-            let rawText = String(line[line.index(after: bracketEnd)...]).trimmingCharacters(in: .whitespaces)
-            let parts = timeString.components(separatedBy: ":")
-            guard parts.count >= 2, let min = Double(parts[0]), let sec = Double(parts[1]) else { continue }
-            let time = min * 60 + sec
-
-            var lyricWords: [LyricWord] = []
-
-            if rawText.contains("<") {
-                let nsRange = NSRange(rawText.startIndex..<rawText.endIndex, in: rawText)
-                let matches = wordTagRegex.matches(in: rawText, range: nsRange)
-
-                for match in matches {
-                    if match.numberOfRanges == 4,
-                       let minRange = Range(match.range(at: 1), in: rawText),
-                       let secRange = Range(match.range(at: 2), in: rawText),
-                       let textRange = Range(match.range(at: 3), in: rawText),
-                       let wMin = Double(rawText[minRange]),
-                       let wSec = Double(rawText[secRange]) {
-
-                        let wTime = wMin * 60 + wSec
-                        let wText = String(rawText[textRange]).trimmingCharacters(in: .whitespaces)
-                        lyricWords.append(LyricWord(time: wTime, text: wText))
-                    }
-                }
-            }
-
-            let plainText = rawText.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression).trimmingCharacters(in: .whitespaces)
-
-            if !plainText.isEmpty {
-                result.append(LyricLine(time: time, text: plainText, words: lyricWords))
-            }
-        }
-        return result.sorted { $0.time < $1.time }
     }
 
     // MARK: - Offline Downloads Management
@@ -1320,7 +1283,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
             // Trigger lyrics fetch alongside the track for offline use (skipped during bulk music downloads to keep all bandwidth focused on Navidrome and avoid LRCLIB 429 limits)
             if !isDownloadingAll {
-                client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, duration: Double(track.duration ?? 0)) { _ in }
+                client.fetchLyrics(trackId: track.id, artist: track.artist ?? "", title: track.title, album: track.album, duration: Double(track.duration ?? 0)) { _ in }
             }
         }
     }

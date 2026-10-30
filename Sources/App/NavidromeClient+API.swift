@@ -814,7 +814,7 @@ extension NavidromeClient {
         return nil
     }
 
-    func fetchLyrics(trackId: String, artist: String, title: String, duration: Double, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @MainActor @Sendable (String?) -> Void) {
+    func fetchLyrics(trackId: String, artist: String, title: String, album: String? = nil, duration: Double, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
         let isOnline = NetworkMonitor.shared.isConnected
@@ -822,16 +822,30 @@ extension NavidromeClient {
         if FileManager.default.fileExists(atPath: cacheFile.path) {
             let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8)
             if let lyrics = cachedLyrics, !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                if lyrics.trimmingCharacters(in: .whitespacesAndNewlines) == "NO_LYRICS" {
-                    // Valid negative cache: Verified instrumental or unavailable on LRCLIB
-                    completion(nil)
+                let trimmed = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed == "INSTRUMENTAL" {
+                    completion("INSTRUMENTAL")
                     return
-                } else {
+                } else if trimmed == "NO_LYRICS" {
+                    // OLD / UNVERIFIED NEGATIVE CACHE:
+                    // If online, don't return early; allow self-healing to re-check the new Picard-aware pipeline!
+                    if !isOnline {
+                        completion(nil)
+                        return
+                    }
+                } else if LRCParser.hasTimestamps(lyrics) {
+                    // Genuine valid synced lyrics: return immediately!
                     completion(lyrics)
                     return
+                } else {
+                    // Cached file is plain text (no timestamps):
+                    // Provide immediately so user has text, but if online, proceed to background task to self-heal
+                    completion(lyrics)
+                    if !isOnline {
+                        return
+                    }
                 }
             } else if !isOnline {
-                // Empty file + offline: don't bother retrying
                 completion(nil)
                 return
             }
@@ -860,117 +874,153 @@ extension NavidromeClient {
                 return
             }
 
-            // TIER 2: Query LRCLIB for time-synced LRC if Navidrome only had unsynced or missing lyrics
+            // TIER 2: Query LRCLIB with Picard-aware multi-pass matching
             do {
-                if let lrclibLyrics = try await fetchFromLRCLIB(artist: artist, title: title, duration: duration, priority: priority), !lrclibLyrics.isEmpty {
+                if let lrclibResult = try await fetchFromLRCLIB(artist: artist, title: title, album: album, duration: duration, priority: priority) {
+                    if lrclibResult == "INSTRUMENTAL" {
+                        try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try? "INSTRUMENTAL".write(to: cacheFile, atomically: true, encoding: .utf8)
+                        AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
+                        completion("INSTRUMENTAL")
+                        return
+                    } else if !lrclibResult.isEmpty {
+                        try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try? lrclibResult.write(to: cacheFile, atomically: true, encoding: .utf8)
+                        completion(lrclibResult)
+                        return
+                    }
+                }
+            } catch {
+                AppLogger.shared.log("[LRCLIB] Transient error/rate limit for \(title): \(error.localizedDescription)", level: .warning)
+            }
+
+            // TIER 3: NetEase Secondary Fallback (Public Time-Synced API)
+            do {
+                if let netEaseLrc = try await fetchFromNetEase(artist: artist, title: title, duration: duration, priority: priority), !netEaseLrc.isEmpty {
                     try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try? lrclibLyrics.write(to: cacheFile, atomically: true, encoding: .utf8)
-                    completion(lrclibLyrics)
+                    try? netEaseLrc.write(to: cacheFile, atomically: true, encoding: .utf8)
+                    completion(netEaseLrc)
                     return
                 }
             } catch {
-                AppLogger.shared.log("[LRCLIB] Fetch error/rate limit for \(title): \(error.localizedDescription)", level: .warning)
+                AppLogger.shared.log("[NetEase] Fallback error for \(title): \(error.localizedDescription)", level: .debug)
             }
 
-            // TIER 3: Fall back to Navidrome's plain/unsynced lyrics so user has lyrics instead of blank screen
+            // TIER 4: Navidrome plain text fallback (SESSION IN-MEMORY ONLY - DO NOT DISK CACHE)
             if let fallbackText = navidromeLyrics, !fallbackText.isEmpty {
-                try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? fallbackText.write(to: cacheFile, atomically: true, encoding: .utf8)
+                // Return to user for this session, but DO NOT poison disk cache
                 completion(fallbackText)
                 return
             }
 
-            // TIER 4: Negative cache marker
+            // TIER 5: Verified negative cache marker
             try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
-            await MainActor.run {
-                AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
-            }
+            AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
             completion(nil)
         }
     }
 
-    nonisolated private func fetchFromLRCLIB(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
+    nonisolated private func fetchFromLRCLIB(artist: String, title: String, album: String?, duration: Double, priority: Float) async throws -> String? {
         guard await NetworkMonitor.shared.isConnected else { throw URLError(.notConnectedToInternet) }
 
-        // PASS 1: Exact Picard Match
-        // Use the unaltered string from the user's tags. For well-curated libraries (e.g. MusicBrainz Picard),
-        // titles like "Yellow (Live)" are canonical, and stripping them ruins the LRCLIB match.
-        if let exactResult = try await performLRCLIBRequest(artist: artist, title: title, duration: duration, priority: priority) {
+        // PASS 1: Exact Picard Match (canonical title, artist, album, duration)
+        if let exactResult = try await performLRCLIBRequest(artist: artist, title: title, album: album, duration: duration, priority: priority) {
             return exactResult
         }
 
-        // PASS 2: Stripped Fallback
-        // For messy libraries, strip (Remaster), [Live Version], feat., etc. and try again.
+        // PASS 2: Picard Collaboration Decomposition
+        // Picard writes exact collaborations: "Chase & Status feat. Takura", "Charli xcx featuring lorde"
+        // Community databases (like LRCLIB) index these under primary artist: "Chase & Status", "Charli xcx"
+        let primaryArtist = extractPrimaryArtistName(from: artist)
+
+        if primaryArtist != artist {
+            if let decomposedResult = try await performLRCLIBRequest(artist: primaryArtist, title: title, album: album, duration: duration, priority: priority) {
+                return decomposedResult
+            }
+        }
+
+        // PASS 3: Canonical Title Stripping
+        // Strip release modifiers like (Robin Schulz edit), (Remastered 2011), [Live]
         let cleanTitle = title
             .replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\s*\[[^\]]*\]"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
 
-        let cleanArtist: String = {
-            let featPattern = try? NSRegularExpression(
-                pattern: #"\s+(feat\.|ft\.|featuring)\s+.*"#,
-                options: .caseInsensitive
-            )
-            let range = NSRange(artist.startIndex..<artist.endIndex, in: artist)
-            let stripped: String
-            if let m = featPattern?.firstMatch(in: artist, range: range),
-               let mRange = Range(m.range, in: artist) {
-                stripped = String(artist[artist.startIndex..<mRange.lowerBound])
-            } else {
-                stripped = artist
+        if cleanTitle != title {
+            if let cleanResult = try await performLRCLIBRequest(artist: primaryArtist, title: cleanTitle, album: nil, duration: duration, priority: priority) {
+                return cleanResult
             }
-            return stripped
-                .components(separatedBy: CharacterSet(charactersIn: ",&"))
-                .first?
-                .trimmingCharacters(in: .whitespaces) ?? stripped
-        }()
-
-        if cleanTitle == title && cleanArtist == artist {
-            return nil // Skipping pass 2 since no strings were stripped
         }
 
-        return try await performLRCLIBRequest(artist: cleanArtist, title: cleanTitle, duration: duration, priority: priority)
+        // PASS 4: Fuzzy Search with ±4s duration tolerance window
+        return try await performLRCLIBSearch(artist: primaryArtist, title: cleanTitle, duration: duration, priority: priority)
     }
 
-    nonisolated private func performLRCLIBRequest(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
+    nonisolated private func extractPrimaryArtistName(from artist: String) -> String {
+        let featPattern = try? NSRegularExpression(
+            pattern: #"\s+(feat\.|ft\.|featuring|with|vs\.|pres\.)\s+.*"#,
+            options: .caseInsensitive
+        )
+        let range = NSRange(artist.startIndex..<artist.endIndex, in: artist)
+        var stripped = artist
+        if let m = featPattern?.firstMatch(in: artist, range: range),
+           let mRange = Range(m.range, in: artist) {
+            stripped = String(artist[artist.startIndex..<mRange.lowerBound])
+        }
+        return stripped
+            .components(separatedBy: CharacterSet(charactersIn: ";/"))
+            .first?
+            .trimmingCharacters(in: .whitespaces) ?? stripped.trimmingCharacters(in: .whitespaces)
+    }
+
+    nonisolated private func performLRCLIBRequest(artist: String, title: String, album: String?, duration: Double, priority: Float) async throws -> String? {
+        guard duration > 0 else { return nil }
         var getComponents = URLComponents(string: "https://lrclib.net/api/get")
-        getComponents?.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "track_name", value: title),
             URLQueryItem(name: "artist_name", value: artist),
             URLQueryItem(name: "duration", value: String(Int(duration)))
         ]
+        if let alb = album, !alb.trimmingCharacters(in: .whitespaces).isEmpty {
+            queryItems.append(URLQueryItem(name: "album_name", value: alb))
+        }
+        getComponents?.queryItems = queryItems
 
+        guard let getUrl = getComponents?.url else { return nil }
+        var req = URLRequest(url: getUrl)
+        req.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "User-Agent")
+        req.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "Lrclib-Client")
+        req.timeoutInterval = 15.0
+
+        let (data, response) = try await ThrottledNetworkManager.shared.enqueue(request: req, priority: priority)
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 429 || http.statusCode >= 500 {
+                throw URLError(.badServerResponse)
+            }
+            if http.statusCode == 200,
+               let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let isInstrumental = json["instrumental"] as? Bool, isInstrumental {
+                    return "INSTRUMENTAL"
+                }
+                if let synced = json["syncedLyrics"] as? String, !synced.isEmpty { return synced }
+                if let plain  = json["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
+            }
+        }
+        return nil
+    }
+
+    nonisolated private func performLRCLIBSearch(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
         var searchComponents = URLComponents(string: "https://lrclib.net/api/search")
         searchComponents?.queryItems = [
             URLQueryItem(name: "track_name", value: title),
             URLQueryItem(name: "artist_name", value: artist)
         ]
-
-        if duration > 0, let getUrl = getComponents?.url {
-            var req = URLRequest(url: getUrl)
-            req.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "User-Agent")
-            req.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "Lrclib-Client")
-            req.timeoutInterval = 20.0
-            let (data, response) = try await ThrottledNetworkManager.shared.enqueue(request: req, priority: priority)
-            if let http = response as? HTTPURLResponse {
-                if http.statusCode == 429 || http.statusCode >= 500 {
-                    throw URLError(.badServerResponse)
-                }
-                if http.statusCode == 200,
-                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    if let synced = json["syncedLyrics"] as? String, !synced.isEmpty { return synced }
-                    if let plain  = json["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
-                }
-            }
-        }
-
-        // 2. Search fallback — separate params give LRCLIB much better matching than a combined blob
         guard let searchUrl = searchComponents?.url else { return nil }
         var searchReq = URLRequest(url: searchUrl)
         searchReq.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "User-Agent")
         searchReq.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "Lrclib-Client")
-        searchReq.timeoutInterval = 20.0
+        searchReq.timeoutInterval = 15.0
 
         let (searchData, searchResp) = try await ThrottledNetworkManager.shared.enqueue(request: searchReq, priority: priority)
         if let httpSearchResp = searchResp as? HTTPURLResponse {
@@ -980,20 +1030,68 @@ extension NavidromeClient {
             if httpSearchResp.statusCode == 200,
                let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]] {
 
-                // Best match: prefer a result within ±3s of actual track duration to avoid
-                // syncing a Live Version to a Studio Version (causes lyric drift).
+                // Best match within ±4s of actual duration
                 let bestMatch = jsonArray.first { result in
                     guard let resultDuration = result["duration"] as? Double else { return false }
-                    return abs(resultDuration - duration) <= 3.0
-                } ?? jsonArray.first
+                    return abs(resultDuration - duration) <= 4.0
+                }
 
                 if let match = bestMatch {
+                    if let isInstrumental = match["instrumental"] as? Bool, isInstrumental {
+                        return "INSTRUMENTAL"
+                    }
                     if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
                     if let plain  = match["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
                 }
             }
         }
         return nil
+    }
+
+    nonisolated private func fetchFromNetEase(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
+        guard await NetworkMonitor.shared.isConnected else { return nil }
+
+        let query = "\(title) \(artist)"
+        var searchComponents = URLComponents(string: "https://music.163.com/api/search/get")
+        searchComponents?.queryItems = [
+            URLQueryItem(name: "s", value: query),
+            URLQueryItem(name: "type", value: "1"),
+            URLQueryItem(name: "limit", value: "3")
+        ]
+        guard let searchUrl = searchComponents?.url else { return nil }
+        var searchReq = URLRequest(url: searchUrl)
+        searchReq.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        searchReq.timeoutInterval = 10.0
+
+        let (sData, sResp) = try await ThrottledNetworkManager.shared.enqueue(request: searchReq, priority: priority)
+        guard let httpS = sResp as? HTTPURLResponse, httpS.statusCode == 200,
+              let sJson = try? JSONSerialization.jsonObject(with: sData) as? [String: Any],
+              let result = sJson["result"] as? [String: Any],
+              let songs = result["songs"] as? [[String: Any]],
+              !songs.isEmpty else { return nil }
+
+        // Find candidate within ±5s of duration
+        let targetMs = duration * 1000.0
+        let matchedSong = songs.first { s in
+            guard let dt = s["duration"] as? Double ?? s["dt"] as? Double else { return false }
+            return abs(dt - targetMs) <= 5000.0
+        } ?? songs.first
+
+        guard let song = matchedSong, let songId = song["id"] else { return nil }
+        let lyricUrlString = "https://music.163.com/api/song/lyric?os=pc&id=\(songId)&lv=-1&kv=-1&tv=-1"
+        guard let lyricUrl = URL(string: lyricUrlString) else { return nil }
+        var lyricReq = URLRequest(url: lyricUrl)
+        lyricReq.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        lyricReq.timeoutInterval = 10.0
+
+        let (lData, lResp) = try await ThrottledNetworkManager.shared.enqueue(request: lyricReq, priority: priority)
+        guard let httpL = lResp as? HTTPURLResponse, httpL.statusCode == 200,
+              let lJson = try? JSONSerialization.jsonObject(with: lData) as? [String: Any],
+              let lrcObj = lJson["lrc"] as? [String: Any],
+              let rawLyric = lrcObj["lyric"] as? String,
+              LRCParser.hasTimestamps(rawLyric) else { return nil }
+
+        return rawLyric
     }
 
 

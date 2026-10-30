@@ -14,3 +14,12 @@ Every solution, bugfix, and implementation in this codebase must be **world-clas
   - Eliminate compiler warnings completely (e.g. do not bind unused variables like `let self = self`; use `self != nil`).
   - Provide explicit closure parameter types where Swift type inference could fail across concurrency boundaries.
 - **Commit Protocol**: "Commit" always means commit and immediately push to GitHub (`git push origin <branch>`) so CI/CD (Codemagic, Bitrise) triggers instantly.
+
+## Library Metadata Baseline
+- **MusicBrainz Picard Standard**: The user's music library is curated and tagged through **MusicBrainz Picard**.
+  - Audio tracks contain canonical MusicBrainz track titles, release albums, artist credits, exact track durations, and `musicBrainzId` (recording/track MBID) where available.
+  - All algorithms (lyrics fetching, artwork resolution, scrobbling) must treat Picard tags as the baseline canonical truth.
+  - External lookup strategies (e.g. LRCLIB, Fanart.tv) must support multi-tier matching:
+    1. Exact Picard canonical metadata (`title`, `artist`, `album`, `duration`).
+    2. Picard artist-credit normalization (resolving `feat.` / `featuring` / multi-artist collaborations to both full credit and primary artist, as community lyric databases often index under primary artist only).
+    3. Resilient duration tolerance ($\pm 2\text{s}$ to $\pm 5\text{s}$) to bridge any CD-rip silence padding vs studio release duration.
