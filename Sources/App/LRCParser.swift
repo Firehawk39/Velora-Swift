@@ -3,7 +3,7 @@ import Foundation
 /// Universal standard-compliant LRC parser designed for 0ms overhead,
 /// handling standard [mm:ss.xx], colon hundredths [mm:ss:xx], integer seconds [mm:ss],
 /// multi-timestamp lines, empty instrumental cues, and [offset:±ms] tags.
-public struct LRCParser: Sendable {
+struct LRCParser: Sendable {
 
     private static let timestampRegex = try! NSRegularExpression(
         pattern: #"(?:\[(\d+):(\d+)(?:[\.:](\d+))?\])+"#
@@ -23,13 +23,13 @@ public struct LRCParser: Sendable {
     )
 
     /// Quick test to determine if a string contains valid LRC time-sync tags
-    public static func hasTimestamps(_ text: String) -> Bool {
+    static func hasTimestamps(_ text: String) -> Bool {
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return singleTimestampRegex.firstMatch(in: text, range: range) != nil
     }
 
     /// Parses an LRC formatted string into an array of chronologically sorted `LyricLine`s
-    public static func parse(_ lyrics: String) -> [LyricLine] {
+    static func parse(_ lyrics: String) -> [LyricLine] {
         var result: [LyricLine] = []
         var globalOffsetSeconds: Double = 0.0
 

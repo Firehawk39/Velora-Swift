@@ -37,7 +37,7 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     @Published var isLyricsMode: Bool = false
     @Published var currentPrimaryColor: UIColor = .black
     @Published var currentPalette: [UIColor] = [.black, .black, .black, .black, .black]
-    public var paletteKey: String {
+    var paletteKey: String {
         currentPalette.map { c in
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
             c.getRed(&r, green: &g, blue: &b, alpha: &a)
