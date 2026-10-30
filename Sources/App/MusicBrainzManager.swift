@@ -41,10 +41,10 @@ final class MusicBrainzManager: ObservableObject {
         self.metadataDir = VeloraStorage.metadata
         self.cacheFile = VeloraStorage.root.appendingPathComponent("name_to_mbid.json")
 
-        // Load persisted cache and purge any poisoned "NOT_FOUND" markers
+        // Load persisted cache (preserving negative lookup markers so we never re-query missing artists)
         if let data = try? Data(contentsOf: self.cacheFile),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
-            self.nameToMBIDCache = json.filter { $0.value != "NOT_FOUND" }
+            self.nameToMBIDCache = json
         }
 
         // Clean up any poisoned artist_NOT_FOUND.json file
@@ -126,6 +126,9 @@ final class MusicBrainzManager: ObservableObject {
             return FileManager.default.fileExists(
                 atPath: metadataDir.appendingPathComponent("artist_\(mbid).json").path
             )
+        }
+        if AssetRegistry.shared.isArtistUnavailable(artistName: artistName) {
+            return false
         }
         // Cache miss — scan disk so a deleted/corrupt name_to_mbid.json
         // doesn't cause every artist to be re-synced on next tap.
@@ -559,7 +562,12 @@ final class MusicBrainzManager: ObservableObject {
             }
 
             guard let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
-                DispatchQueue.main.async { completion(nil) }
+                DispatchQueue.main.async {
+                    self.nameToMBIDCache[primary] = "NOT_FOUND"
+                    self.saveCache()
+                    AssetRegistry.shared.markArtistUnavailable(artistName: primary)
+                    completion(nil)
+                }
                 return
             }
 
@@ -740,11 +748,23 @@ final class MusicBrainzManager: ObservableObject {
     }
 
     private func resolveMBIDAsync(for artist: String) async -> String? {
-        if let cached = nameToMBIDCache[artist], cached != "NOT_FOUND" {
+        if let cached = nameToMBIDCache[artist] {
+            if cached == "NOT_FOUND" { return nil }
             return cached
         }
 
         let primary = extractPrimaryArtist(artist)
+        if let cachedPrimary = nameToMBIDCache[primary] {
+            if cachedPrimary == "NOT_FOUND" { return nil }
+            return cachedPrimary
+        }
+
+        if AssetRegistry.shared.isArtistUnavailable(artistName: artist) || AssetRegistry.shared.isArtistUnavailable(artistName: primary) {
+            nameToMBIDCache[artist] = "NOT_FOUND"
+            nameToMBIDCache[primary] = "NOT_FOUND"
+            return nil
+        }
+
         let queryTerm = "artist:\"\(primary)\""
         let encoded = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encoded)&fmt=json"
@@ -762,6 +782,10 @@ final class MusicBrainzManager: ObservableObject {
             }
 
             guard let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
+                nameToMBIDCache[artist] = "NOT_FOUND"
+                nameToMBIDCache[primary] = "NOT_FOUND"
+                saveCache()
+                AssetRegistry.shared.markArtistUnavailable(artistName: primary)
                 return nil
             }
 
@@ -779,6 +803,9 @@ final class MusicBrainzManager: ObservableObject {
                 let sortName = ($0["sort-name"] as? String)?.lowercased()
                 return name == lowerPrimary || sortName == lowerPrimary
             }), let id = exactMatch["id"] as? String {
+                nameToMBIDCache[artist] = id
+                nameToMBIDCache[primary] = id
+                saveCache()
                 return id
             }
 
@@ -788,19 +815,33 @@ final class MusicBrainzManager: ObservableObject {
             if topScore >= 90 {
                 let candidate = topScoreCandidates.first(where: { ($0["name"] as? String)?.lowercased() == lowerPrimary }) ?? (topScoreCandidates.count == 1 ? topScoreCandidates.first : nil)
                 if let id = candidate?["id"] as? String {
+                    nameToMBIDCache[artist] = id
+                    nameToMBIDCache[primary] = id
+                    saveCache()
                     return id
                 }
             }
 
-            // 3. Ambiguous — refuse to guess
+            // 3. Ambiguous — refuse to guess and mark unavailable to prevent loop
+            nameToMBIDCache[artist] = "NOT_FOUND"
+            nameToMBIDCache[primary] = "NOT_FOUND"
+            saveCache()
+            AssetRegistry.shared.markArtistUnavailable(artistName: primary)
             return nil
         } catch { return nil }
     }
 
 
     private func resolveAlbumMBIDAsync(album: String, artist: String) async -> String? {
-        let cached = nameToMBIDCache["\(artist)_\(album)"]
-        if let cached = cached { return cached }
+        let albumKey = "\(artist)_\(album)"
+        if let cached = nameToMBIDCache[albumKey] {
+            if cached == "NOT_FOUND" { return nil }
+            return cached
+        }
+        if AssetRegistry.shared.isAlbumUnavailable(albumKey: albumKey) {
+            nameToMBIDCache[albumKey] = "NOT_FOUND"
+            return nil
+        }
 
         let query = "release:\(album) AND artist:\(artist)"
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

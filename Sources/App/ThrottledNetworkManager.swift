@@ -47,7 +47,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
             interval = 0.0 // Zero artificial delay for Navidrome server — raw unthrottled power
             maxConcurrency = 64 // Full unbothered line-rate throughput
         } else if host.contains("musicbrainz.org") {
-            interval = 1.5 // Strict pacing: MusicBrainz requires <= 1 req/sec; 1.5s provides safe overhead margin
+            interval = 2.0 // Safe margin: MusicBrainz requires <= 1 req/sec; 2.0s provides safe overhead margin
             maxConcurrency = 1
         } else if host.contains("lrclib.net") {
             interval = 2.2 // Paced at ~27 req/min to stay strictly under Cloudflare's 30 req/min limit
@@ -189,7 +189,7 @@ private class DomainThrottler: @unchecked Sendable {
             let targetResumeTime = Date().addingTimeInterval(seconds)
             if targetResumeTime > circuitResumeTime {
                 circuitResumeTime = targetResumeTime
-                AppLogger.shared.network("Circuit Breaker Tripped for \(host)! Failing fast for \(Int(seconds))s.", level: .warning, metadata: ["host": host, "failures": "\(consecutiveFailures)", "cooldownSec": "\(Int(seconds))"])
+                AppLogger.shared.network("Auto-pacing paused queries for \(host) for \(Int(seconds))s.", level: .info, metadata: ["host": host, "failures": "\(consecutiveFailures)", "cooldownSec": "\(Int(seconds))"])
             }
         }
     }
@@ -273,16 +273,16 @@ private class ThrottledOperation: Operation, @unchecked Sendable {
                     }
                     self.throttler.recordFailure(isRateLimit: true, retryAfter: delay)
                     AppLogger.shared.network(
-                        "Rate limited (HTTP \(http.statusCode)) by \(self.throttler.host)",
-                        level: .warning,
+                        "Pacing delay applied (HTTP \(http.statusCode)) for \(self.throttler.host)",
+                        level: .info,
                         metadata: ["status": "\(http.statusCode)", "retryAfter": "\(delay ?? 0)s"]
                     )
                 } else if http.statusCode >= 500 {
                     isFailure = true
                     self.throttler.recordFailure()
                     AppLogger.shared.network(
-                        "Server error (HTTP \(http.statusCode)) from \(self.throttler.host)",
-                        level: .error,
+                        "Upstream service load (HTTP \(http.statusCode)) from \(self.throttler.host)",
+                        level: .info,
                         metadata: ["status": "\(http.statusCode)", "bytes": "\(data?.count ?? 0)"]
                     )
                 }

@@ -520,7 +520,7 @@ final class FanartManager: ObservableObject {
     }
 
     /// Returns true if a valid backdrop exists OR it was verified unavailable
-    func hasCheckedBackdrop(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
+    nonisolated func hasCheckedBackdrop(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
         let primary = extractPrimaryArtist(artist)
         let keys = [mbid, artistId, sanitizeFileName(artist), sanitizeFileName(primary)].compactMap { $0 }.filter { !$0.isEmpty }
         for key in keys {
@@ -534,6 +534,15 @@ final class FanartManager: ObservableObject {
                     return false
                 }
                 return true // Verified unavailable within TTL
+            }
+        }
+        return false
+    }
+
+    nonisolated func hasCheckedBackdrop(for artists: [String], artistId: String? = nil, mbid: String? = nil) -> Bool {
+        for a in artists {
+            if hasCheckedBackdrop(for: a, artistId: artistId, mbid: mbid) {
+                return true
             }
         }
         return false
@@ -564,19 +573,28 @@ final class FanartManager: ObservableObject {
     }
 
     /// Returns true if a valid clear logo exists OR it was verified unavailable on TheAudioDB
-    func hasCheckedClearLogo(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
+    nonisolated func hasCheckedClearLogo(for artist: String, artistId: String? = nil, mbid: String? = nil) -> Bool {
         let keys = getClearLogoKeys(for: [artist], artistId: artistId, mbid: mbid)
         for key in keys {
             if AssetRegistry.shared.isLogoUnavailable(key: key) { return true }
             let fileUrl = clearLogoDir.appendingPathComponent(key + ".png")
-            if fileManager.fileExists(atPath: fileUrl.path) {
-                let size = (try? fileManager.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
+            if FileManager.default.fileExists(atPath: fileUrl.path) {
+                let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size]) as? Int64 ?? 0
                 if size > 100 { return true }
                 if isNegativeCacheExpired(at: fileUrl) {
-                    try? fileManager.removeItem(at: fileUrl)
+                    try? FileManager.default.removeItem(at: fileUrl)
                     return false
                 }
                 return true // Verified unavailable within TTL
+            }
+        }
+        return false
+    }
+
+    nonisolated func hasCheckedClearLogo(for artists: [String], artistId: String? = nil, mbid: String? = nil) -> Bool {
+        for a in artists {
+            if hasCheckedClearLogo(for: a, artistId: artistId, mbid: mbid) {
+                return true
             }
         }
         return false
@@ -2088,7 +2106,16 @@ final class FanartManager: ObservableObject {
         
         Task { @MainActor in
             if let cached = FanartManager.shared.mbidCache[primary] {
+                if cached == "NOT_FOUND" {
+                    completion(.notFound)
+                    return
+                }
                 completion(.found(cached))
+                return
+            }
+            if AssetRegistry.shared.isArtistUnavailable(artistName: primary) {
+                FanartManager.shared.mbidCache[primary] = "NOT_FOUND"
+                completion(.notFound)
                 return
             }
             if let indexed = FanartManager.shared.getCanonicalMBID(for: primary) ?? FanartManager.shared.getCanonicalMBID(for: artistName), !indexed.isEmpty {
@@ -2097,6 +2124,11 @@ final class FanartManager: ObservableObject {
                 return
             }
             if let mbCached = MusicBrainzManager.shared.getCachedMBID(for: primary), !mbCached.isEmpty {
+                if mbCached == "NOT_FOUND" {
+                    FanartManager.shared.mbidCache[primary] = "NOT_FOUND"
+                    completion(.notFound)
+                    return
+                }
                 FanartManager.shared.mbidCache[primary] = mbCached
                 FanartManager.shared.updateCanonicalMBID(mbCached, for: primary)
                 completion(.found(mbCached))
@@ -2114,6 +2146,8 @@ final class FanartManager: ObservableObject {
             let encodedQuery = queryTerm.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
             let urlString = "https://musicbrainz.org/ws/2/artist/?query=\(encodedQuery)&fmt=json"
             guard let url = URL(string: urlString) else {
+                FanartManager.shared.mbidCache[primary] = "NOT_FOUND"
+                AssetRegistry.shared.markArtistUnavailable(artistName: primary)
                 FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound)
                 return
             }
@@ -2158,7 +2192,11 @@ final class FanartManager: ObservableObject {
 
             guard let artists = json["artists"] as? [[String: Any]], !artists.isEmpty else {
                 // Valid response but no results — artist genuinely not on MusicBrainz
-                Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound) }
+                Task { @MainActor in
+                    FanartManager.shared.mbidCache[primary] = "NOT_FOUND"
+                    AssetRegistry.shared.markArtistUnavailable(artistName: primary)
+                    FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound)
+                }
                 return
             }
 
@@ -2198,7 +2236,11 @@ final class FanartManager: ObservableObject {
             }
 
             // 3. No reliable match found
-            Task { @MainActor in FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound) }
+            Task { @MainActor in
+                FanartManager.shared.mbidCache[primary] = "NOT_FOUND"
+                AssetRegistry.shared.markArtistUnavailable(artistName: primary)
+                FanartManager.shared.resolveMbidFetches(for: primary, with: .notFound)
+            }
         }
         }
     }
