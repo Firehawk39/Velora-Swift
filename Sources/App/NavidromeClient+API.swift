@@ -891,7 +891,7 @@ extension NavidromeClient {
                     }
                 }
             } catch {
-                AppLogger.shared.log("[LRCLIB] Transient error/rate limit for \(title): \(error.localizedDescription)", level: .warning)
+                AppLogger.shared.log("[LRCLIB] Upstream lookup paused for \(title)", level: .debug)
             }
 
             // TIER 3: NetEase Secondary Fallback (Public Time-Synced API)
@@ -924,24 +924,21 @@ extension NavidromeClient {
     nonisolated private func fetchFromLRCLIB(artist: String, title: String, album: String?, duration: Double, priority: Float) async throws -> String? {
         guard await NetworkMonitor.shared.isConnected else { throw URLError(.notConnectedToInternet) }
 
-        // PASS 1: Exact Picard Match (canonical title, artist, album, duration)
-        if let exactResult = try await performLRCLIBRequest(artist: artist, title: title, album: album, duration: duration, priority: priority) {
-            return exactResult
-        }
-
-        // PASS 2: Picard Collaboration Decomposition
-        // Picard writes exact collaborations: "Chase & Status feat. Takura", "Charli xcx featuring lorde"
-        // Community databases (like LRCLIB) index these under primary artist: "Chase & Status", "Charli xcx"
         let primaryArtist = extractPrimaryArtistName(from: artist)
 
+        // PASS 1: Track title, primary artist & duration (highest hit rate on LRCLIB without album mismatch)
+        if let directResult = try await performLRCLIBRequest(artist: primaryArtist, title: title, album: nil, duration: duration, priority: priority) {
+            return directResult
+        }
+
+        // PASS 2: If full artist credit differed from primary artist (e.g. Picard full collaboration)
         if primaryArtist != artist {
-            if let decomposedResult = try await performLRCLIBRequest(artist: primaryArtist, title: title, album: album, duration: duration, priority: priority) {
-                return decomposedResult
+            if let fullResult = try await performLRCLIBRequest(artist: artist, title: title, album: nil, duration: duration, priority: priority) {
+                return fullResult
             }
         }
 
-        // PASS 3: Canonical Title Stripping
-        // Strip release modifiers like (Robin Schulz edit), (Remastered 2011), [Live]
+        // PASS 3: Canonical Title Stripping (remove Remix / Radio Edit / Remastered)
         let cleanTitle = title
             .replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\s*\[[^\]]*\]"#, with: "", options: .regularExpression)

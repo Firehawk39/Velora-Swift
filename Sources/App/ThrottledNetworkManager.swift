@@ -50,7 +50,7 @@ class ThrottledNetworkManager: @unchecked Sendable {
             interval = 2.0 // Safe margin: MusicBrainz requires <= 1 req/sec; 2.0s provides safe overhead margin
             maxConcurrency = 1
         } else if host.contains("lrclib.net") {
-            interval = 2.2 // Paced at ~27 req/min to stay strictly under Cloudflare's 30 req/min limit
+            interval = 2.5 // Paced at 24 req/min to stay safely below Cloudflare's 30 req/min limit
             maxConcurrency = 1
         } else if host.contains("assets.fanart.tv") {
             interval = 0.0 // Static image CDN — zero delay, high throughput

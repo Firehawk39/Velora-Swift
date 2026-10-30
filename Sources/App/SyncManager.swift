@@ -363,8 +363,8 @@ final class SyncManager: ObservableObject {
             }
 
             let lyricsDir = VeloraStorage.lyrics
-            // Managed lyrics concurrency pool (6). Requests are serialized safely by ThrottledNetworkManager at 2.2s.
-            let maxConcurrent = 6
+            // Serialized lyrics worker (1) ensures strict adherence to Cloudflare's 30 req/min limit without tripping circuit breaker
+            let maxConcurrent = 1
             let totalTasks = Double(tracks.count)
             let startTime = Date()
 
