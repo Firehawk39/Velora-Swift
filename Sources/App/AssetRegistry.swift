@@ -107,6 +107,23 @@ final class AssetRegistry: @unchecked Sendable {
         saveLocked()
     }
 
+    func unmarkLyricsUnavailable(trackId: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        if data.unavailableLyrics.remove(trackId) != nil {
+            isDirty = true
+            saveLocked()
+        }
+    }
+
+    func resetLyricsUnavailableRecords() {
+        lock.lock()
+        defer { lock.unlock() }
+        data.unavailableLyrics.removeAll()
+        isDirty = true
+        saveLocked()
+    }
+
     // MARK: - Portrait
     func isPortraitUnavailable(artistId: String) -> Bool {
         lock.lock()

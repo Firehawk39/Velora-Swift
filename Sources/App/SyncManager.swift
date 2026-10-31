@@ -476,11 +476,8 @@ final class SyncManager: ObservableObject {
             }
 
             for song in missingSongs {
-                let cacheFile = lyricsDir.appendingPathComponent("\(song.id).txt")
-                if !FileManager.default.fileExists(atPath: cacheFile.path) {
-                    try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
-                }
-                AssetRegistry.shared.markLyricsUnavailable(trackId: song.id)
+                // Do NOT write destructive NO_LYRICS locks to disk, allowing playback self-healing to resolve when online
+                AppLogger.shared.log("[LyricsSync] Track \(song.title) unlisted or paused during batch sync.", level: .debug)
             }
 
             let finalFailed = missingSongs.count
@@ -1030,11 +1027,8 @@ final class SyncManager: ObservableObject {
                 if lyricsFailed > 0 {
                     AppLogger.shared.log("[RepairSync] \(lyricsFailed) songs unavailable after all retries (likely not in LRCLIB).", level: .warning)
                     for req in pendingLyrics {
-                        let cacheFile = VeloraStorage.lyrics.appendingPathComponent("\(req.id).txt")
-                        if !FileManager.default.fileExists(atPath: cacheFile.path) {
-                            try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
-                        }
-                        AssetRegistry.shared.markLyricsUnavailable(trackId: req.id)
+                        // Do not lock disk with NO_LYRICS so user playback can self-heal when online
+                        AppLogger.shared.log("[RepairSync] Track \(req.title) unavailable during batch repair.", level: .debug)
                     }
                 }
             }

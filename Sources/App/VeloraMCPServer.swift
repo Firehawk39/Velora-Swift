@@ -715,7 +715,8 @@ final class VeloraMCPServer: ObservableObject {
             let purgedLyrics = VeloraStorage.autoCleanupPollutedLyrics()
             FanartManager.shared.wipeNegativeFanartCaches()
             AssetRegistry.shared.resetFanartUnavailableRecords()
-            return "Successfully purged \(purgedAssets) corrupted assets and \(purgedLyrics) polluted lyrics files, and cleared false negative asset locks."
+            AssetRegistry.shared.resetLyricsUnavailableRecords()
+            return "Successfully purged \(purgedAssets) corrupted assets, \(purgedLyrics) polluted/negative lyrics files, and cleared false negative asset locks."
 
         case "velora_trigger_repair_sync":
             SyncManager.shared.startRepairSync()

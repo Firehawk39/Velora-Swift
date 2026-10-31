@@ -843,9 +843,15 @@ extension NavidromeClient {
                         return
                     }
                 } else if trimmed == "NO_LYRICS" || trimmed == "INSTRUMENTAL" {
-                    // Valid negative cache: Verified instrumental or unavailable on LRCLIB
-                    completion(nil)
-                    return
+                    // SELF-HEALING NEGATIVE CACHE:
+                    // If online, purge stale negative lock and re-query with the enhanced multi-artist Picard engine!
+                    if isOnline {
+                        try? FileManager.default.removeItem(at: cacheFile)
+                        AssetRegistry.shared.unmarkLyricsUnavailable(trackId: trackId)
+                    } else {
+                        completion(nil)
+                        return
+                    }
                 } else if LRCParser.hasTimestamps(lyrics) {
                     // Genuine valid synced lyrics: return immediately!
                     completion(lyrics)
@@ -888,6 +894,7 @@ extension NavidromeClient {
             }
 
             // TIER 2: Query LRCLIB with Picard-aware multi-pass matching
+            var upstreamTransientError = false
             do {
                 if let lrclibResult = try await fetchFromLRCLIB(artist: artist, title: title, album: album, duration: duration, priority: priority), !lrclibResult.isEmpty {
                     try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -896,7 +903,8 @@ extension NavidromeClient {
                     return
                 }
             } catch {
-                AppLogger.shared.log("[LRCLIB] Upstream lookup paused for \(title)", level: .debug)
+                upstreamTransientError = true
+                AppLogger.shared.log("[LRCLIB] Upstream lookup paused for \(title): \(error.localizedDescription)", level: .debug)
             }
 
             // TIER 3: Navidrome plain text fallback (SESSION IN-MEMORY ONLY - DO NOT DISK CACHE)
@@ -907,9 +915,12 @@ extension NavidromeClient {
             }
 
             // TIER 4: Verified negative cache marker
-            try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
-            AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
+            // CRITICAL: NEVER write NO_LYRICS if upstream encountered a 502/503/timeout or network error!
+            if !upstreamTransientError {
+                try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
+                AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
+            }
             completion(nil)
         }
     }
@@ -924,14 +935,14 @@ extension NavidromeClient {
             return directResult
         }
 
-        // PASS 2: If full artist credit differed from primary artist (e.g. Picard full collaboration)
-        if primaryArtist != artist {
+        // PASS 2: If full artist credit differed from primary artist (e.g. Picard full collaboration credit)
+        if primaryArtist.lowercased() != artist.lowercased() {
             if let fullResult = try await performLRCLIBRequest(artist: artist, title: title, album: nil, duration: duration, priority: priority) {
                 return fullResult
             }
         }
 
-        // PASS 3: Canonical Title Stripping (remove Remix / Radio Edit / Remastered)
+        // PASS 3: Canonical Title Stripping (remove Remix / Radio Edit / Remastered / Feat in title)
         let cleanTitle = title
             .replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\s*\[[^\]]*\]"#, with: "", options: .regularExpression)
@@ -943,8 +954,14 @@ extension NavidromeClient {
             }
         }
 
-        // PASS 4: Fuzzy Search with ±4s duration tolerance window
-        return try await performLRCLIBSearch(artist: primaryArtist, title: cleanTitle, duration: duration, priority: priority)
+        // PASS 4: Structured search with ±5s duration tolerance window
+        if let searchResult = try await performLRCLIBSearch(query: nil, artist: primaryArtist, title: cleanTitle, duration: duration, priority: priority) {
+            return searchResult
+        }
+
+        // PASS 5: Resilient Free-form Search (handles any Picard collaboration tag variants)
+        let freeformQuery = "\(cleanTitle) \(primaryArtist)"
+        return try await performLRCLIBSearch(query: freeformQuery, artist: nil, title: nil, duration: duration, priority: priority)
     }
 
     nonisolated private func extractPrimaryArtistName(from artist: String) -> String {
@@ -958,10 +975,19 @@ extension NavidromeClient {
            let mRange = Range(m.range, in: artist) {
             stripped = String(artist[artist.startIndex..<mRange.lowerBound])
         }
-        return stripped
-            .components(separatedBy: CharacterSet(charactersIn: ";/"))
-            .first?
-            .trimmingCharacters(in: .whitespaces) ?? stripped.trimmingCharacters(in: .whitespaces)
+
+        let collabDelimiters = [" & ", " and ", " • ", " x ", " X ", ";", "/", ", "]
+        for delimiter in collabDelimiters {
+            if stripped.contains(delimiter) {
+                let parts = stripped.components(separatedBy: delimiter)
+                if let first = parts.first?.trimmingCharacters(in: .whitespaces), !first.isEmpty {
+                    stripped = first
+                    break
+                }
+            }
+        }
+
+        return stripped.trimmingCharacters(in: .whitespaces)
     }
 
     nonisolated private func performLRCLIBRequest(artist: String, title: String, album: String?, duration: Double, priority: Float) async throws -> String? {
@@ -1000,12 +1026,16 @@ extension NavidromeClient {
         return nil
     }
 
-    nonisolated private func performLRCLIBSearch(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
+    nonisolated private func performLRCLIBSearch(query: String? = nil, artist: String? = nil, title: String? = nil, duration: Double, priority: Float) async throws -> String? {
         var searchComponents = URLComponents(string: "https://lrclib.net/api/search")
-        searchComponents?.queryItems = [
-            URLQueryItem(name: "track_name", value: title),
-            URLQueryItem(name: "artist_name", value: artist)
-        ]
+        var queryItems: [URLQueryItem] = []
+        if let q = query, !q.isEmpty {
+            queryItems.append(URLQueryItem(name: "q", value: q))
+        } else {
+            if let t = title, !t.isEmpty { queryItems.append(URLQueryItem(name: "track_name", value: t)) }
+            if let a = artist, !a.isEmpty { queryItems.append(URLQueryItem(name: "artist_name", value: a)) }
+        }
+        searchComponents?.queryItems = queryItems
         guard let searchUrl = searchComponents?.url else { return nil }
         var searchReq = URLRequest(url: searchUrl)
         searchReq.setValue("VeloraApp/1.0 (https://github.com/Firehawk39/Velora-Swift)", forHTTPHeaderField: "User-Agent")
@@ -1020,18 +1050,26 @@ extension NavidromeClient {
             if httpSearchResp.statusCode == 200,
                let jsonArray = try JSONSerialization.jsonObject(with: searchData) as? [[String: Any]] {
 
-                // Best match within ±4s of actual duration
-                let bestMatch = jsonArray.first { result in
+                // Resilient duration tolerance: ±5s (Picard CD-rip silence padding baseline)
+                let durationMatches = jsonArray.filter { result in
                     guard let resultDuration = result["duration"] as? Double else { return false }
-                    return abs(resultDuration - duration) <= 4.0
+                    return abs(resultDuration - duration) <= 5.0
                 }
 
-                if let match = bestMatch {
-                    if let isInstrumental = match["instrumental"] as? Bool, isInstrumental {
-                        return nil
-                    }
-                    if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
-                    if let plain  = match["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
+                // Prioritize candidate with verified time-synced lyrics
+                if let bestSynced = durationMatches.first(where: {
+                    if let synced = $0["syncedLyrics"] as? String, !synced.isEmpty { return true }
+                    return false
+                }), let synced = bestSynced["syncedLyrics"] as? String {
+                    return synced
+                }
+
+                // Fallback to plain lyrics if within duration
+                if let bestPlain = durationMatches.first(where: {
+                    if let plain = $0["plainLyrics"] as? String, !plain.isEmpty { return true }
+                    return false
+                }), let plain = bestPlain["plainLyrics"] as? String {
+                    return plain
                 }
             }
         }

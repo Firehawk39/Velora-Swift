@@ -101,7 +101,8 @@ enum VeloraStorage {
         return purgedCount
     }
 
-    /// Automatically sweeps the Lyrics directory and purges any files contaminated with NetEase CJK staff metadata.
+    /// Automatically sweeps the Lyrics directory and purges any files contaminated with NetEase CJK staff metadata,
+    /// or stale NO_LYRICS / INSTRUMENTAL false-negative locks.
     @discardableResult
     static func autoCleanupPollutedLyrics() -> Int {
         let fm = FileManager.default
@@ -115,12 +116,17 @@ enum VeloraStorage {
         for file in files {
             guard file.pathExtension.lowercased() == "txt" else { continue }
             guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
             var shouldPurge = false
-            for marker in markers {
-                if text.contains(marker) {
-                    shouldPurge = true
-                    break
+            if trimmed == "NO_LYRICS" || trimmed == "INSTRUMENTAL" {
+                shouldPurge = true
+            } else {
+                for marker in markers {
+                    if text.contains(marker) {
+                        shouldPurge = true
+                        break
+                    }
                 }
             }
 
@@ -132,7 +138,7 @@ enum VeloraStorage {
 
         if purgedCount > 0 {
             Task { @MainActor in
-                AppLogger.shared.log("[Storage] 🧹 Auto-purged \(purgedCount) polluted CJK/credit cached lyrics files.", level: .info)
+                AppLogger.shared.log("[Storage] 🧹 Auto-purged \(purgedCount) polluted or false-negative cached lyrics files.", level: .info)
             }
         }
         return purgedCount
