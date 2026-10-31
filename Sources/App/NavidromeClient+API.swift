@@ -842,16 +842,10 @@ extension NavidromeClient {
                         completion(nil)
                         return
                     }
-                } else if trimmed == "INSTRUMENTAL" {
-                    completion("INSTRUMENTAL")
+                } else if trimmed == "NO_LYRICS" || trimmed == "INSTRUMENTAL" {
+                    // Valid negative cache: Verified instrumental or unavailable on LRCLIB
+                    completion(nil)
                     return
-                } else if trimmed == "NO_LYRICS" {
-                    // OLD / UNVERIFIED NEGATIVE CACHE:
-                    // If online, don't return early; allow self-healing to re-check the new Picard-aware pipeline!
-                    if !isOnline {
-                        completion(nil)
-                        return
-                    }
                 } else if LRCParser.hasTimestamps(lyrics) {
                     // Genuine valid synced lyrics: return immediately!
                     completion(lyrics)
@@ -895,19 +889,11 @@ extension NavidromeClient {
 
             // TIER 2: Query LRCLIB with Picard-aware multi-pass matching
             do {
-                if let lrclibResult = try await fetchFromLRCLIB(artist: artist, title: title, album: album, duration: duration, priority: priority) {
-                    if lrclibResult == "INSTRUMENTAL" {
-                        try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        try? "INSTRUMENTAL".write(to: cacheFile, atomically: true, encoding: .utf8)
-                        AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
-                        completion("INSTRUMENTAL")
-                        return
-                    } else if !lrclibResult.isEmpty {
-                        try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-                        try? lrclibResult.write(to: cacheFile, atomically: true, encoding: .utf8)
-                        completion(lrclibResult)
-                        return
-                    }
+                if let lrclibResult = try await fetchFromLRCLIB(artist: artist, title: title, album: album, duration: duration, priority: priority), !lrclibResult.isEmpty {
+                    try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try? lrclibResult.write(to: cacheFile, atomically: true, encoding: .utf8)
+                    completion(lrclibResult)
+                    return
                 }
             } catch {
                 AppLogger.shared.log("[LRCLIB] Upstream lookup paused for \(title)", level: .debug)
@@ -1005,7 +991,7 @@ extension NavidromeClient {
             if http.statusCode == 200,
                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 if let isInstrumental = json["instrumental"] as? Bool, isInstrumental {
-                    return "INSTRUMENTAL"
+                    return nil
                 }
                 if let synced = json["syncedLyrics"] as? String, !synced.isEmpty { return synced }
                 if let plain  = json["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }
@@ -1042,7 +1028,7 @@ extension NavidromeClient {
 
                 if let match = bestMatch {
                     if let isInstrumental = match["instrumental"] as? Bool, isInstrumental {
-                        return "INSTRUMENTAL"
+                        return nil
                     }
                     if let synced = match["syncedLyrics"] as? String, !synced.isEmpty { return synced }
                     if let plain  = match["plainLyrics"]  as? String, !plain.isEmpty  { return plain  }

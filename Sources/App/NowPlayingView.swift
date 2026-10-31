@@ -946,13 +946,7 @@ struct NowPlayingView: View {
 
     private var inlineLyricsView: some View {
         let syncedLyrics = playback.currentSyncedLyrics ?? []
-        let activeIndex: Int = {
-            guard let first = syncedLyrics.first else { return 0 }
-            if playback.progress < first.time {
-                return -1
-            }
-            return syncedLyrics.lastIndex(where: { playback.progress >= $0.time }) ?? 0
-        }()
+        let activeIndex = syncedLyrics.isEmpty ? 0 : (syncedLyrics.lastIndex(where: { playback.progress >= $0.time }) ?? 0)
 
         return ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
@@ -970,19 +964,13 @@ struct NowPlayingView: View {
                             .id(index)
                         }
                     } else if let lyrics = playback.currentLyrics {
-                        if lyrics.trimmingCharacters(in: .whitespacesAndNewlines) == "• • •" || lyrics.trimmingCharacters(in: .whitespacesAndNewlines) == "INSTRUMENTAL" {
-                            Text("• • •")
-                                .font(.system(size: 32, weight: .black))
-                                .foregroundColor(.white.opacity(0.4))
-                        } else {
-                            let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                                Text(line)
-                                    .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
-                                    .foregroundColor(.white)
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
+                        let lines = lyrics.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                            Text(line)
+                                .font(.system(size: isLargeCanvas ? 44 : 32, weight: .black))
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     } else {
                         // Fetch finished, nothing found
@@ -1002,16 +990,13 @@ struct NowPlayingView: View {
                     resetIdleTimer()
                 }
                 .onChange(of: activeIndex) { newIndex in
-                    guard newIndex >= 0 else { return }
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                         scrollProxy.scrollTo(newIndex, anchor: .center)
                     }
                 }
                 .onAppear {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        if activeIndex >= 0 {
-                            scrollProxy.scrollTo(activeIndex, anchor: .center)
-                        }
+                        scrollProxy.scrollTo(activeIndex, anchor: .center)
                     }
                 }
             }

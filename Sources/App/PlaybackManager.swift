@@ -1066,12 +1066,6 @@ final class PlaybackManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     private func applyLyrics(_ lyrics: String?, for track: Track) {
         guard currentTrack?.id == track.id else { return }
         if let lyrics = lyrics {
-            let trimmed = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed == "INSTRUMENTAL" {
-                currentLyrics = "• • •"
-                currentSyncedLyrics = nil
-                return
-            }
             if LRCParser.hasTimestamps(lyrics) {
                 let parsed = LRCParser.parse(lyrics)
                 currentLyrics = lyrics

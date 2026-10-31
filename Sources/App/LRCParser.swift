@@ -117,15 +117,12 @@ struct LRCParser: Sendable {
                 .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespaces)
 
-            // Strictly filter out non-vocal studio staff credits, foreign metadata, and producer tags
-            guard !isStudioCreditOrNonLyric(plainText) else { continue }
-
-            // If line text is empty, preserve as an instrumental break marker
-            let finalDisplayText = plainText.isEmpty ? "• • •" : plainText
+            // Strictly filter out empty lines, non-vocal studio staff credits, and foreign metadata
+            guard !plainText.isEmpty, !isStudioCreditOrNonLyric(plainText) else { continue }
 
             // Register line for EACH timestamp on multi-timestamp lines (e.g. repeated choruses)
             for t in timestamps {
-                result.append(LyricLine(time: t, text: finalDisplayText, words: lyricWords))
+                result.append(LyricLine(time: t, text: plainText, words: lyricWords))
             }
         }
 
@@ -147,7 +144,7 @@ struct LRCParser: Sendable {
     /// or foreign non-lyric metadata injected by third-party providers.
     static func isStudioCreditOrNonLyric(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty || trimmed == "• • •" { return false }
+        if trimmed.isEmpty { return false }
         let lower = trimmed.lowercased()
 
         // 1. CJK metadata and credit keywords (e.g. NetEase / QQ Music injected credits)
