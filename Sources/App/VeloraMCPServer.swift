@@ -523,17 +523,37 @@ final class VeloraMCPServer: ObservableObject {
         case "velora_get_playback_state":
             let pm = PlaybackManager.shared
             let track = pm?.currentTrack
-            let state: [String: Any] = [
+            let prog = pm?.progress ?? 0
+            let mins = Int(prog) / 60
+            let secs = Int(prog) % 60
+            let timeFormatted = String(format: "%d:%02d", mins, secs)
+
+            var state: [String: Any] = [
                 "isPlaying": pm?.isPlaying ?? false,
                 "trackTitle": track?.title ?? "None",
                 "artist": track?.artist ?? "None",
                 "primaryArtist": track?.primaryArtist ?? "None",
                 "album": track?.album ?? "None",
                 "duration": track?.durationFormatted ?? "0:00",
+                "currentTime": timeFormatted,
+                "progressSeconds": prog,
                 "queueCount": pm?.queue.count ?? 0,
                 "hasBackdrop": FanartManager.shared.currentBackdrop != nil,
-                "hasClearLogo": FanartManager.shared.currentClearLogo != nil
+                "hasClearLogo": FanartManager.shared.currentClearLogo != nil,
+                "hasSyncedLyrics": pm?.currentSyncedLyrics != nil,
+                "syncedLinesCount": pm?.currentSyncedLyrics?.count ?? 0,
+                "isLyricsMode": pm?.isLyricsMode ?? false,
+                "currentLyrics": pm?.currentLyrics ?? "None"
             ]
+
+            if let synced = pm?.currentSyncedLyrics {
+                if let activeLine = synced.last(where: { $0.time <= prog }) {
+                    state["activeLyricLine"] = activeLine.text
+                } else {
+                    state["activeLyricLine"] = "Pre-vocal Intro"
+                }
+            }
+
             return toJSONString(state)
 
         case "velora_get_sync_status":
@@ -771,14 +791,7 @@ final class VeloraMCPServer: ObservableObject {
     private func readResource(uri: String) async -> String {
         switch uri {
         case "velora://playback/current":
-            let pm = PlaybackManager.shared
-            let dict: [String: Any] = [
-                "title": pm?.currentTrack?.title ?? "None",
-                "artist": pm?.currentTrack?.artist ?? "None",
-                "album": pm?.currentTrack?.album ?? "None",
-                "isPlaying": pm?.isPlaying ?? false
-            ]
-            return toJSONString(dict)
+            return await executeTool(name: "velora_get_playback_state", arguments: [:])
         case "velora://logs/live":
             return AppLogger.shared.logs.suffix(100).map { "\($0.timestamp.ISO8601Format()) [\($0.level)] \($0.message)" }.joined(separator: "\n")
         case "velora://library/overview":
