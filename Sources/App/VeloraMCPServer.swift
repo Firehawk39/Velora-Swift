@@ -678,8 +678,29 @@ final class VeloraMCPServer: ObservableObject {
             let logos = countFiles(VeloraStorage.clearLogos)
             let trackCount = await DatabaseManager.shared.getTrackCount()
 
+            let countLyrics: () -> (total: Int, polluted: Int) = {
+                guard let files = try? fm.contentsOfDirectory(at: VeloraStorage.lyrics, includingPropertiesForKeys: nil) else { return (0, 0) }
+                var total = 0
+                var polluted = 0
+                let markers = ["作词", "作詞", "作曲", "编曲", "編曲", "制作人", "music.163.com"]
+                for file in files where file.pathExtension.lowercased() == "txt" {
+                    total += 1
+                    if let text = try? String(contentsOf: file, encoding: .utf8) {
+                        for m in markers {
+                            if text.contains(m) {
+                                polluted += 1
+                                break
+                            }
+                        }
+                    }
+                }
+                return (total, polluted)
+            }
+            let lyricsAudit = countLyrics()
+
             let audit: [String: Any] = [
                 "totalTracksInDB": trackCount,
+                "lyrics": ["total": lyricsAudit.total, "polluted": lyricsAudit.polluted],
                 "backdrops": ["total": backdrops.count, "corruptedZeroByte": backdrops.zeroByteCount],
                 "clearLogos": ["total": logos.count, "corruptedZeroByte": logos.zeroByteCount],
                 "artistPortraits": ["total": portraits.count, "corruptedZeroByte": portraits.zeroByteCount],
@@ -690,10 +711,11 @@ final class VeloraMCPServer: ObservableObject {
             return toJSONString(audit)
 
         case "velora_purge_negative_cache":
-            let purged = VeloraStorage.autoCleanupCorruptedAssets()
+            let purgedAssets = VeloraStorage.autoCleanupCorruptedAssets()
+            let purgedLyrics = VeloraStorage.autoCleanupPollutedLyrics()
             FanartManager.shared.wipeNegativeFanartCaches()
             AssetRegistry.shared.resetFanartUnavailableRecords()
-            return "Successfully purged \(purged) 0-byte negative markers/corrupted assets and cleared false negative asset locks."
+            return "Successfully purged \(purgedAssets) corrupted assets and \(purgedLyrics) polluted lyrics files, and cleared false negative asset locks."
 
         case "velora_trigger_repair_sync":
             SyncManager.shared.startRepairSync()

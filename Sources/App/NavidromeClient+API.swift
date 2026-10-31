@@ -814,6 +814,17 @@ extension NavidromeClient {
         return nil
     }
 
+    private func isPollutedCache(_ text: String) -> Bool {
+        let markers = [
+            "作词", "作詞", "作曲", "编曲", "編曲", "制作人", "製作人",
+            "music.163.com", "163.com", "qq.com", "kugou.com"
+        ]
+        for marker in markers {
+            if text.contains(marker) { return true }
+        }
+        return false
+    }
+
     func fetchLyrics(trackId: String, artist: String, title: String, album: String? = nil, duration: Double, priority: Float = URLSessionTask.defaultPriority, completion: @escaping @MainActor @Sendable (String?) -> Void) {
         let lyricsDir = VeloraStorage.lyrics
         let cacheFile = lyricsDir.appendingPathComponent("\(trackId).txt")
@@ -823,7 +834,15 @@ extension NavidromeClient {
             let cachedLyrics = try? String(contentsOf: cacheFile, encoding: .utf8)
             if let lyrics = cachedLyrics, !lyrics.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let trimmed = lyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed == "INSTRUMENTAL" {
+                
+                // Purge contaminated NetEase / CJK credit cache immediately
+                if isPollutedCache(trimmed) {
+                    try? FileManager.default.removeItem(at: cacheFile)
+                    if !isOnline {
+                        completion(nil)
+                        return
+                    }
+                } else if trimmed == "INSTRUMENTAL" {
                     completion("INSTRUMENTAL")
                     return
                 } else if trimmed == "NO_LYRICS" {
@@ -894,26 +913,14 @@ extension NavidromeClient {
                 AppLogger.shared.log("[LRCLIB] Upstream lookup paused for \(title)", level: .debug)
             }
 
-            // TIER 3: NetEase Secondary Fallback (Public Time-Synced API)
-            do {
-                if let netEaseLrc = try await fetchFromNetEase(artist: artist, title: title, duration: duration, priority: priority), !netEaseLrc.isEmpty {
-                    try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try? netEaseLrc.write(to: cacheFile, atomically: true, encoding: .utf8)
-                    completion(netEaseLrc)
-                    return
-                }
-            } catch {
-                AppLogger.shared.log("[NetEase] Fallback error for \(title): \(error.localizedDescription)", level: .debug)
-            }
-
-            // TIER 4: Navidrome plain text fallback (SESSION IN-MEMORY ONLY - DO NOT DISK CACHE)
+            // TIER 3: Navidrome plain text fallback (SESSION IN-MEMORY ONLY - DO NOT DISK CACHE)
             if let fallbackText = navidromeLyrics, !fallbackText.isEmpty {
                 // Return to user for this session, but DO NOT poison disk cache
                 completion(fallbackText)
                 return
             }
 
-            // TIER 5: Verified negative cache marker
+            // TIER 4: Verified negative cache marker
             try? FileManager.default.createDirectory(at: cacheFile.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? "NO_LYRICS".write(to: cacheFile, atomically: true, encoding: .utf8)
             AssetRegistry.shared.markLyricsUnavailable(trackId: trackId)
@@ -1044,53 +1051,6 @@ extension NavidromeClient {
         }
         return nil
     }
-
-    nonisolated private func fetchFromNetEase(artist: String, title: String, duration: Double, priority: Float) async throws -> String? {
-        guard await NetworkMonitor.shared.isConnected else { return nil }
-
-        let query = "\(title) \(artist)"
-        var searchComponents = URLComponents(string: "https://music.163.com/api/search/get")
-        searchComponents?.queryItems = [
-            URLQueryItem(name: "s", value: query),
-            URLQueryItem(name: "type", value: "1"),
-            URLQueryItem(name: "limit", value: "3")
-        ]
-        guard let searchUrl = searchComponents?.url else { return nil }
-        var searchReq = URLRequest(url: searchUrl)
-        searchReq.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
-        searchReq.timeoutInterval = 10.0
-
-        let (sData, sResp) = try await ThrottledNetworkManager.shared.enqueue(request: searchReq, priority: priority)
-        guard let httpS = sResp as? HTTPURLResponse, httpS.statusCode == 200,
-              let sJson = try? JSONSerialization.jsonObject(with: sData) as? [String: Any],
-              let result = sJson["result"] as? [String: Any],
-              let songs = result["songs"] as? [[String: Any]],
-              !songs.isEmpty else { return nil }
-
-        // Find candidate within ±5s of duration
-        let targetMs = duration * 1000.0
-        let matchedSong = songs.first { s in
-            guard let dt = s["duration"] as? Double ?? s["dt"] as? Double else { return false }
-            return abs(dt - targetMs) <= 5000.0
-        } ?? songs.first
-
-        guard let song = matchedSong, let songId = song["id"] else { return nil }
-        let lyricUrlString = "https://music.163.com/api/song/lyric?os=pc&id=\(songId)&lv=-1&kv=-1&tv=-1"
-        guard let lyricUrl = URL(string: lyricUrlString) else { return nil }
-        var lyricReq = URLRequest(url: lyricUrl)
-        lyricReq.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
-        lyricReq.timeoutInterval = 10.0
-
-        let (lData, lResp) = try await ThrottledNetworkManager.shared.enqueue(request: lyricReq, priority: priority)
-        guard let httpL = lResp as? HTTPURLResponse, httpL.statusCode == 200,
-              let lJson = try? JSONSerialization.jsonObject(with: lData) as? [String: Any],
-              let lrcObj = lJson["lrc"] as? [String: Any],
-              let rawLyric = lrcObj["lyric"] as? String,
-              LRCParser.hasTimestamps(rawLyric) else { return nil }
-
-        return rawLyric
-    }
-
 
     // MARK: - Scrobbling
 

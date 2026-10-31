@@ -54,6 +54,7 @@ enum VeloraStorage {
             }
         }
         autoCleanupCorruptedAssets()
+        autoCleanupPollutedLyrics()
     }
 
     /// Automatically sweeps cache directories (Backdrops, ClearLogos, CoverArt, ArtistPortraits)
@@ -95,6 +96,43 @@ enum VeloraStorage {
         if purgedCount > 0 {
             Task { @MainActor in
                 AppLogger.shared.log("[Storage] 🧹 Auto-cleaned \(purgedCount) corrupted/sub-spec cache assets.", level: .info)
+            }
+        }
+        return purgedCount
+    }
+
+    /// Automatically sweeps the Lyrics directory and purges any files contaminated with NetEase CJK staff metadata.
+    @discardableResult
+    static func autoCleanupPollutedLyrics() -> Int {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: lyrics, includingPropertiesForKeys: nil) else { return 0 }
+        var purgedCount = 0
+        let markers = [
+            "作词", "作詞", "作曲", "编曲", "編曲", "制作人", "製作人",
+            "music.163.com", "163.com", "qq.com", "kugou.com"
+        ]
+
+        for file in files {
+            guard file.pathExtension.lowercased() == "txt" else { continue }
+            guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+
+            var shouldPurge = false
+            for marker in markers {
+                if text.contains(marker) {
+                    shouldPurge = true
+                    break
+                }
+            }
+
+            if shouldPurge {
+                try? fm.removeItem(at: file)
+                purgedCount += 1
+            }
+        }
+
+        if purgedCount > 0 {
+            Task { @MainActor in
+                AppLogger.shared.log("[Storage] 🧹 Auto-purged \(purgedCount) polluted CJK/credit cached lyrics files.", level: .info)
             }
         }
         return purgedCount

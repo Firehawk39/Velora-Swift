@@ -117,6 +117,9 @@ struct LRCParser: Sendable {
                 .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespaces)
 
+            // Strictly filter out non-vocal studio staff credits, foreign metadata, and producer tags
+            guard !isStudioCreditOrNonLyric(plainText) else { continue }
+
             // If line text is empty, preserve as an instrumental break marker
             let finalDisplayText = plainText.isEmpty ? "• • •" : plainText
 
@@ -127,6 +130,66 @@ struct LRCParser: Sendable {
         }
 
         return result.sorted { $0.time < $1.time }
+    }
+
+    /// Strips studio credits and metadata tags from plain unsynced lyric text
+    static func sanitizePlainText(_ text: String) -> String {
+        let lines = text.components(separatedBy: .newlines)
+        let filtered = lines.filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { return true }
+            return !isHeaderTag(trimmed) && !isStudioCreditOrNonLyric(trimmed)
+        }
+        return filtered.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Determines whether the parsed line represents studio staff, production credits,
+    /// or foreign non-lyric metadata injected by third-party providers.
+    static func isStudioCreditOrNonLyric(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed == "• • •" { return false }
+        let lower = trimmed.lowercased()
+
+        // 1. CJK metadata and credit keywords (e.g. NetEase / QQ Music injected credits)
+        let cjkCreditKeywords = [
+            "作词", "作詞", "作曲", "编曲", "編曲", "制作人", "製作人",
+            "制作", "製作", "监制", "監製", "混音", "母带", "母帶",
+            "录音", "錄音", "吉他", "贝斯", "貝斯", "鼓手", "键盘",
+            "鍵盤", "弦乐", "弦樂", "和声", "和聲", "伴唱", "企划",
+            "企劃", "出品", "发行", "發行", "统筹", "統籌",
+            "词：", "词:", "曲：", "曲:", "詞：", "詞:", "编：", "编:"
+        ]
+        for keyword in cjkCreditKeywords {
+            if trimmed.contains(keyword) {
+                return true
+            }
+        }
+
+        // 2. English studio / production prefixes and metadata tags
+        let creditPrefixes = [
+            "producer", "produced by", "co-produced by", "written by",
+            "written-by", "composed by", "composed-by", "arranged by",
+            "arranged-by", "arranger:", "arranger :", "mixed by",
+            "mixing by", "mastered by", "mastering by", "recorded at",
+            "recorded by", "recording engineer", "engineered by",
+            "audio engineer", "assistant engineer", "lead vocals",
+            "backing vocals", "lead & backing vocals", "vocals:", "vocals :",
+            "guitar:", "guitar :", "guitars:", "guitars :", "electric guitar",
+            "acoustic guitar", "bass:", "bass :", "drums:", "drums :",
+            "keyboards:", "keyboards :", "percussion:", "percussion :",
+            "saxophone:", "saxophone :", "strings:", "strings :",
+            "horns:", "horns :", "synthesizer:", "piano:", "piano :",
+            "lyrics by", "music by", "lyricist:", "lyricist :",
+            "composer:", "composer :", "by:", "author:", "artist:",
+            "title:", "album:"
+        ]
+        for prefix in creditPrefixes {
+            if lower.hasPrefix(prefix) {
+                return true
+            }
+        }
+
+        return false
     }
 
     private static func isHeaderTag(_ line: String) -> Bool {

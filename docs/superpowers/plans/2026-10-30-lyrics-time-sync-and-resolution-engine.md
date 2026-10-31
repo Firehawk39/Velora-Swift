@@ -6,10 +6,10 @@
 
 **Architecture:** 
 1. A standard-compliant, universal LRC parser supporting all timestamp variants, multi-timestamp lines, and instrumental gaps.
-2. A Picard-aware multi-tier network engine (Navidrome OpenSubsonic $\to$ Exact Picard LRCLIB $\to$ Decomposed Collaboration LRCLIB $\to$ NetEase Fallback) with strict cache poisoning protection.
+2. A Picard-aware multi-tier network engine (Navidrome OpenSubsonic $\to$ Exact Picard LRCLIB $\to$ Decomposed Collaboration LRCLIB) with non-vocal studio credit filtering and strict cache poisoning protection.
 3. Audio clock hardening in `PlaybackManager` to ensure streaming progress never stalls and timestamps never bleed across tracks.
 
-**Tech Stack:** Swift 6, AVFoundation, OpenSubsonic / Navidrome, LRCLIB REST API, NetEase Public Lyric API.
+**Tech Stack:** Swift 6, AVFoundation, OpenSubsonic / Navidrome, LRCLIB REST API.
 
 ## Global Constraints
 
@@ -62,8 +62,8 @@
   - Query LRCLIB with decomposed artist and cleaned title.
 - [ ] **Step 2.3: Implement duration-tolerant candidate search**
   If `/api/get` 404s, query `/api/search` and select the candidate within $\pm 4.0\text{s}$ of the local track duration (rejecting candidates outside this window).
-- [ ] **Step 2.4: Integrate NetEase secondary fallback**
-  If LRCLIB returns `503 Server Overloaded` or has no match, query NetEase’s public lyrics endpoint (`https://music.163.com/api/search/get` and `https://music.163.com/api/song/lyric`) using canonical Picard title and primary artist.
+- [ ] **Step 2.4: Pure Canonical Tag and CJK Protection (Zero NetEase)**
+  All third-party fallbacks injecting foreign/non-canonical metadata or non-vocal credits (e.g. NetEase `music.163.com` staff credits) are strictly banned. The parser sanitizes all credit tags (`作词`, `作曲`, `Producer:`, etc.) and automatically purges any polluted files from storage.
 - [ ] **Step 2.5: Prevent cache poisoning & handle verified instrumentals**
   - Never write `"NO_LYRICS"` or unsynced Navidrome text to disk on `503`, `429`, or timeouts.
   - Keep unsynced lyrics in memory for the current session only.
